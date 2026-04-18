@@ -46,6 +46,74 @@ export type { LogEvent } from "./generated/LogEvent";
 export type { ToastEvent } from "./generated/ToastEvent";
 export type { ToastSeverity } from "./generated/ToastSeverity";
 
+export type { Settings } from "./generated/Settings";
+export type { SettingsPatch } from "./generated/SettingsPatch";
+export type { ThemePreference } from "./generated/ThemePreference";
+
 export type { DayseamError } from "./generated/DayseamError";
 
 export type { JsonValue } from "./generated/serde_json/JsonValue";
+
+// ----- Tauri command catalog -----
+//
+// Single source of truth for the Rust `#[tauri::command]` surface
+// exposed through `#[tauri::command]` and allow-listed in
+// `apps/desktop/src-tauri/capabilities/default.json`. The frontend's
+// typed `invoke(name, args)` helper reads its type parameters off of
+// this map — adding or renaming a Rust command without touching this
+// union is a compile-error on the TS side.
+//
+// Each entry is `{ args, result }`:
+//   - `args` is the object Tauri receives as the command payload
+//     (the argument names/shapes must match the Rust signature after
+//     snake_case → camelCase on the Rust side, if configured — we
+//     keep snake_case end-to-end for IPC for simplicity).
+//   - `result` is the resolved value of the returned `Promise`.
+//
+// Commands that stream via `Channel<T>` (e.g. `dev_start_demo_run`)
+// take the channels by reference in the `args` map; the TS side builds
+// them via `@tauri-apps/api/core::Channel`.
+
+import type { LogEntry } from "./generated/LogEntry";
+import type { ProgressEvent } from "./generated/ProgressEvent";
+import type { LogEvent } from "./generated/LogEvent";
+import type { ToastEvent } from "./generated/ToastEvent";
+import type { RunId } from "./generated/RunId";
+import type { Settings as SettingsT } from "./generated/Settings";
+import type { SettingsPatch as SettingsPatchT } from "./generated/SettingsPatch";
+
+/** Opaque handle used at the TS boundary for Tauri's `Channel<T>`. */
+export interface TauriChannel<T> {
+  onmessage?: (event: T) => void;
+}
+
+export interface Commands {
+  settings_get: {
+    args: Record<string, never>;
+    result: SettingsT;
+  };
+  settings_update: {
+    args: { patch: SettingsPatchT };
+    result: SettingsT;
+  };
+  logs_tail: {
+    args: { since: string | null; limit: number | null };
+    result: LogEntry[];
+  };
+  /** Dev-only. Compiled out of release builds via `cfg(feature = "dev-commands")`. */
+  dev_emit_toast: {
+    args: { event: ToastEvent };
+    result: null;
+  };
+  /** Dev-only. Compiled out of release builds via `cfg(feature = "dev-commands")`. */
+  dev_start_demo_run: {
+    args: {
+      progress: TauriChannel<ProgressEvent>;
+      logs: TauriChannel<LogEvent>;
+    };
+    result: RunId;
+  };
+}
+
+/** Union of every command name the frontend can invoke. */
+export type CommandName = keyof Commands;

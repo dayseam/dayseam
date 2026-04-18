@@ -7,5 +7,6 @@ pub mod events;
 pub mod identity;
 pub mod repo;
 pub mod report;
+pub mod settings;
 pub mod sink;
 pub mod source;
