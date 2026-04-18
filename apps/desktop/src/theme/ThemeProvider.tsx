@@ -13,41 +13,7 @@ import {
   type Theme,
   type ThemeContextValue,
 } from "./ThemeContext";
-
-const VALID_THEMES: readonly Theme[] = ["light", "dark", "system"];
-
-function isTheme(value: unknown): value is Theme {
-  return (
-    typeof value === "string" && (VALID_THEMES as readonly string[]).includes(value)
-  );
-}
-
-function readInitialTheme(): Theme {
-  if (typeof window === "undefined") return "system";
-  try {
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (isTheme(stored)) return stored;
-  } catch {
-    // localStorage can throw in private-browsing or restricted Tauri
-    // contexts; fall back to `system` and let the user pick again.
-  }
-  return "system";
-}
-
-function resolveTheme(theme: Theme): ResolvedTheme {
-  if (theme !== "system") return theme;
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
-function applyResolvedTheme(resolved: ResolvedTheme) {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
-  root.classList.toggle("dark", resolved === "dark");
-  root.setAttribute("data-theme", resolved);
-}
+import { applyResolvedTheme, readInitialTheme, resolveTheme } from "./theme-logic";
 
 export interface ThemeProviderProps {
   children: ReactNode;

@@ -8,34 +8,18 @@
       Apply the saved theme BEFORE any CSS or markup renders.
       Without this, dark-mode users see a bright-white flash for
       one frame while the webview has the HTML but React hasn't
-      hydrated yet. The logic here mirrors `readInitialTheme` /
-      `resolveTheme` in apps/desktop/src/theme/ThemeProvider.tsx —
-      if you change one, change the other (the Vitest in
-      `App.test.tsx` covers the resolved state, and a manual dark/
-      light cold-start smoke covers this script).
+      hydrated yet.
+
+      The script lives in `public/hydrate-theme.js` (plain, non-module
+      JS so it's parser-blocking) rather than inline so that:
+        1. It never needs a CSP hash — `script-src 'self'` already
+           permits same-origin externals, which keeps release builds
+           robust against CSP plumbing regressions.
+        2. A single, file-scoped unit is easy to parity-check against
+           `src/theme/theme-logic.ts` — see
+           `src/__tests__/hydrate-theme.test.ts`.
     -->
-    <script>
-      (function applyInitialTheme() {
-        try {
-          var stored = window.localStorage.getItem("dayseam:theme");
-          var valid = stored === "light" || stored === "dark" || stored === "system";
-          var theme = valid ? stored : "system";
-          var resolved =
-            theme === "system"
-              ? window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light"
-              : theme;
-          var root = document.documentElement;
-          root.setAttribute("data-theme", resolved);
-          if (resolved === "dark") root.classList.add("dark");
-        } catch (_err) {
-          // localStorage / matchMedia can throw in restricted
-          // Tauri contexts. Falling through leaves the default
-          // light theme, which matches ThemeProvider's fallback.
-        }
-      })();
-    </script>
+    <script src="/hydrate-theme.js"></script>
     <style>
       /*
         Splash styles live inline so they ship with the HTML — the
@@ -51,7 +35,7 @@
       html,
       body {
         margin: 0;
-        background: #fafafa;
+        background: #ffffff;
         color: #171717;
       }
       html.dark,
@@ -75,9 +59,7 @@
         font-family:
           -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         opacity: 1;
-        transition:
-          opacity 220ms ease-out,
-          visibility 0s linear 0s;
+        transition: opacity 220ms ease-out;
         z-index: 9999;
       }
       #splash[data-hidden="true"] {
@@ -136,8 +118,13 @@
       React's App component removes the `data-hidden` attribute
       (and then the node itself, after the CSS fade) when it
       mounts — see `apps/desktop/src/splash.ts`.
+
+      `role="status"` + `aria-live="polite"` lets screen readers
+      announce the visible "Dayseam / Loading your workspace…" copy;
+      we intentionally don't set `aria-label` so the visible text is
+      the accessible name rather than duplicating it.
     -->
-    <div id="splash" role="status" aria-live="polite" aria-label="Loading Dayseam">
+    <div id="splash" role="status" aria-live="polite">
       <div class="splash-spinner" aria-hidden="true"></div>
       <div class="splash-wordmark">Dayseam</div>
       <div class="splash-hint">Loading your workspace…</div>
