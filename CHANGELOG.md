@@ -43,3 +43,68 @@ All notable changes to Dayseam are documented in this file. The format follows
   never block, slow broadcast subscribers observe `Lagged` explicitly
   and recover by resubscribing, and receivers observe end-of-stream
   cleanly once every sender is dropped.
+- Canonical identity types on `dayseam-core`: `Person` (one row per
+  human, with `is_self` flag) and `SourceIdentity` (one row per
+  `(person, source, external actor id)` mapping, tagged by
+  `SourceIdentityKind = GitEmail | GitLabUserId | GitLabUsername |
+  GitHubLogin`). The legacy v0.1 `Identity` record is kept for
+  schema compatibility and will be retired in Phase 2. All three new
+  types ship with serde round-trip coverage and committed TypeScript
+  bindings.
+- `DayseamError` gains two non-failure-looking variants, each with
+  their own stable error codes:
+  - `Cancelled { code, message }` — surfaced when a run is cancelled
+    by the user, by app shutdown, or by a newer run superseding this
+    one (`run.cancelled.by_user`, `run.cancelled.by_shutdown`,
+    `run.cancelled.by_superseded`). The UI renders this as
+    "cancelled", not as an error toast.
+  - `Unsupported { code, message }` — surfaced when a connector is
+    asked to service a `SyncRequest` variant it has no implementation
+    for, e.g. `SyncRequest::Since(Checkpoint)` against a connector
+    that only supports day-scoped pulls
+    (`connector.unsupported.sync_request`). The orchestrator catches
+    this and falls back to the equivalent non-incremental call.
+  - Two HTTP-layer codes (`http.retry.budget_exhausted`,
+    `http.transport`) are also reserved for the connector SDK's
+    shared `HttpClient`.
+- `connectors-sdk` crate: the shared plumbing every source connector
+  is built on top of.
+  - `SourceConnector` trait with a single `sync(ctx, SyncRequest) ->
+    SyncResult` method, a `healthcheck(ctx)`, and a stable `kind()`
+    tag. `SyncRequest` covers `Day(NaiveDate)`, `Range { start, end
+    }`, and `Since(Checkpoint)`; `SyncResult` returns normalised
+    `ActivityEvent`s, an optional new `Checkpoint`, `SyncStats`
+    (fetched / filtered / http_retries), warnings, and `RawRef`s.
+  - `AuthStrategy` trait with `NoneAuth` and `PatAuth` (PAT from the
+    macOS Keychain via `dayseam-secrets`), plus an `AuthDescriptor`
+    every connector can expose for the UI to render the right
+    "connect" affordance.
+  - `ConnCtx` — the single context object every connector method
+    receives, wiring `run_id`, canonical `person` + known
+    `source_identities`, a `ProgressSender` / `LogSender` pair from
+    the run's `RunStreams`, a `RawStore`, an injectable `Clock`, a
+    shared `HttpClient`, and a `CancellationToken`. A
+    `bail_if_cancelled` helper lets connector code short-circuit
+    cooperatively on `DayseamError::Cancelled`.
+  - `HttpClient` wrapping `reqwest::Client` with a shared retry loop:
+    honours `429 Retry-After` (both delta-seconds and HTTP-date),
+    retries transient 5xx with exponential backoff + jitter up to a
+    configurable `RetryPolicy`, emits per-attempt progress events,
+    and treats the run's `CancellationToken` as a hard ceiling —
+    every sleep races the token and every attempt re-checks it so
+    cancellation is observed within one tick.
+  - `Clock` abstraction (`SystemClock` for production,
+    `tokio::time::sleep`-backed) and `RawStore` trait (with
+    `NoopRawStore` for v0.1) so real raw-payload persistence can land
+    in Phase 2 without touching connector code.
+  - `MockConnector`: an always-compiled in-memory `SourceConnector`
+    driven by a fixture list. Used by downstream tests to exercise
+    orchestrator and UI paths without any real HTTP, and self-checked
+    with an integration suite covering day filtering, identity
+    filtering, ordered progress emission, and correct `Unsupported`
+    rejection of `SyncRequest::Since`.
+  - Integration tests: `wiremock`-backed `HttpClient` retry and
+    cancellation suites, `MockConnector` behavioural tests, and a
+    `no_cross_crate_leak` guard that fails the build if
+    `connectors-sdk` ever picks up a dependency on `dayseam-db`,
+    `dayseam-secrets`, `dayseam-report`, or `sinks-sdk`.

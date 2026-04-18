@@ -27,6 +27,25 @@ pub const SINK_FS_NOT_WRITABLE: &str = "sink.fs.not_writable";
 pub const SINK_FS_DESTINATION_MISSING: &str = "sink.fs.destination_missing";
 pub const SINK_MALFORMED_MARKER: &str = "sink.malformed_marker";
 
+// -------- Connector SDK ----------------------------------------------------
+
+/// Run cancelled by the user (e.g. they clicked Cancel in the UI).
+pub const RUN_CANCELLED_BY_USER: &str = "run.cancelled.by_user";
+/// Run cancelled because the app is shutting down.
+pub const RUN_CANCELLED_BY_SHUTDOWN: &str = "run.cancelled.by_shutdown";
+/// Run cancelled because a newer run for the same source/date superseded
+/// it.
+pub const RUN_CANCELLED_BY_SUPERSEDED: &str = "run.cancelled.by_superseded";
+/// Connector does not support the requested `SyncRequest` variant — most
+/// commonly `Since(Checkpoint)` against a connector with no incremental
+/// fetch. The orchestrator catches this and falls back.
+pub const CONNECTOR_UNSUPPORTED_SYNC_REQUEST: &str = "connector.unsupported.sync_request";
+/// Generic retry budget exhausted after multiple 429 / 5xx attempts.
+pub const HTTP_RETRY_BUDGET_EXHAUSTED: &str = "http.retry.budget_exhausted";
+/// Transport-level HTTP failure (DNS, TLS, connection reset) for an
+/// endpoint that isn't bound to a specific connector.
+pub const HTTP_TRANSPORT: &str = "http.transport";
+
 /// All known codes in declaration order. The snapshot test iterates over
 /// this slice so a missing entry means either the slice wasn't updated or
 /// a constant was renamed — in either case review needs to happen.
@@ -43,6 +62,12 @@ pub const ALL: &[&str] = &[
     SINK_FS_NOT_WRITABLE,
     SINK_FS_DESTINATION_MISSING,
     SINK_MALFORMED_MARKER,
+    RUN_CANCELLED_BY_USER,
+    RUN_CANCELLED_BY_SHUTDOWN,
+    RUN_CANCELLED_BY_SUPERSEDED,
+    CONNECTOR_UNSUPPORTED_SYNC_REQUEST,
+    HTTP_RETRY_BUDGET_EXHAUSTED,
+    HTTP_TRANSPORT,
 ];
 
 #[cfg(test)]
