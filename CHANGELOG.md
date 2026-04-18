@@ -66,14 +66,20 @@ All notable changes to Dayseam are documented in this file. The format follows
 - Startup splash: an inline HTML/CSS loader in `index.html` that
   paints the instant the webview has the document — before Vite's
   JS bundle parses or React hydrates — and dismisses itself with a
-  220 ms fade as soon as `App` mounts. A companion inline
-  theme-hydration script reads `dayseam:theme` from `localStorage`
-  and applies the matching `data-theme` + `dark` class to
-  `<html>` before the splash paints, so dark-mode users no longer
-  see a bright-white flash on cold start. Honours
+  220 ms fade as soon as `App` mounts. Honours
   `prefers-reduced-motion` by removing the node synchronously and
-  disabling the fade animation. Covered by four new Vitest cases
-  (`splash.test.tsx`) that pin the removal contract, the
+  disabling the fade animation. Companion pre-paint theme
+  hydration lives in `apps/desktop/public/hydrate-theme.js` — a
+  parser-blocking, same-origin script that reads `dayseam:theme`
+  from `localStorage` and applies the matching `data-theme` +
+  `dark` class to `<html>` before the splash paints, so dark-mode
+  users no longer see a bright-white flash on cold start. The
+  pre-paint script is parity-checked against
+  `src/theme/theme-logic.ts` by a Vitest suite that executes the
+  shipped JS against every input permutation, guaranteeing the
+  two implementations can't drift. Splash dismissal is covered by
+  six Vitest cases (`splash.test.tsx`) pinning the removal
+  contract, StrictMode double-invoke, mid-fade re-entry, the
   re-entrancy guard, the reduced-motion path, and the
   missing-node fallback.
 

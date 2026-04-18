@@ -77,6 +77,28 @@ CI runs the same commands — if they are green locally they will be green in CI
 - [ ] The PR body references the issue it closes and the design/plan doc(s)
       it implements.
 
+## Frontend conventions
+
+- **React owns the DOM.** The only node created outside the React tree is the
+  startup splash defined in [`apps/desktop/index.html`](./apps/desktop/index.html)
+  and dismissed via [`apps/desktop/src/splash.ts`](./apps/desktop/src/splash.ts).
+  It has to paint before any JS bundle loads, which is the sole justification —
+  please don't copy the pattern for new UI. If you need pre-hydration state
+  (another splash surface, a theme, an error shell), extend
+  [`apps/desktop/public/hydrate-theme.js`](./apps/desktop/public/hydrate-theme.js)
+  or add a sibling script there rather than reaching into `document` from a
+  React component.
+- **Theme parity.** The pre-paint hydration in
+  [`apps/desktop/public/hydrate-theme.js`](./apps/desktop/public/hydrate-theme.js)
+  and the React-side helpers in
+  [`apps/desktop/src/theme/theme-logic.ts`](./apps/desktop/src/theme/theme-logic.ts)
+  share the same storage key, resolution rules, and DOM write order by design —
+  the parity test in
+  [`src/__tests__/hydrate-theme.test.ts`](./apps/desktop/src/__tests__/hydrate-theme.test.ts)
+  fails the suite if either half drifts. If you need to change theme
+  behaviour, change both files together and let the parity test prove you got
+  it right.
+
 ## Design and plan documents
 
 Before you change something fundamental, read the top-down reference
