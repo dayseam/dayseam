@@ -1,0 +1,97 @@
+// In-process mock for the subset of `@tauri-apps/api` we use in tests.
+// Tests import helpers from here to register invoke handlers, fire
+// event-bus messages, and inspect channel writes without ever going
+// near a real Tauri webview.
+
+import { vi } from "vitest";
+
+type InvokeHandler = (args: Record<string, unknown>) => unknown | Promise<unknown>;
+
+const invokeHandlers = new Map<string, InvokeHandler>();
+
+export const mockInvoke = vi.fn(
+  async (name: string, args: Record<string, unknown> = {}) => {
+    const handler = invokeHandlers.get(name);
+    if (!handler) {
+      throw new Error(`No mock invoke handler registered for "${name}"`);
+    }
+    return await handler(args);
+  },
+);
+
+export function registerInvokeHandler(name: string, handler: InvokeHandler): void {
+  invokeHandlers.set(name, handler);
+}
+
+export function resetInvokeHandlers(): void {
+  invokeHandlers.clear();
+  mockInvoke.mockClear();
+}
+
+// Every `Channel` instance created during a test is kept in a list so
+// the test can reach it via `getChannelsForCommand` after calling the
+// command.
+const createdChannels: MockChannel<unknown>[] = [];
+
+export class MockChannel<T> {
+  onmessage?: (event: T) => void;
+  id = createdChannels.length;
+
+  constructor(onmessage?: (event: T) => void) {
+    this.onmessage = onmessage;
+    createdChannels.push(this as MockChannel<unknown>);
+  }
+
+  /** Drive a message from the fake Rust side into the channel. */
+  deliver(event: T): void {
+    this.onmessage?.(event);
+  }
+
+  toJSON(): string {
+    return `__CHANNEL__:${this.id}`;
+  }
+}
+
+export function resetChannels(): void {
+  createdChannels.length = 0;
+}
+
+/** Return the most recent channels created since the last reset. */
+export function getCreatedChannels(): MockChannel<unknown>[] {
+  return createdChannels.slice();
+}
+
+// Tauri event bus: `listen(name, cb)` returns an unlisten; tests call
+// `emitEvent(name, payload)` to drive the bus.
+type Listener = (event: { payload: unknown }) => void;
+const listeners = new Map<string, Set<Listener>>();
+
+export const mockListen = vi.fn(async (name: string, cb: Listener) => {
+  let bucket = listeners.get(name);
+  if (!bucket) {
+    bucket = new Set();
+    listeners.set(name, bucket);
+  }
+  bucket.add(cb);
+  return () => {
+    bucket?.delete(cb);
+  };
+});
+
+export function emitEvent(name: string, payload: unknown): void {
+  const bucket = listeners.get(name);
+  if (!bucket) return;
+  bucket.forEach((cb) => cb({ payload }));
+}
+
+export function resetEventBus(): void {
+  listeners.clear();
+  mockListen.mockClear();
+}
+
+/** One-call reset used by `beforeEach` in tests. */
+export function resetTauriMocks(): void {
+  resetInvokeHandlers();
+  resetChannels();
+  resetEventBus();
+}

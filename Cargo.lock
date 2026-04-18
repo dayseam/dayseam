@@ -908,10 +908,22 @@ dependencies = [
 name = "dayseam-desktop"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "dayseam-core",
+ "dayseam-db",
+ "dayseam-events",
+ "dayseam-secrets",
  "serde",
  "serde_json",
+ "sqlx",
  "tauri",
  "tauri-build",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

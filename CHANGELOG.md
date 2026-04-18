@@ -183,3 +183,34 @@ All notable changes to Dayseam are documented in this file. The format follows
   `App.snapshot.test.tsx` with inline light-theme and dark-theme DOM
   snapshots so layout drift is a reviewed event rather than an
   accidental one.
+- IPC bindings end-to-end (Task 9):
+  - `Settings`, `SettingsPatch`, and `ThemePreference` added to
+    `dayseam-core` with generated TypeScript bindings.
+  - `AppState` composed from `SqlitePool` + `AppBus` +
+    `Arc<dyn SecretStore>` + `RunRegistry` (the per-run
+    `CancellationToken`/`JoinHandle` map used to cancel active syncs).
+  - First five Tauri commands wired and allow-listed in
+    `capabilities/default.json` via `tauri-build`'s `AppManifest`:
+    `settings_get`, `settings_update`, `logs_tail`, plus
+    feature-gated `dev_emit_toast` and `dev_start_demo_run`
+    compiled only under the `dev-commands` Cargo feature so
+    release bundles never expose them.
+  - Two forwarder tasks: `broadcast_forwarder` subscribes to
+    `AppBus` toasts and re-emits them via `tauri::Manager::emit`
+    with lag-recovery logging, and `run_forwarder` drains per-run
+    `ProgressEvent` / `LogEvent` streams into frontend-supplied
+    `Channel<T>` instances so the channels-vs-broadcast split in
+    `ARCHITECTURE.md` §11.3 is now enforced in code.
+  - `@dayseam/ipc-types` now exports a `Commands` map that types
+    every IPC call; the desktop's typed `invoke(name, args)`
+    helper reads its parameters off that map, so adding a Rust
+    command without the matching TS entry is a build error.
+  - Frontend hooks `useRunStreams`, `useToasts`, `useLogsTail`
+    plus `LogDrawer`, `ToastHost`, and `Toast` components wire
+    the Rust surface into the UI, with a ⌘L/Ctrl+L shortcut that
+    toggles the log drawer.
+  - Test coverage: `broadcast_forwarder::emit_toast_reaches_tauri_listeners`
+    and `task_exits_cleanly_when_bus_drops` on the Rust side;
+    `useRunStreams` (ordering, completion, failure, previous-run
+    isolation), `ToastHost`, `LogDrawer`, and an `App` log-drawer
+    shortcut test on the TS side.

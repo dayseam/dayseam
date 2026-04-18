@@ -1,16 +1,35 @@
+interface FooterProps {
+  onOpenLogs?: () => void;
+}
+
 /**
  * Status footer — occupies the bottom strip of the window. Phase 1
  * shows the app is idle; Phase 2 replaces the text with live sync
- * progress from the log drawer and Task 9's toast system.
+ * progress from the log drawer and Task 9's toast system. Phase 1 also
+ * exposes the "Logs" toggle that opens `LogDrawer`.
  */
-export function Footer() {
+export function Footer({ onOpenLogs }: FooterProps) {
   return (
     <footer
       aria-label="Status"
       className="flex items-center justify-between border-t border-neutral-200 px-6 py-2 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400"
     >
-      <span>Idle</span>
+      <div className="flex items-center gap-3">
+        <span>Idle</span>
+        {onOpenLogs ? (
+          <button
+            type="button"
+            onClick={onOpenLogs}
+            title="Open activity log (⌘L)"
+            className="rounded px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-900"
+          >
+            Logs
+          </button>
+        ) : null}
+      </div>
       <span>Local-only · No data leaves this machine</span>
     </footer>
   );
 }
+
+export default Footer;
