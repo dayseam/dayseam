@@ -11,9 +11,10 @@ use std::path::PathBuf;
 use chrono::{TimeZone, Utc};
 use dayseam_core::{
     error_codes, ActivityEvent, ActivityKind, Actor, DayseamError, EntityRef, Evidence, Identity,
-    Link, LocalRepo, LogEntry, LogEvent, LogLevel, Privacy, ProgressEvent, ProgressPhase, RawRef,
-    RenderedBullet, RenderedSection, ReportDraft, RunId, RunStatus, SecretRef, Source,
-    SourceConfig, SourceHealth, SourceKind, SourceRunState, ToastEvent, ToastSeverity,
+    Link, LocalRepo, LogEntry, LogEvent, LogLevel, Person, Privacy, ProgressEvent, ProgressPhase,
+    RawRef, RenderedBullet, RenderedSection, ReportDraft, RunId, RunStatus, SecretRef, Source,
+    SourceConfig, SourceHealth, SourceIdentity, SourceIdentityKind, SourceKind, SourceRunState,
+    ToastEvent, ToastSeverity,
 };
 use proptest::prelude::*;
 use uuid::Uuid;
@@ -128,6 +129,36 @@ fn identity_round_trips() {
         display_name: "Vedanth".into(),
     };
     round_trip(&id);
+}
+
+#[test]
+fn person_round_trips() {
+    round_trip(&Person::new_self("Vedanth"));
+    round_trip(&Person {
+        id: Uuid::new_v4(),
+        display_name: "Coworker".into(),
+        is_self: false,
+    });
+}
+
+#[test]
+fn source_identity_round_trips_for_every_kind() {
+    let person_id = Uuid::new_v4();
+    let source_id = Some(Uuid::new_v4());
+    for kind in [
+        SourceIdentityKind::GitEmail,
+        SourceIdentityKind::GitLabUserId,
+        SourceIdentityKind::GitLabUsername,
+        SourceIdentityKind::GitHubLogin,
+    ] {
+        round_trip(&SourceIdentity {
+            id: Uuid::new_v4(),
+            person_id,
+            source_id,
+            kind,
+            external_actor_id: "42".into(),
+        });
+    }
 }
 
 #[test]
@@ -309,6 +340,14 @@ fn dayseam_error_round_trips_for_every_variant() {
         DayseamError::Internal {
             code: "core.internal.bug".into(),
             message: "unreachable".into(),
+        },
+        DayseamError::Cancelled {
+            code: error_codes::RUN_CANCELLED_BY_USER.into(),
+            message: "user pressed Cancel".into(),
+        },
+        DayseamError::Unsupported {
+            code: error_codes::CONNECTOR_UNSUPPORTED_SYNC_REQUEST.into(),
+            message: "local-git does not support Since(Checkpoint)".into(),
         },
     ];
     for case in cases {

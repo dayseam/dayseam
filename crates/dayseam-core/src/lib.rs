@@ -14,7 +14,7 @@ pub use error::DayseamError;
 pub use types::{
     activity::{ActivityEvent, ActivityKind, Actor, EntityRef, Link, Privacy, RawRef},
     events::{LogEvent, ProgressEvent, ProgressPhase, RunId, ToastEvent, ToastSeverity},
-    identity::Identity,
+    identity::{Identity, Person, SourceIdentity, SourceIdentityKind},
     repo::LocalRepo,
     report::{
         Evidence, LogEntry, LogLevel, RenderedBullet, RenderedSection, ReportDraft, RunStatus,

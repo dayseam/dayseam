@@ -20,6 +20,9 @@ export type { SourceKind } from "./generated/SourceKind";
 export type { SecretRef } from "./generated/SecretRef";
 
 export type { Identity } from "./generated/Identity";
+export type { Person } from "./generated/Person";
+export type { SourceIdentity } from "./generated/SourceIdentity";
+export type { SourceIdentityKind } from "./generated/SourceIdentityKind";
 export type { LocalRepo } from "./generated/LocalRepo";
 
 export type { ReportDraft } from "./generated/ReportDraft";

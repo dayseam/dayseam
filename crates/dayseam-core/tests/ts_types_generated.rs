@@ -16,9 +16,10 @@ use std::process::Command;
 
 use dayseam_core::{
     ActivityEvent, ActivityKind, Actor, DayseamError, EntityRef, Evidence, Identity, Link,
-    LocalRepo, LogEntry, LogEvent, LogLevel, Privacy, ProgressEvent, ProgressPhase, RawRef,
+    LocalRepo, LogEntry, LogEvent, LogLevel, Person, Privacy, ProgressEvent, ProgressPhase, RawRef,
     RenderedBullet, RenderedSection, ReportDraft, RunId, RunStatus, SecretRef, Source,
-    SourceConfig, SourceHealth, SourceKind, SourceRunState, ToastEvent, ToastSeverity,
+    SourceConfig, SourceHealth, SourceIdentity, SourceIdentityKind, SourceKind, SourceRunState,
+    ToastEvent, ToastSeverity,
 };
 use ts_rs::{Config, TS};
 
@@ -48,6 +49,9 @@ fn export_all(out_dir: &Path) {
     SecretRef::export_all(&cfg).expect("export SecretRef");
 
     Identity::export_all(&cfg).expect("export Identity");
+    Person::export_all(&cfg).expect("export Person");
+    SourceIdentity::export_all(&cfg).expect("export SourceIdentity");
+    SourceIdentityKind::export_all(&cfg).expect("export SourceIdentityKind");
     LocalRepo::export_all(&cfg).expect("export LocalRepo");
 
     ReportDraft::export_all(&cfg).expect("export ReportDraft");

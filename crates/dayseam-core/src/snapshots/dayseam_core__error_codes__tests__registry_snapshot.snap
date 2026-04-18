@@ -1,6 +1,5 @@
 ---
 source: crates/dayseam-core/src/error_codes.rs
-assertion_line: 65
 expression: ALL
 ---
 - gitlab.auth.invalid_token
@@ -15,3 +14,9 @@ expression: ALL
 - sink.fs.not_writable
 - sink.fs.destination_missing
 - sink.malformed_marker
+- run.cancelled.by_user
+- run.cancelled.by_shutdown
+- run.cancelled.by_superseded
+- connector.unsupported.sync_request
+- http.retry.budget_exhausted
+- http.transport

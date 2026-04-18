@@ -44,6 +44,20 @@ pub enum DayseamError {
     },
     #[error("internal error [{code}]: {message}")]
     Internal { code: String, message: String },
+    /// The run was cancelled before it could finish — either by the user,
+    /// by app shutdown, or by a newer run superseding this one. Not a
+    /// failure mode: the UI renders this as "cancelled", not as an error
+    /// toast, and the orchestrator drops any late-arriving results from
+    /// this `run_id`.
+    #[error("cancelled [{code}]: {message}")]
+    Cancelled { code: String, message: String },
+    /// The connector (or sink) was asked to do something its
+    /// implementation can't service — typically
+    /// `SyncRequest::Since(Checkpoint)` against a connector that has no
+    /// incremental fetch. The orchestrator catches this and falls back
+    /// to the equivalent non-incremental call.
+    #[error("unsupported [{code}]: {message}")]
+    Unsupported { code: String, message: String },
 }
 
 impl DayseamError {
@@ -58,7 +72,9 @@ impl DayseamError {
             | Self::UpstreamChanged { code, .. }
             | Self::InvalidConfig { code, .. }
             | Self::Io { code, .. }
-            | Self::Internal { code, .. } => code,
+            | Self::Internal { code, .. }
+            | Self::Cancelled { code, .. }
+            | Self::Unsupported { code, .. } => code,
         }
     }
 
@@ -73,6 +89,8 @@ impl DayseamError {
             Self::InvalidConfig { .. } => "InvalidConfig",
             Self::Io { .. } => "Io",
             Self::Internal { .. } => "Internal",
+            Self::Cancelled { .. } => "Cancelled",
+            Self::Unsupported { .. } => "Unsupported",
         }
     }
 }
