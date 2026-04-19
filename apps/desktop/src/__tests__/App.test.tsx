@@ -2,16 +2,23 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
 import { THEME_STORAGE_KEY } from "../theme";
+import { registerInvokeHandler, resetTauriMocks } from "./tauri-mock";
 
 describe("App", () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.classList.remove("dark");
     document.documentElement.removeAttribute("data-theme");
+    // SourcesSidebar fires `sources_list` on mount; register a
+    // deterministic empty response so every App-level test starts
+    // with the same "no sources connected" frame.
+    resetTauriMocks();
+    registerInvokeHandler("sources_list", async () => []);
   });
 
   afterEach(() => {
     localStorage.clear();
+    resetTauriMocks();
   });
 
   it("renders the Dayseam title bar", () => {
