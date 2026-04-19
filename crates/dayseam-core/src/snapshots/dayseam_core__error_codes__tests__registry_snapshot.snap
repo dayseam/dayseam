@@ -28,4 +28,7 @@ expression: ALL
 - orchestrator.run.superseded
 - orchestrator.run.cancelled
 - internal.process_restarted
+- orchestrator.retention.sweep_failed
+- orchestrator.save.draft_not_found
+- orchestrator.save.sink_not_registered
 - db.schema.migration_failed

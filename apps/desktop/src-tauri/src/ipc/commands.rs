@@ -243,6 +243,7 @@ mod tests {
     use dayseam_core::LogLevel;
     use dayseam_db::open;
     use dayseam_events::AppBus;
+    use dayseam_orchestrator::{ConnectorRegistry, OrchestratorBuilder, SinkRegistry};
     use dayseam_secrets::InMemoryStore;
     use std::sync::Arc;
     use tempfile::TempDir;
@@ -250,7 +251,16 @@ mod tests {
     async fn make_state() -> (AppState, TempDir) {
         let dir = TempDir::new().expect("temp dir");
         let pool = open(&dir.path().join("state.db")).await.expect("open db");
-        let state = AppState::new(pool, AppBus::new(), Arc::new(InMemoryStore::new()));
+        let app_bus = AppBus::new();
+        let orchestrator = OrchestratorBuilder::new(
+            pool.clone(),
+            app_bus.clone(),
+            ConnectorRegistry::new(),
+            SinkRegistry::new(),
+        )
+        .build()
+        .expect("build orchestrator");
+        let state = AppState::new(pool, app_bus, Arc::new(InMemoryStore::new()), orchestrator);
         (state, dir)
     }
 

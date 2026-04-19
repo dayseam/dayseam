@@ -11,6 +11,7 @@ use std::sync::Arc;
 use dayseam_core::{DayseamError, LogLevel};
 use dayseam_db::{open, LogRepo, LogRow};
 use dayseam_events::AppBus;
+use dayseam_orchestrator::{ConnectorRegistry, Orchestrator, OrchestratorBuilder, SinkRegistry};
 use dayseam_secrets::{KeychainStore, SecretStore};
 use sqlx::SqlitePool;
 
@@ -87,7 +88,71 @@ pub async fn build_app_state(data_dir: &Path) -> Result<AppState, DayseamError> 
 
     let app_bus = AppBus::new();
     let secrets: Arc<dyn SecretStore> = Arc::new(KeychainStore::new());
-    Ok(AppState::new(pool, app_bus, secrets))
+
+    let orchestrator = build_orchestrator(pool.clone(), app_bus.clone())?;
+    run_startup_maintenance(&orchestrator, &pool).await;
+
+    Ok(AppState::new(pool, app_bus, secrets, orchestrator))
+}
+
+/// Build the process-wide [`Orchestrator`] with empty registries.
+///
+/// Task 5 (PR-B) owns the wiring; Task 6 (`source_add` /
+/// `report_generate`) and Task 7 (settings UI) own populating the
+/// registries. Shipping empty registries in PR-B is deliberate — the
+/// orchestrator exists on `AppState` and its startup sweep runs, but
+/// nothing can currently produce events or consume them via the
+/// Tauri IPC surface. That's fine: the next PR lands both ends at
+/// once rather than smuggling a half-working generate path through
+/// PR-B.
+fn build_orchestrator(pool: SqlitePool, app_bus: AppBus) -> Result<Orchestrator, DayseamError> {
+    OrchestratorBuilder::new(pool, app_bus, ConnectorRegistry::new(), SinkRegistry::new()).build()
+}
+
+/// Run [`Orchestrator::startup`] and log the outcome. Failures are
+/// logged and swallowed: a sweep error must not block the app from
+/// booting, and the next boot retries the same work.
+async fn run_startup_maintenance(orchestrator: &Orchestrator, pool: &SqlitePool) {
+    match orchestrator.startup().await {
+        Ok(report) => {
+            tracing::info!(
+                retention_default_installed = report.retention_default_installed,
+                crashed_runs_recovered = report.crashed_runs_recovered,
+                raw_payloads_deleted = report.retention.raw_payloads_deleted,
+                log_entries_deleted = report.retention.log_entries_deleted,
+                "orchestrator startup maintenance completed",
+            );
+            let message = format!(
+                "Startup sweep: recovered {crashed} crashed run(s); pruned {raw} raw_payloads, {logs} log_entries",
+                crashed = report.crashed_runs_recovered,
+                raw = report.retention.raw_payloads_deleted,
+                logs = report.retention.log_entries_deleted,
+            );
+            let _ = LogRepo::new(pool.clone())
+                .append(&LogRow {
+                    ts: chrono::Utc::now(),
+                    level: LogLevel::Info,
+                    source_id: None,
+                    message,
+                    context: Some(serde_json::json!({ "source": "startup.orchestrator" })),
+                })
+                .await;
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "orchestrator startup maintenance failed");
+            let _ = LogRepo::new(pool.clone())
+                .append(&LogRow {
+                    ts: chrono::Utc::now(),
+                    level: LogLevel::Warn,
+                    source_id: None,
+                    message: format!("Startup sweep failed: {err}"),
+                    context: Some(serde_json::json!({
+                        "source": "startup.orchestrator",
+                    })),
+                })
+                .await;
+        }
+    }
 }
 
 async fn record_startup_log(pool: &SqlitePool) {

@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use dayseam_core::RunId;
 use dayseam_events::AppBus;
+use dayseam_orchestrator::Orchestrator;
 use dayseam_secrets::SecretStore;
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
@@ -108,19 +109,33 @@ pub struct AppState {
     pub app_bus: AppBus,
     pub secrets: Arc<dyn SecretStore>,
     pub runs: Arc<RwLock<RunRegistry>>,
+    /// The single process-wide [`Orchestrator`] every IPC command
+    /// that starts or saves a report routes through. Cheap to clone
+    /// — each field inside is either already `Clone` or `Arc`-wrapped
+    /// — so commands can pull a fresh handle per call without
+    /// contending on `AppState`. Task 5 PR-A constructed the type;
+    /// PR-B wires it onto `AppState` so Task 6's `report_generate` /
+    /// `report_save` have a place to land.
+    pub orchestrator: Orchestrator,
 }
 
 impl AppState {
     /// Construct an [`AppState`] from its collaborators. Keep this a
-    /// plain constructor — wiring the pool and the keychain is the
-    /// responsibility of [`crate::startup`].
+    /// plain constructor — wiring the pool, keychain, and
+    /// orchestrator is the responsibility of [`crate::startup`].
     #[must_use]
-    pub fn new(pool: SqlitePool, app_bus: AppBus, secrets: Arc<dyn SecretStore>) -> Self {
+    pub fn new(
+        pool: SqlitePool,
+        app_bus: AppBus,
+        secrets: Arc<dyn SecretStore>,
+        orchestrator: Orchestrator,
+    ) -> Self {
         Self {
             pool,
             app_bus,
             secrets,
             runs: Arc::new(RwLock::new(RunRegistry::new())),
+            orchestrator,
         }
     }
 }

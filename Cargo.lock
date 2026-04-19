@@ -967,6 +967,7 @@ dependencies = [
  "dayseam-core",
  "dayseam-db",
  "dayseam-events",
+ "dayseam-orchestrator",
  "dayseam-secrets",
  "serde_json",
  "sqlx",
