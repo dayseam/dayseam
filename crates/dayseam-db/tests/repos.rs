@@ -667,6 +667,32 @@ async fn sync_runs_running_to_cancelled_with_superseded_by() {
 }
 
 #[tokio::test]
+async fn sync_runs_list_running_returns_only_rows_without_finished_at() {
+    let (pool, _dir) = test_pool().await;
+    let repo = SyncRunRepo::new(pool);
+
+    // Two still-running rows and one row already finished — only the
+    // two running ones should come back. This is the exact predicate
+    // the orchestrator's crash-recovery sweep leans on.
+    let a = fixture_running_run();
+    let b = fixture_running_run();
+    let done = fixture_running_run();
+    repo.insert(&a).await.unwrap();
+    repo.insert(&b).await.unwrap();
+    repo.insert(&done).await.unwrap();
+    repo.mark_finished(&done.id, fixed_now(), &[])
+        .await
+        .unwrap();
+
+    let running = repo.list_running().await.unwrap();
+    let ids: Vec<_> = running.iter().map(|r| r.id).collect();
+    assert_eq!(running.len(), 2, "got {ids:?}");
+    assert!(ids.contains(&a.id));
+    assert!(ids.contains(&b.id));
+    assert!(!ids.contains(&done.id));
+}
+
+#[tokio::test]
 async fn sync_runs_reject_terminal_reentry() {
     let (pool, _dir) = test_pool().await;
     let repo = SyncRunRepo::new(pool);

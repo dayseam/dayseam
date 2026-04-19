@@ -208,6 +208,28 @@ impl SyncRunRepo {
         .await?;
         rows.into_iter().map(row_to_sync_run).collect()
     }
+
+    /// Every row whose `status = Running` and `finished_at IS NULL` —
+    /// the shape of a row left behind by an unclean shutdown. The
+    /// orchestrator's startup sweep calls this once, before any new
+    /// run is accepted, and transitions each row to `Failed` with
+    /// [`dayseam_core::error_codes::INTERNAL_PROCESS_RESTARTED`]. Kept
+    /// as a repo method (rather than a bespoke query in the
+    /// orchestrator) so the exact predicate stays colocated with the
+    /// state machine it enforces in [`Self::transition`].
+    pub async fn list_running(&self) -> DbResult<Vec<SyncRun>> {
+        let rows = sqlx::query(
+            "SELECT id, started_at, finished_at, trigger_json, status,
+                    cancel_reason_json, superseded_by, per_source_state_json
+             FROM sync_runs
+             WHERE status = ? AND finished_at IS NULL
+             ORDER BY started_at ASC",
+        )
+        .bind(sync_run_status_to_db(&SyncRunStatus::Running))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(row_to_sync_run).collect()
+    }
 }
 
 fn row_to_sync_run(row: sqlx::sqlite::SqliteRow) -> DbResult<SyncRun> {

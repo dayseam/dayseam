@@ -8,6 +8,35 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **`dayseam-orchestrator` — `save_report`, retention sweep, crash recovery, `AppState` wiring.**
+  Lands the second half of Task 5 on top of the PR-A generate-report
+  lifecycle. `Orchestrator::save_report(draft_id, &Sink)` loads a
+  persisted `ReportDraft`, looks up the adapter from `SinkRegistry`,
+  and returns `Vec<WriteReceipt>`; a failing sink write propagates
+  unchanged and does *not* mutate `report_drafts.sections_json`
+  (invariant #7 — atomicity is structural, not transactional). The
+  retention module prunes `raw_payloads` and `log_entries` strictly
+  older than a resolved cutoff, each table in its own `DELETE` so a
+  failure on the second never rolls back the first; `resolve_cutoff`
+  reads the `retention.days` setting and falls back to the shipping
+  default of 30 days (invariant #6). `Orchestrator::startup`
+  bootstraps the retention setting on first boot, rewrites every
+  `sync_runs` row left `Running` with `finished_at IS NULL` to
+  `Failed` with `internal.process_restarted` (remapping `Pending` /
+  `Running` per-source entries to `Failed` with the same code while
+  preserving already-terminal ones), and then runs the retention
+  sweep — idempotent on a clean DB. Three new stable error codes
+  land in the `dayseam-core` registry: `orchestrator.save.draft_not_found`,
+  `orchestrator.save.sink_not_registered`, and
+  `orchestrator.retention.sweep_failed`. The desktop shell now owns
+  a process-wide `Orchestrator` on `AppState`, built from empty
+  registries (populated later by Task 6 / Task 7), and invokes
+  `startup()` during `build_app_state` with its outcome logged both
+  to `tracing` and to the in-app log drawer. `SyncRunRepo` grows a
+  `list_running()` query so crash recovery has a single typed entry
+  point. Ten new integration tests — four for `save`, three for
+  retention, three for startup / crash recovery — prove the
+  invariants.
 - **`dayseam-report` report engine — Dev EOD template, rollup, render, golden snapshots.**
   Promotes the Phase-1 crate skeleton into the deterministic engine at
   the centre of the pipeline: `dayseam_report::render(ReportInput) ->

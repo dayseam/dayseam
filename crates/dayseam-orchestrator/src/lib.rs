@@ -59,6 +59,13 @@
 pub mod generate;
 pub mod orchestrator;
 pub mod registries;
+pub mod retention;
+pub mod save;
+pub mod startup;
 
-pub use orchestrator::{GenerateOutcome, GenerateRequest, Orchestrator};
-pub use registries::{ConnectorRegistry, SinkRegistry};
+pub use orchestrator::{
+    GenerateOutcome, GenerateRequest, Orchestrator, OrchestratorBuilder, SourceHandle,
+};
+pub use registries::{ConnectorRegistry, DefaultRegistryConfig, SinkRegistry};
+pub use retention::{SweepReport, DEFAULT_RETENTION_DAYS, RETENTION_DAYS_SETTING_KEY};
+pub use startup::StartupReport;

@@ -253,4 +253,25 @@ impl Orchestrator {
     pub async fn in_flight_count(&self) -> usize {
         self.in_flight.lock().await.len()
     }
+
+    /// Dispatch a persisted [`dayseam_core::ReportDraft`] to a
+    /// configured [`dayseam_core::Sink`] and return the resulting
+    /// [`dayseam_core::WriteReceipt`].
+    ///
+    /// Structure (Task 5 invariant #7): a failed sink write does not
+    /// mutate `report_drafts.sections_json`. The orchestrator never
+    /// writes to the draft row on this path; the draft stays exactly
+    /// as `generate_report` left it, and any sink failure propagates
+    /// to the caller unchanged.
+    ///
+    /// The return type is a `Vec` to match the Task 6 IPC shape
+    /// (`report_save(draft_id, sink_id) -> Vec<WriteReceipt>`); in
+    /// v0.1 the vec always contains exactly one element.
+    pub async fn save_report(
+        &self,
+        draft_id: Uuid,
+        sink: &dayseam_core::Sink,
+    ) -> Result<Vec<dayseam_core::WriteReceipt>, dayseam_core::DayseamError> {
+        crate::save::run(self, draft_id, sink).await
+    }
 }

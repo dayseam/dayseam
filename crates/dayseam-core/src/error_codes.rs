@@ -93,6 +93,21 @@ pub const ORCHESTRATOR_RUN_CANCELLED: &str = "orchestrator.run.cancelled";
 /// shutdown. The row is rewritten to `Failed` with this code so the
 /// next UI render can surface the recovery explicitly.
 pub const INTERNAL_PROCESS_RESTARTED: &str = "internal.process_restarted";
+/// A [`crate::DayseamError::Internal`] surfaced from the retention
+/// sweep path (pruning `raw_payloads` / `log_entries`). Distinct from
+/// [`INTERNAL_PROCESS_RESTARTED`] so a log parser can tell the two
+/// orchestrator maintenance paths apart.
+pub const ORCHESTRATOR_RETENTION_SWEEP_FAILED: &str = "orchestrator.retention.sweep_failed";
+/// `save_report(draft_id, sink_id)` was called with a `draft_id` that
+/// does not resolve to a `report_drafts` row. The Task 6 save dialog
+/// surfaces this as an inline row in the dialog (SEC-03 / STD-01
+/// double-visibility rule).
+pub const ORCHESTRATOR_SAVE_DRAFT_NOT_FOUND: &str = "orchestrator.save.draft_not_found";
+/// `save_report` was called with a sink whose kind is not registered
+/// in the orchestrator's [`crate::SinkKind`]-keyed registry. Usually
+/// a feature-flag mismatch between the Tauri layer and the
+/// orchestrator build.
+pub const ORCHESTRATOR_SINK_NOT_REGISTERED: &str = "orchestrator.save.sink_not_registered";
 
 // -------- Database ---------------------------------------------------------
 
@@ -131,6 +146,9 @@ pub const ALL: &[&str] = &[
     ORCHESTRATOR_RUN_SUPERSEDED,
     ORCHESTRATOR_RUN_CANCELLED,
     INTERNAL_PROCESS_RESTARTED,
+    ORCHESTRATOR_RETENTION_SWEEP_FAILED,
+    ORCHESTRATOR_SAVE_DRAFT_NOT_FOUND,
+    ORCHESTRATOR_SINK_NOT_REGISTERED,
     DB_SCHEMA_MIGRATION_FAILED,
 ];
 
