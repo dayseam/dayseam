@@ -1,0 +1,46 @@
+[package]
+name = "dayseam-orchestrator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Dayseam orchestrator: generate-report lifecycle, SyncRun durability, fan-out, cancellation, supersede-on-retry."
+
+[dependencies]
+dayseam-core = { path = "../dayseam-core", version = "0.0.0" }
+dayseam-db = { path = "../dayseam-db", version = "0.0.0" }
+dayseam-events = { path = "../dayseam-events", version = "0.0.0" }
+dayseam-report = { path = "../dayseam-report", version = "0.0.0" }
+connectors-sdk = { path = "../connectors-sdk", version = "0.0.0" }
+sinks-sdk = { path = "../sinks-sdk", version = "0.0.0" }
+connector-local-git = { path = "../connectors/connector-local-git", version = "0.0.0" }
+sink-markdown-file = { path = "../sinks/sink-markdown-file", version = "0.0.0" }
+
+chrono = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+tracing = { workspace = true }
+uuid = { workspace = true }
+# CancellationToken drives every connector's `ctx.cancel`. Pinned to the
+# same 0.7 series every other Dayseam crate already uses so the token
+# type is the same struct across the whole workspace (not a
+# re-export).
+tokio-util = { version = "0.7", features = ["rt"] }
+# sqlx is only used for the `SqlitePool` handle we pass through to the
+# repos; we stay off its query macros deliberately so the orchestrator
+# does not sprout its own ad-hoc SQL — every read / write still flows
+# through a typed repo in `dayseam-db`.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+
+[dev-dependencies]
+# Used by the cancellation / supersede tests that hand-roll a
+# `SourceConnector` to park on `ctx.cancel` rather than lean on the
+# MockConnector — the trait is `#[async_trait]`.
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
+tempfile = "3"
+# Used by `tests/no_cross_crate_leak.rs` to walk the resolved dep graph
+# and forbid the orchestrator from depending on any Tauri / desktop
+# crate — the orchestrator must stay usable from a future CLI.
+cargo_metadata = "0.19"

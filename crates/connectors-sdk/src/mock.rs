@@ -24,15 +24,35 @@ use crate::{
 /// fixture events at construction time; `sync` filters them by
 /// `ctx.source_identities` and the request window, emits the usual
 /// progress phases, and returns the filtered subset.
+///
+/// Optionally configurable to always return a specific
+/// [`DayseamError`] from `sync` (via [`MockConnector::with_always_err`]),
+/// so the orchestrator's partial-failure branch can be exercised
+/// without contriving a real upstream outage.
 #[derive(Debug, Clone)]
 pub struct MockConnector {
     kind: SourceKind,
     fixtures: Vec<ActivityEvent>,
+    always_err: Option<DayseamError>,
 }
 
 impl MockConnector {
     pub fn new(kind: SourceKind, fixtures: Vec<ActivityEvent>) -> Self {
-        Self { kind, fixtures }
+        Self {
+            kind,
+            fixtures,
+            always_err: None,
+        }
+    }
+
+    /// Force every call to [`Self::sync`] to return the given error
+    /// before doing any work. Useful in orchestrator tests that need
+    /// to exercise partial-failure / fan-out resilience paths
+    /// without relying on a real upstream to misbehave.
+    #[must_use]
+    pub fn with_always_err(mut self, err: DayseamError) -> Self {
+        self.always_err = Some(err);
+        self
     }
 
     /// Build a simple fixture event pinned to `occurred_at`. Connectors
@@ -94,6 +114,16 @@ impl SourceConnector for MockConnector {
 
     async fn sync(&self, ctx: &ConnCtx, request: SyncRequest) -> Result<SyncResult, DayseamError> {
         ctx.bail_if_cancelled()?;
+
+        // Configured-failure short-circuit. Surfaces the error before
+        // any progress events are emitted so orchestrator tests see
+        // the same shape they would from a real upstream outage:
+        // `Starting` (already sent below? — no, returned here first)
+        // is intentionally *not* emitted in this branch, mirroring a
+        // real connector that fails its first request.
+        if let Some(err) = &self.always_err {
+            return Err(err.clone());
+        }
 
         // Reject unsupported request shapes up front so an empty
         // fixture set still surfaces the error — a missing early

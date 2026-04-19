@@ -991,6 +991,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "dayseam-orchestrator"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "cargo_metadata",
+ "chrono",
+ "connector-local-git",
+ "connectors-sdk",
+ "dayseam-core",
+ "dayseam-db",
+ "dayseam-events",
+ "dayseam-report",
+ "sink-markdown-file",
+ "sinks-sdk",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "dayseam-report"
 version = "0.0.0"
 dependencies = [

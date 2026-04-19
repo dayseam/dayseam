@@ -10,7 +10,7 @@ export type ProgressPhase = { "status": "starting", message: string, } | { "stat
  * `None` means "we don't know the total yet"; the UI renders
  * an indeterminate spinner in that case.
  */
-total: number | null, message: string, } | { "status": "completed", message: string, } | { "status": "failed", 
+total: number | null, message: string, } | { "status": "completed", message: string, } | { "status": "cancelled", message: string, } | { "status": "failed", 
 /**
  * Stable machine-readable error code (see `error_codes`).
  */
