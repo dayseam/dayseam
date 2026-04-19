@@ -84,6 +84,14 @@ pub enum ProgressPhase {
     Completed {
         message: String,
     },
+    /// Terminal phase emitted by the orchestrator when a run is
+    /// cancelled. Distinct from [`ProgressPhase::Failed`] because the
+    /// UI renders it as a neutral "you cancelled this" rather than an
+    /// error toast, and downstream consumers may want to retry
+    /// silently rather than surface a notification.
+    Cancelled {
+        message: String,
+    },
     Failed {
         /// Stable machine-readable error code (see `error_codes`).
         code: String,

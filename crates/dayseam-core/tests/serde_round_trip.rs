@@ -298,6 +298,9 @@ fn progress_event_round_trips_for_every_phase() {
         ProgressPhase::Completed {
             message: "Done".into(),
         },
+        ProgressPhase::Cancelled {
+            message: "cancelled by user".into(),
+        },
         ProgressPhase::Failed {
             code: error_codes::GITLAB_AUTH_INVALID_TOKEN.into(),
             message: "token expired".into(),

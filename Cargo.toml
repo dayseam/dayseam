@@ -11,6 +11,7 @@ members = [
     "crates/connectors/connector-local-git",
     "crates/sinks-sdk",
     "crates/sinks/sink-markdown-file",
+    "crates/dayseam-orchestrator",
 ]
 
 [workspace.package]
