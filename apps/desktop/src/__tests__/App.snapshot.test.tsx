@@ -2,7 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
 import { THEME_STORAGE_KEY, type Theme } from "../theme";
-import { registerInvokeHandler, resetTauriMocks } from "./tauri-mock";
+import {
+  registerOnboardingComplete,
+  resetTauriMocks,
+} from "./tauri-mock";
 
 // Inline snapshots of the rendered DOM per theme. They exist to make
 // layout drift a reviewed event rather than an accidental one. If a
@@ -12,11 +15,24 @@ import { registerInvokeHandler, resetTauriMocks } from "./tauri-mock";
 async function renderWithTheme(theme: Theme): Promise<HTMLElement> {
   localStorage.setItem(THEME_STORAGE_KEY, theme);
   const { container } = render(<App />);
-  // Wait for the sources hook's initial load to settle so the
-  // snapshot captures the stable "no sources connected" frame
-  // rather than the transient "Loading…" placeholder.
+  // Wait for the main layout to settle after the setup checklist
+  // gate resolves, so the snapshot captures the stable "fully
+  // onboarded" frame rather than an intermediate loading state.
   await waitFor(() =>
-    expect(screen.getByText(/no sources connected/i)).toBeInTheDocument(),
+    expect(
+      screen.getByRole("region", { name: /connected sources/i }),
+    ).toBeInTheDocument(),
+  );
+  // ActionRow auto-selects every configured source on the frame
+  // after `useSources` resolves. On fast local runs that happens
+  // within the same tick as the region appearing, but CI has been
+  // observed to capture the transient "region present, nothing
+  // selected, Generate disabled" frame. Wait for Generate to be
+  // enabled so the snapshot always reflects the settled state.
+  await waitFor(() =>
+    expect(
+      screen.getByTestId("action-row-generate"),
+    ).not.toBeDisabled(),
   );
   return container;
 }
@@ -35,7 +51,9 @@ describe("App visual shape", () => {
     document.documentElement.classList.remove("dark");
     document.documentElement.removeAttribute("data-theme");
     resetTauriMocks();
-    registerInvokeHandler("sources_list", async () => []);
+    // The snapshot is meant to capture the steady-state main layout;
+    // registering the fully-onboarded fixture keeps the gate off.
+    registerOnboardingComplete();
   });
 
   afterEach(() => {

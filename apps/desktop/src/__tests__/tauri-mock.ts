@@ -122,3 +122,66 @@ export function resetTauriMocks(): void {
   resetEventBus();
   resetDialogPlugin();
 }
+
+// ---------------------------------------------------------------------------
+// Onboarding fixture
+// ---------------------------------------------------------------------------
+//
+// Every test that renders `<App />` must either finish onboarding (so
+// the main layout mounts) or opt into the first-run empty state
+// explicitly. Keeping a single fixture here means a new onboarding
+// step doesn't force us to chase every App-level test suite.
+
+export const ONBOARDED_PERSON_ID = "11111111-1111-1111-1111-111111111111";
+export const ONBOARDED_SOURCE_ID = "22222222-2222-2222-2222-222222222222";
+export const ONBOARDED_IDENTITY_ID = "33333333-3333-3333-3333-333333333333";
+export const ONBOARDED_SINK_ID = "44444444-4444-4444-4444-444444444444";
+
+/** Register the four `invoke` handlers the setup checklist reads so
+ *  it reports `complete: true`. Call from `beforeEach` in any App-
+ *  level test whose subject is the main layout rather than the
+ *  first-run experience. */
+export function registerOnboardingComplete(): void {
+  registerInvokeHandler("persons_get_self", async () => ({
+    id: ONBOARDED_PERSON_ID,
+    display_name: "Vedanth",
+    is_self: true,
+  }));
+  registerInvokeHandler("sources_list", async () => [
+    {
+      id: ONBOARDED_SOURCE_ID,
+      kind: "LocalGit",
+      label: "work repos",
+      config: { LocalGit: { scan_roots: ["/Users/me/code"] } },
+      secret_ref: null,
+      created_at: "2026-04-17T12:00:00Z",
+      last_sync_at: null,
+      last_health: { ok: true, checked_at: null, last_error: null },
+    },
+  ]);
+  registerInvokeHandler("identities_list_for", async () => [
+    {
+      id: ONBOARDED_IDENTITY_ID,
+      person_id: ONBOARDED_PERSON_ID,
+      source_id: null,
+      kind: "GitEmail",
+      external_actor_id: "vedanth@example.com",
+    },
+  ]);
+  registerInvokeHandler("sinks_list", async () => [
+    {
+      id: ONBOARDED_SINK_ID,
+      kind: "MarkdownFile",
+      label: "daily notes",
+      config: {
+        MarkdownFile: {
+          config_version: 1,
+          dest_dirs: ["/Users/me/notes"],
+          frontmatter: false,
+        },
+      },
+      created_at: "2026-04-17T12:00:00Z",
+      last_write_at: null,
+    },
+  ]);
+}

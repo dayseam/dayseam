@@ -126,6 +126,12 @@ pub const IPC_REPORT_DRAFT_NOT_FOUND: &str = "ipc.report_draft.not_found";
 /// patch.
 pub const IPC_SOURCE_CONFIG_KIND_MISMATCH: &str = "ipc.source.config_kind_mismatch";
 
+/// `persons_update_self` was called with an empty or whitespace-only
+/// `display_name`. The command rejects the update before it touches
+/// the DB so the onboarding dialog can re-prompt without a round-trip
+/// to SQLite.
+pub const IPC_INVALID_DISPLAY_NAME: &str = "ipc.persons.invalid_display_name";
+
 /// `shell_open` was asked to open a URL whose scheme is not in the
 /// explicit allow-list (`file`, `http`, `https`, `vscode`, `obsidian`).
 /// The guard exists so a malicious or buggy evidence row cannot coax
@@ -185,6 +191,10 @@ pub const ALL: &[&str] = &[
     IPC_LOCAL_REPO_NOT_FOUND,
     IPC_REPORT_DRAFT_NOT_FOUND,
     IPC_SOURCE_CONFIG_KIND_MISMATCH,
+    IPC_INVALID_DISPLAY_NAME,
+    IPC_SHELL_URL_DISALLOWED,
+    IPC_SHELL_URL_INVALID,
+    IPC_SHELL_OPEN_FAILED,
     DB_SCHEMA_MIGRATION_FAILED,
 ];
 

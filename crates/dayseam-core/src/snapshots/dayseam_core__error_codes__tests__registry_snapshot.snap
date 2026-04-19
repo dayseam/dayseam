@@ -36,4 +36,8 @@ expression: ALL
 - ipc.local_repo.not_found
 - ipc.report_draft.not_found
 - ipc.source.config_kind_mismatch
+- ipc.persons.invalid_display_name
+- ipc.shell.url_disallowed
+- ipc.shell.url_invalid
+- ipc.shell.open_failed
 - db.schema.migration_failed

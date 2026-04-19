@@ -1,11 +1,18 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
-import { registerInvokeHandler, resetTauriMocks } from "./tauri-mock";
+import {
+  registerInvokeHandler,
+  registerOnboardingComplete,
+  resetTauriMocks,
+} from "./tauri-mock";
 
 describe("App log drawer shortcut", () => {
   beforeEach(() => {
     resetTauriMocks();
+    // Main layout is gated on setup completion; onboard the user so
+    // the log drawer and its shortcut are actually rendered.
+    registerOnboardingComplete();
     registerInvokeHandler("logs_tail", async () => []);
     localStorage.clear();
     document.documentElement.classList.remove("dark");

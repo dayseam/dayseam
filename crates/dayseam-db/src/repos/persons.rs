@@ -66,6 +66,36 @@ impl PersonRepo {
         Ok(())
     }
 
+    /// Rewrite a `Person`'s `display_name` in place. The row is matched
+    /// by `id`; `is_self` is never touched. Returns the full updated
+    /// row so callers can hand it straight back to the frontend
+    /// without a separate read round-trip. `Err(DbError::NotFound)`
+    /// when no row matches `id`.
+    ///
+    /// Used by the onboarding "pick a name" flow (Phase 2 Task 7) —
+    /// the caller passes `persons_get_self().id` and the new name.
+    /// `update_display_name` intentionally does *not* guard against
+    /// whitespace-only input; the IPC layer trims and validates.
+    pub async fn update_display_name(&self, id: Uuid, display_name: &str) -> DbResult<Person> {
+        let affected = sqlx::query("UPDATE persons SET display_name = ? WHERE id = ?")
+            .bind(display_name)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| DbError::classify_sqlx(e, "persons.update_display_name"))?
+            .rows_affected();
+        if affected == 0 {
+            return Err(DbError::NotFound {
+                entity: "persons".into(),
+                id: id.to_string(),
+            });
+        }
+        self.get(id).await?.ok_or_else(|| DbError::InvalidData {
+            column: "persons.id".into(),
+            message: "row vanished between UPDATE and SELECT".into(),
+        })
+    }
+
     pub async fn get_self(&self) -> DbResult<Option<Person>> {
         let row = sqlx::query("SELECT id, display_name, is_self FROM persons WHERE is_self = 1")
             .fetch_optional(&self.pool)
