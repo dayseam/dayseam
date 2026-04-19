@@ -132,6 +132,10 @@ export interface Commands {
     args: Record<string, never>;
     result: PersonT;
   };
+  persons_update_self: {
+    args: { displayName: string };
+    result: PersonT;
+  };
   sources_list: {
     args: Record<string, never>;
     result: SourceT[];
@@ -244,6 +248,7 @@ export const PROD_COMMANDS: readonly CommandName[] = [
   "settings_update",
   "logs_tail",
   "persons_get_self",
+  "persons_update_self",
   "sources_list",
   "sources_add",
   "sources_update",

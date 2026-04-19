@@ -62,6 +62,7 @@ pub const PROD_COMMANDS: &[&str] = &[
     "settings_update",
     "logs_tail",
     "persons_get_self",
+    "persons_update_self",
     "sources_list",
     "sources_add",
     "sources_update",
@@ -223,9 +224,52 @@ fn publish_restart_required_toast(state: &AppState) {
 #[tauri::command]
 pub async fn persons_get_self(state: State<'_, AppState>) -> Result<Person, DayseamError> {
     PersonRepo::new(state.pool.clone())
-        .bootstrap_self("Me")
+        .bootstrap_self(SELF_DEFAULT_DISPLAY_NAME)
         .await
         .map_err(|e| internal("persons.get_self", e))
+}
+
+/// Default `display_name` stamped onto the self-`Person` row when
+/// `persons_get_self` bootstraps it. The onboarding checklist treats a
+/// display name that still equals this sentinel as "the user hasn't
+/// picked one yet" so the first-run empty state has something concrete
+/// to ask for.
+///
+/// Exposed as a `pub const` (and re-exported from `ipc`) so the
+/// frontend test harness — which spoofs `persons_get_self` — can assert
+/// the same sentinel instead of hard-coding the literal.
+pub const SELF_DEFAULT_DISPLAY_NAME: &str = "Me";
+
+/// Rename the canonical self-`Person` row. Phase 2 Task 7 (first-run
+/// empty state) uses this to flip the "pick a name" checklist item
+/// from the default `"Me"` to the user's chosen display name.
+///
+/// Whitespace is trimmed. An all-whitespace or empty input is rejected
+/// with `IPC_INVALID_DISPLAY_NAME` so the frontend can surface the
+/// error on the same dialog that triggered the call. The row to update
+/// is resolved by calling [`PersonRepo::bootstrap_self`] first — that's
+/// idempotent, and it means a caller that hit `persons_update_self`
+/// before ever hitting `persons_get_self` still works.
+#[tauri::command]
+pub async fn persons_update_self(
+    display_name: String,
+    state: State<'_, AppState>,
+) -> Result<Person, DayseamError> {
+    let trimmed = display_name.trim();
+    if trimmed.is_empty() {
+        return Err(invalid_config(
+            error_codes::IPC_INVALID_DISPLAY_NAME,
+            "display_name must not be empty or whitespace-only",
+        ));
+    }
+    let repo = PersonRepo::new(state.pool.clone());
+    let current = repo
+        .bootstrap_self(SELF_DEFAULT_DISPLAY_NAME)
+        .await
+        .map_err(|e| internal("persons.bootstrap_self", e))?;
+    repo.update_display_name(current.id, trimmed)
+        .await
+        .map_err(|e| internal("persons.update_display_name", e))
 }
 
 // ---- Sources --------------------------------------------------------------

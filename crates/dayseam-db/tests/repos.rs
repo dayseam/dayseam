@@ -735,6 +735,42 @@ async fn persons_enforce_single_self_at_db_layer() {
 }
 
 #[tokio::test]
+async fn persons_update_display_name_rewrites_row_in_place() {
+    let (pool, _dir) = test_pool().await;
+    let repo = PersonRepo::new(pool);
+    let initial = repo.bootstrap_self("Me").await.unwrap();
+
+    let updated = repo
+        .update_display_name(initial.id, "Vedanth")
+        .await
+        .unwrap();
+
+    assert_eq!(updated.id, initial.id, "id must not change");
+    assert_eq!(updated.display_name, "Vedanth");
+    assert!(updated.is_self, "is_self must not be toggled off");
+
+    let after = repo.get_self().await.unwrap().unwrap();
+    assert_eq!(after.display_name, "Vedanth");
+
+    let all = repo.list().await.unwrap();
+    assert_eq!(all.len(), 1, "no second row may have been inserted");
+}
+
+#[tokio::test]
+async fn persons_update_display_name_returns_not_found_for_unknown_id() {
+    let (pool, _dir) = test_pool().await;
+    let repo = PersonRepo::new(pool);
+    let err = repo
+        .update_display_name(Uuid::new_v4(), "Ghost")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, DbError::NotFound { .. }),
+        "update against missing id must be NotFound, got {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn source_identities_resolve_and_cascade() {
     let (pool, _dir) = test_pool().await;
     let sources = SourceRepo::new(pool.clone());

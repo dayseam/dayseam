@@ -24,6 +24,21 @@ export function useIdentities(personId: string | null): UseIdentitiesState {
   const [identities, setIdentities] = useState<SourceIdentity[]>([]);
   const [loading, setLoading] = useState(personId !== null);
   const [error, setError] = useState<string | null>(null);
+  // Track the `personId` we last observed so we can synchronously
+  // reset `loading` when the caller swaps people. Without this, a
+  // parent that goes from `personId=null` to `personId=<uuid>` gets
+  // one render where `loading=false` and `identities=[]`, which the
+  // first-run checklist gate misreads as "no identities yet, empty
+  // state should show". Resetting state during render is a
+  // documented React 18 pattern for deriving state from props (see
+  // https://react.dev/reference/react/useState#storing-information-from-previous-renders).
+  const [trackedPersonId, setTrackedPersonId] = useState<string | null>(personId);
+  if (trackedPersonId !== personId) {
+    setTrackedPersonId(personId);
+    setLoading(personId !== null);
+    setError(null);
+    setIdentities([]);
+  }
 
   const refresh = useCallback(async () => {
     if (personId === null) {

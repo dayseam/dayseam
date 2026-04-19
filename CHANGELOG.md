@@ -8,6 +8,44 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **Phase 2, Task 7 PR-A — First-run empty state + setup checklist.**
+  Replaces the previous "immediately drop the user into the empty main
+  layout" behaviour with a gated first-run experience. A new pure
+  `deriveSetupChecklist({ person, sources, identities, sinks })`
+  selector (`apps/desktop/src/features/onboarding/state.ts`) decides
+  which of the four onboarding steps are done; the new
+  `useSetupChecklist()` hook composes `useSources` / `useIdentities` /
+  `useSinks` / a one-shot `persons_get_self` fetch on top of it and
+  exposes `{ items, complete, loading, error, person, setPerson,
+  refresh }` so the gate decision and the sidebar both read from one
+  source of truth. `<App />` renders the new `FirstRunEmptyState` +
+  `SetupSidebar` + `SetupChecklistItemRow` components while
+  `complete` is `false`, and swaps to the normal main layout the
+  moment every step is done — no second round-trip, because each
+  dialog's existing refetch flow (and, for the name step, a new
+  `persons_update_self` command) hands the updated row back through
+  the hook. "Pick your name" uses `"Me"` as a documented sentinel —
+  the default that `PersonRepo::bootstrap_self` stamps on — and is
+  cleared by a new `persons_update_self` IPC command that validates
+  input server-side (new `ipc.persons.invalid_display_name` error
+  code) and persists the chosen name via a new
+  `PersonRepo::update_display_name` that distinguishes
+  "never existed" (new `DbError::NotFound`) from "row vanished". The
+  `useIdentities` hook also picks up a small synchronous reset so a
+  `personId` flip from `null` → `<uuid>` never produces a
+  one-frame `loading=false, identities=[]` window that the checklist
+  gate would misread as "setup incomplete". The new UX is covered by
+  five vitest suites: `deriveSetupChecklist` edge cases,
+  `useSetupChecklist` loading / name-sentinel / `setPerson` /
+  fetch-error behaviour, and two App-level invariants from the plan
+  (`empty_state_visibility_matches_setup_status` +
+  `checklist_item_completes_on_dialog_close`). Rust side, two new
+  repo tests exercise `update_display_name` in place and its
+  `NotFound` path, and the error-code snapshot is refreshed so the
+  registry stays the authoritative list. The 3-day dogfood sweep and
+  the perf/retention work (plan items 7.3 / 7.4 / 7.5) are
+  intentionally deferred to PR-B so this PR stays reviewable.
+
 - **Phase 2, Task 6 PR-B2 — Report UI: generate, stream, evidence, save.**
   Wires the report-generation flow PR-B1 left stubbed into a real
   end-to-end UX. `ActionRow` replaces the disabled Phase-1 `ActionBar`

@@ -9,6 +9,7 @@
     "allow-settings-update",
     "allow-logs-tail",
     "allow-persons-get-self",
+    "allow-persons-update-self",
     "allow-sources-list",
     "allow-sources-add",
     "allow-sources-update",

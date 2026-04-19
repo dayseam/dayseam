@@ -4,6 +4,8 @@ import { LogDrawer } from "./components/LogDrawer";
 import { TitleBar } from "./components/TitleBar";
 import { ToastHost } from "./components/ToastHost";
 import { IdentityManagerDialog } from "./features/identities/IdentityManagerDialog";
+import { FirstRunEmptyState } from "./features/onboarding/FirstRunEmptyState";
+import { useSetupChecklist } from "./features/onboarding/useSetupChecklist";
 import { ActionRow } from "./features/report/ActionRow";
 import { SaveReportDialog } from "./features/report/SaveReportDialog";
 import { StreamingPreview } from "./features/report/StreamingPreview";
@@ -28,6 +30,13 @@ export default function App() {
   const [identitiesOpen, setIdentitiesOpen] = useState(false);
   const [sinksOpen, setSinksOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
+
+  // The setup checklist gates the main layout. We call the hook
+  // unconditionally so the same instance drives the gate decision and
+  // the `FirstRunEmptyState` content, and so the main layout never
+  // remounts when the user completes the final checklist step — only
+  // the conditional subtree swaps.
+  const setupChecklist = useSetupChecklist();
 
   const report = useReport();
 
@@ -74,6 +83,23 @@ export default function App() {
   }, [report]);
 
   const saveEnabled = report.status === "completed" && report.draft !== null;
+
+  // Gate: while setup is incomplete, the main layout is replaced by
+  // the full-screen first-run empty state. We still render the
+  // `ToastHost` and the title bar so the chrome is consistent (and so
+  // "restart required" toasts from `sources_add` are visible during
+  // onboarding); everything else is swapped out.
+  if (!setupChecklist.complete && !setupChecklist.loading) {
+    return (
+      <ThemeProvider>
+        <div className="flex min-h-screen flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+          <TitleBar />
+          <FirstRunEmptyState checklist={setupChecklist} />
+        </div>
+        <ToastHost />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider>

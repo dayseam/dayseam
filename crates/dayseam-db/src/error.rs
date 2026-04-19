@@ -33,6 +33,13 @@ pub enum DbError {
     /// schema drift or an older DB that predates a required migration.
     #[error("invalid data in column `{column}`: {message}")]
     InvalidData { column: String, message: String },
+
+    /// An update/delete/lookup targeted a row that no longer exists. Kept
+    /// distinct from `Conflict` and `InvalidData` so callers can tell
+    /// "this id never existed" apart from "the row exists but is
+    /// corrupt".
+    #[error("not found: {entity} id={id}")]
+    NotFound { entity: String, id: String },
 }
 
 impl DbError {

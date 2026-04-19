@@ -2,18 +2,24 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
 import { THEME_STORAGE_KEY } from "../theme";
-import { registerInvokeHandler, resetTauriMocks } from "./tauri-mock";
+import {
+  registerInvokeHandler,
+  registerOnboardingComplete,
+  resetTauriMocks,
+} from "./tauri-mock";
 
 describe("App", () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.classList.remove("dark");
     document.documentElement.removeAttribute("data-theme");
-    // SourcesSidebar fires `sources_list` on mount; register a
-    // deterministic empty response so every App-level test starts
-    // with the same "no sources connected" frame.
+    // The setup checklist gate replaces the main layout with the
+    // first-run empty state whenever any of the four inputs is
+    // missing. Every test in this suite is about the main layout,
+    // so we wire up a fully-onboarded fixture by default and let
+    // the "first-run" test override one input to flip the gate.
     resetTauriMocks();
-    registerInvokeHandler("sources_list", async () => []);
+    registerOnboardingComplete();
   });
 
   afterEach(() => {
@@ -28,19 +34,27 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders every wireframe landmark so the window never looks broken", () => {
+  it("renders every wireframe landmark so the window never looks broken", async () => {
     render(<App />);
     expect(screen.getByRole("banner")).toBeInTheDocument(); // <header>
-    expect(screen.getByRole("region", { name: /report actions/i })).toBeInTheDocument();
+    // The main layout is gated on the setup checklist, so these
+    // landmarks only appear once the four "persons/sources/identities/
+    // sinks" fetches have resolved to a complete state.
+    await screen.findByRole("region", { name: /report actions/i });
     expect(screen.getByRole("region", { name: /connected sources/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /report preview/i })).toBeInTheDocument();
     expect(screen.getByRole("contentinfo")).toBeInTheDocument(); // <footer>
   });
 
-  it("keeps Generate disabled when no sources are connected", () => {
+  it("replaces the main layout with the first-run empty state when no sources are connected", async () => {
+    registerInvokeHandler("sources_list", async () => []);
     render(<App />);
-    const generate = screen.getByRole("button", { name: /generate report/i });
-    expect(generate).toBeDisabled();
+    await screen.findByTestId("first-run-empty-state");
+    // And the main "Generate report" button is absent — the user
+    // has no way to trigger a run until they finish onboarding.
+    expect(
+      screen.queryByRole("button", { name: /generate report/i }),
+    ).toBeNull();
   });
 
   it("renders a theme radio group with Light / System / Dark", () => {

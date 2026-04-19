@@ -54,6 +54,7 @@ const commandSurface: Record<keyof Commands, true> = {
   settings_update: true,
   logs_tail: true,
   persons_get_self: true,
+  persons_update_self: true,
   sources_list: true,
   sources_add: true,
   sources_update: true,
