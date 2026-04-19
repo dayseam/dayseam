@@ -65,6 +65,14 @@ impl Orchestrator {
         let retention_default_installed = ensure_default_retention_days(self).await?;
         let crashed_runs_recovered = recover_crashed_runs(self).await?;
         let retention = run_retention_sweep(self).await?;
+        // Feed the debounce guard so the first post-run sweep of the
+        // session waits out the full interval rather than firing on
+        // the very next cancel. The startup sweep already covered
+        // the same window, so an immediate re-sweep would be pure
+        // amplification (Task 7.4).
+        self.retention_schedule
+            .note_external_sweep(self.clock.now())
+            .await;
         Ok(StartupReport {
             retention_default_installed,
             crashed_runs_recovered,

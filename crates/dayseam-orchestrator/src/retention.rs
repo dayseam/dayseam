@@ -31,10 +31,14 @@
 //! want to skip the DB read (tests, the `retention_sweep_now`
 //! command) can pass a literal [`DateTime`] directly.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
 use chrono::{DateTime, Duration, Utc};
 use dayseam_core::{error_codes, DayseamError};
 use dayseam_db::{LogRepo, RawPayloadRepo, SettingsRepo};
 use sqlx::SqlitePool;
+use tokio::sync::Mutex;
 
 /// Settings key under which the retention window (in days) is
 /// persisted. Read at startup and on every manual
@@ -47,6 +51,15 @@ pub const RETENTION_DAYS_SETTING_KEY: &str = "retention.days";
 /// Written to `settings` on first startup only (see
 /// [`crate::startup::ensure_default_retention_days`]).
 pub const DEFAULT_RETENTION_DAYS: u32 = 30;
+
+/// Minimum wall-clock gap between two post-run retention sweeps.
+/// Ten back-to-back `report_generate` → `report_cancel` pairs must not
+/// fan out into ten `DELETE` bursts — that's the PERF-08 cancel-storm
+/// amplification Task 7.4 closes. Fifteen minutes is short enough that
+/// a user who runs the app every morning still sees a sweep on the
+/// first cancel of the day, and long enough that a retry burst is
+/// coalesced to a single prune.
+pub const POST_RUN_SWEEP_MIN_INTERVAL: Duration = Duration::minutes(15);
 
 /// Per-table counts from one [`sweep`] call. Returned so the caller
 /// (typically the Tauri startup hook or the `retention_sweep_now`
@@ -102,6 +115,120 @@ pub async fn sweep(pool: &SqlitePool, cutoff: DateTime<Utc>) -> Result<SweepRepo
         raw_payloads_deleted: raw_payloads,
         log_entries_deleted: log_entries,
     })
+}
+
+/// Debounce guard for the post-run retention sweep hook.
+///
+/// The [`Orchestrator`](crate::Orchestrator) calls
+/// [`RetentionSchedule::claim_sweep_slot`] after every terminal
+/// `generate_report` transition. The guard returns `true` at most
+/// once per [`POST_RUN_SWEEP_MIN_INTERVAL`] so a cancel storm is
+/// coalesced into a single `DELETE`. The startup sweep and the
+/// manual `retention_sweep_now` IPC command both feed the guard via
+/// [`RetentionSchedule::note_external_sweep`] so the post-run hook
+/// does not double-fire immediately after them.
+///
+/// `Clone` returns a handle to the same underlying state — cheap and
+/// safe across tasks; internally an [`Arc`] wraps the mutex + counter.
+#[derive(Clone, Debug)]
+pub struct RetentionSchedule {
+    inner: Arc<RetentionScheduleInner>,
+}
+
+#[derive(Debug)]
+struct RetentionScheduleInner {
+    min_interval: Duration,
+    last: Mutex<Option<DateTime<Utc>>>,
+    /// Number of times [`RetentionSchedule::claim_sweep_slot`] has
+    /// returned `true`. Tests use this to assert the debounce:
+    /// observing the counter directly is deterministic, whereas
+    /// counting deleted rows is not (an empty DB always deletes 0).
+    sweeps_performed: AtomicU64,
+}
+
+impl RetentionSchedule {
+    /// Fresh guard with the shipping default interval
+    /// ([`POST_RUN_SWEEP_MIN_INTERVAL`]).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_interval(POST_RUN_SWEEP_MIN_INTERVAL)
+    }
+
+    /// Fresh guard with a caller-chosen interval. Exposed for tests
+    /// that want to exercise the debounce without sleeping 15 minutes.
+    #[must_use]
+    pub fn with_interval(min_interval: Duration) -> Self {
+        Self {
+            inner: Arc::new(RetentionScheduleInner {
+                min_interval,
+                last: Mutex::new(None),
+                sweeps_performed: AtomicU64::new(0),
+            }),
+        }
+    }
+
+    /// Minimum gap between two claimed sweep slots. Exposed so the
+    /// Tauri layer can log "next post-run sweep in N minutes" without
+    /// peeking at internals.
+    #[must_use]
+    pub fn min_interval(&self) -> Duration {
+        self.inner.min_interval
+    }
+
+    /// Try to claim the next sweep slot. Returns `true` exactly when
+    /// enough time has passed since the last claim (or there has been
+    /// no claim yet) and records `now` as the new "last sweep at".
+    /// Returns `false` otherwise without mutating state, so the
+    /// caller can skip the sweep cheaply.
+    ///
+    /// Atomic across tasks because every call takes the internal
+    /// mutex before reading-and-updating `last`.
+    pub async fn claim_sweep_slot(&self, now: DateTime<Utc>) -> bool {
+        let mut guard = self.inner.last.lock().await;
+        match *guard {
+            Some(prev) if now - prev < self.inner.min_interval => false,
+            _ => {
+                *guard = Some(now);
+                self.inner.sweeps_performed.fetch_add(1, Ordering::Relaxed);
+                true
+            }
+        }
+    }
+
+    /// Mark that an external caller (startup, manual
+    /// `retention_sweep_now`) just swept. Does not increment the
+    /// "post-run sweeps performed" counter — that counter exists to
+    /// answer "did the debounce hook fire?", not "did the DB get
+    /// pruned?". Callers that want total sweep history should consult
+    /// the DB directly.
+    pub async fn note_external_sweep(&self, now: DateTime<Utc>) {
+        *self.inner.last.lock().await = Some(now);
+    }
+
+    /// Number of times [`Self::claim_sweep_slot`] has returned `true`
+    /// over the lifetime of this guard. Exposed for tests and for the
+    /// Tauri layer's "maintenance" logging.
+    #[must_use]
+    pub fn sweeps_performed(&self) -> u64 {
+        self.inner.sweeps_performed.load(Ordering::Relaxed)
+    }
+}
+
+impl Default for RetentionSchedule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Convenience: [`resolve_cutoff`] + [`sweep`] in one call, for
+/// callers that don't need the cutoff separately. Used by the
+/// startup sweep and by the orchestrator's post-run debounce hook.
+pub async fn sweep_with_resolved_cutoff(
+    pool: &SqlitePool,
+    now: DateTime<Utc>,
+) -> Result<SweepReport, DayseamError> {
+    let cutoff = resolve_cutoff(pool, now).await?;
+    sweep(pool, cutoff).await
 }
 
 /// Resolve the effective cutoff for a retention sweep from the DB.

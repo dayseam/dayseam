@@ -185,8 +185,8 @@ pub async fn start(orch: Orchestrator, request: GenerateRequest) -> GenerateHand
     let progress_bg = progress_tx.clone();
 
     let completion = tokio::spawn(async move {
-        run_background(
-            orch_bg,
+        let outcome = run_background(
+            orch_bg.clone(),
             request,
             run_id,
             started_at,
@@ -196,7 +196,14 @@ pub async fn start(orch: Orchestrator, request: GenerateRequest) -> GenerateHand
             log_tx,
             superseded,
         )
-        .await
+        .await;
+        // Opportunistic retention sweep on every terminal transition.
+        // The debounce guard inside `maybe_sweep_after_terminal`
+        // coalesces a cancel storm to a single `DELETE` (Task 7.4).
+        // The sweep itself is spawned detached, so this await is
+        // cheap — it only records the debounce bookkeeping.
+        orch_bg.maybe_sweep_after_terminal().await;
+        outcome
     });
 
     GenerateHandle {

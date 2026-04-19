@@ -17,12 +17,17 @@
 #[path = "common/mod.rs"]
 mod common;
 
+use std::sync::Arc;
+
 use chrono::{Duration, Utc};
-use common::{seed_source, test_person, test_pool};
+use common::{build_orchestrator, fixture_date, seed_source, test_person, test_pool};
+use connectors_sdk::MockConnector;
 use dayseam_core::SourceKind;
 use dayseam_core::{LogLevel, SourceId};
 use dayseam_db::{LogRepo, LogRow, RawPayload, RawPayloadRepo, SettingsRepo};
 use dayseam_orchestrator::retention::{self, DEFAULT_RETENTION_DAYS, RETENTION_DAYS_SETTING_KEY};
+use dayseam_orchestrator::{orchestrator::GenerateRequest, ConnectorRegistry, SinkRegistry};
+use dayseam_report::DEV_EOD_TEMPLATE_ID;
 use uuid::Uuid;
 
 fn raw_payload_at(source_id: SourceId, fetched_at: chrono::DateTime<Utc>) -> RawPayload {
@@ -102,6 +107,70 @@ async fn sweep_on_empty_db_deletes_zero_rows() {
         .await
         .expect("sweep");
     assert_eq!(report, retention::SweepReport::empty());
+}
+
+/// Task 7 invariant #4 (PERF-08 cancel-storm amplification).
+///
+/// Firing a burst of `report_generate` → terminal transitions in
+/// quick succession must coalesce to a single post-run retention
+/// sweep. The debounce guard lives on the [`Orchestrator`]; the
+/// counter on `retention_schedule().sweeps_performed()` is the
+/// deterministic witness (we cannot count DB deletes, because an
+/// empty fixture DB always deletes zero rows regardless of how many
+/// times the sweep fires).
+///
+/// We run ten complete generate cycles sequentially against a
+/// `MockConnector`. That's 10 terminal transitions within real-time
+/// milliseconds — well inside the 15-minute debounce window. The
+/// guard must therefore allow the first sweep through and reject the
+/// other nine.
+#[tokio::test]
+async fn retention_sweep_debounces_under_cancel_storm() {
+    let (pool, _tmp) = test_pool().await;
+    let person = test_person();
+    let date = fixture_date();
+
+    let (source, _id, handle) = seed_source(
+        &pool,
+        &person,
+        SourceKind::LocalGit,
+        "storm-fixture",
+        "dev@example.com",
+    )
+    .await;
+    let event = common::fixture_event(source.id, "evt-1", "dev@example.com", date);
+    let connector = Arc::new(MockConnector::new(SourceKind::LocalGit, vec![event]));
+    let mut connectors = ConnectorRegistry::default();
+    connectors.insert(SourceKind::LocalGit, connector);
+
+    let orch = build_orchestrator(pool.clone(), connectors, SinkRegistry::default());
+
+    // Ten sequential generate_reports against the same (person, date,
+    // template) tuple. Each call supersedes the prior in-flight run,
+    // so this is a stricter cancel-storm than "ten unrelated runs":
+    // every cycle both terminates a run (via supersede) and starts a
+    // new one, giving the debounce guard two termination events per
+    // iteration rather than one.
+    for _ in 0..10 {
+        let req = GenerateRequest {
+            person: person.clone(),
+            sources: vec![handle.clone()],
+            date,
+            template_id: DEV_EOD_TEMPLATE_ID.to_string(),
+            template_version: "0.0.1".to_string(),
+            verbose_mode: false,
+        };
+        let run_handle = orch.generate_report(req).await;
+        // We don't care about the outcome — only that the post-run
+        // hook fires on the terminal transition.
+        let _ = run_handle.completion.await;
+    }
+
+    let swept = orch.retention_schedule().sweeps_performed();
+    assert!(
+        swept <= 1,
+        "debounce broken: {swept} post-run sweeps for a 10-run storm; expected ≤1",
+    );
 }
 
 /// Absent setting → default 30 days. Present setting → honoured

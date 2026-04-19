@@ -27,6 +27,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::registries::{ConnectorRegistry, SinkRegistry};
+use crate::retention::RetentionSchedule;
 
 /// A single source the orchestrator should fan out to for a run. The
 /// caller assembles these from `sources` + `source_identities` rows
@@ -125,6 +126,12 @@ pub struct Orchestrator {
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) raw_store: Arc<dyn RawStore>,
     pub(crate) in_flight: Arc<Mutex<HashMap<InFlightKey, InFlightEntry>>>,
+    /// Debounce guard for the post-run retention sweep hook. Shared
+    /// across every clone so a cancel storm spread over many tasks
+    /// still coalesces to one sweep per
+    /// [`crate::retention::POST_RUN_SWEEP_MIN_INTERVAL`]. See Task 7.4
+    /// (cancel-storm amplification) in the Phase 2 plan.
+    pub(crate) retention_schedule: RetentionSchedule,
 }
 
 impl std::fmt::Debug for Orchestrator {
@@ -208,6 +215,7 @@ impl OrchestratorBuilder {
             clock,
             raw_store,
             in_flight: Arc::new(Mutex::new(HashMap::new())),
+            retention_schedule: RetentionSchedule::new(),
         })
     }
 }
@@ -252,6 +260,41 @@ impl Orchestrator {
     /// shutdown paths and from tests.
     pub async fn in_flight_count(&self) -> usize {
         self.in_flight.lock().await.len()
+    }
+
+    /// Borrow the retention-sweep debounce guard. Tests use this to
+    /// observe how many post-run sweeps the debounce actually let
+    /// through; the Tauri startup path uses it to feed
+    /// [`RetentionSchedule::note_external_sweep`] after the startup
+    /// sweep and after a manual `retention_sweep_now`.
+    #[must_use]
+    pub fn retention_schedule(&self) -> &RetentionSchedule {
+        &self.retention_schedule
+    }
+
+    /// Fire a retention sweep opportunistically after a terminal
+    /// `generate_report` transition, subject to the debounce guard
+    /// (see [`crate::retention::POST_RUN_SWEEP_MIN_INTERVAL`]).
+    ///
+    /// The sweep itself is spawned as a detached task so a slow
+    /// `DELETE` never delays the caller's `GenerateOutcome`. Failures
+    /// are logged at `warn` and otherwise swallowed — the true
+    /// correctness guarantee remains the startup sweep, so a missed
+    /// post-run sweep is an observability blip, not a bug.
+    pub async fn maybe_sweep_after_terminal(&self) {
+        let now = self.clock.now();
+        if !self.retention_schedule.claim_sweep_slot(now).await {
+            return;
+        }
+        let pool = self.pool.clone();
+        tokio::spawn(async move {
+            if let Err(err) = crate::retention::sweep_with_resolved_cutoff(&pool, now).await {
+                tracing::warn!(
+                    ?err,
+                    "post-run retention sweep failed; startup sweep will retry on next boot",
+                );
+            }
+        });
     }
 
     /// Borrow the [`ConnectorRegistry`] this orchestrator was built

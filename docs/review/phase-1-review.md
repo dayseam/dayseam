@@ -238,6 +238,15 @@ _(Sections §3.1 – §3.7 populated from the seven subagent reports.)_
   We verified the arm always rebuilds the subscriber from the newest
   position, so it self-limits. Left as-is; tracked for review in Phase 2
   when real run volume arrives.
+  **Resolved in Phase 2 Task 7.3** (PR DAY-48). The `Lagged` arm now
+  runs through a `LagAggregator` that caps the rate at one
+  `log_entries` row per 500 ms, summing the `missed` count across
+  coalesced errors into the single row's `context.missed` field.
+  Regression-pinned by `broadcast_forwarder_bounds_writes_under_lag`
+  in `apps/desktop/src-tauri/src/ipc/broadcast_forwarder.rs`: five
+  100-toast bursts over ~1 s fan out to ≤3 log rows, not five.
+  Task 7.4 added the matching cancel-storm guard on
+  `retention::sweep` (test: `retention_sweep_debounces_under_cancel_storm`).
 
 ### 3.6 Testing
 
@@ -322,7 +331,7 @@ Merged, de-duplicated finding list. Every row has one of three resolutions:
 | PERF-01 | Performance | High | Retry storms against polite servers | See COR-03 | this PR |
 | PERF-02 | Performance | Medium | Log drawer rendered the oldest slice, not the newest | See COR-01 | this PR |
 | PERF-03 | Performance | Medium | `RunRegistry` memory growth over a session | See COR-02 | this PR |
-| PERF-08 | Performance | Low | Broadcast-forwarder `Lagged` arm could amplify writes | Defer — Phase 2, revisit when real run volume lands | n/a (no live runs yet) |
+| PERF-08 | Performance | Low | Broadcast-forwarder `Lagged` arm could amplify writes | Resolved — Phase 2 Task 7.3 added a 500 ms-window `LagAggregator` bound | PR DAY-48 |
 | TST-13 | Testing | Medium | No tests for `RunRegistry` reaper | Fix in this PR — two reaper tests | this PR |
 | TST-14 | Testing | Medium | No tests for `PatAuth` `Debug` redaction | Fix in this PR — two redaction tests | this PR |
 | TST-15 | Testing | Medium | No tests for `compute_backoff` Retry-After semantics | Fix in this PR — two backoff tests | this PR |

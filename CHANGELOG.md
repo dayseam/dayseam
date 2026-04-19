@@ -8,6 +8,33 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **Phase 2, Task 7 PR-B — PERF-08 closure + retention cancel-storm guard.**
+  Closes the Phase 1 deferred [PERF-08](docs/review/phase-1-review.md#35-performance)
+  and completes plan items 7.3 / 7.4. On the broadcast side, the
+  Tauri `broadcast_forwarder` now routes every `Lagged(n)` error
+  through a new in-module `LagAggregator` that coalesces lag events
+  inside a 500 ms window into a single `log_entries` row with the
+  summed `missed` count; the loop drives the debounce via a
+  `tokio::select!` on `recv` vs a flush deadline, so a burst that
+  stops cold still emits a final log row rather than leaving pending
+  lag stuck in memory. On the orchestrator side, a new
+  `retention::RetentionSchedule` debounce guard (shared across every
+  `Orchestrator` clone through `Arc`) arbitrates a new
+  `Orchestrator::maybe_sweep_after_terminal()` hook called from the
+  `generate_report` completion path: ten rapid generate → terminal
+  cycles now fan out to at most one `retention::sweep` instead of ten,
+  regardless of whether each cycle ends in `Completed`, `Cancelled`,
+  `Failed`, or the supersede path. The startup sweep and the manual
+  `retention_sweep_now` IPC feed the guard via `note_external_sweep`
+  so the post-run hook does not double-fire right after them.
+  Regression-pinned by two new tests:
+  `broadcast_forwarder_bounds_writes_under_lag` (five 100-toast
+  bursts over ~1 s → ≤3 log rows, not five) and
+  `retention_sweep_debounces_under_cancel_storm` (ten sequential
+  `generate_report` calls against `MockConnector` → sweep counter
+  ≤ 1). Dogfood sweep (7.5) remains deferred to its own PR so this
+  one stays reviewable.
+
 - **Phase 2, Task 7 PR-A — First-run empty state + setup checklist.**
   Replaces the previous "immediately drop the user into the empty main
   layout" behaviour with a gated first-run experience. A new pure
