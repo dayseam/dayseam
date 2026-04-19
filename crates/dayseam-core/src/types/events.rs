@@ -13,6 +13,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use super::report::LogLevel;
+use super::run::{SyncRunCancelReason, SyncRunStatus};
 use super::source::SourceId;
 
 /// Identifier for a single synchronisation run. Threaded through every
@@ -142,6 +143,21 @@ pub enum ToastSeverity {
     Success,
     Warning,
     Error,
+}
+
+/// Payload of the `report:completed` Tauri window event the
+/// frontend subscribes to once a `report_generate` run terminates.
+/// The event fires after the run reaches one of the three terminal
+/// [`SyncRunStatus`]es so the UI knows which draft to fetch (via
+/// `report_get(draft_id)`), or can surface the cancel/failure path
+/// without guessing from the progress stream alone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ReportCompletedEvent {
+    pub run_id: RunId,
+    pub status: SyncRunStatus,
+    pub draft_id: Option<Uuid>,
+    pub cancel_reason: Option<SyncRunCancelReason>,
 }
 
 #[cfg(test)]

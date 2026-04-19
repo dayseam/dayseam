@@ -8,10 +8,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use dayseam_core::{DayseamError, LogLevel};
-use dayseam_db::{open, LogRepo, LogRow};
+use chrono::Offset;
+use dayseam_core::{DayseamError, LogLevel, SourceConfig, SourceKind};
+use dayseam_db::{open, LocalRepoRepo, LogRepo, LogRow, SourceRepo};
 use dayseam_events::AppBus;
-use dayseam_orchestrator::{ConnectorRegistry, Orchestrator, OrchestratorBuilder, SinkRegistry};
+use dayseam_orchestrator::{
+    default_registries, DefaultRegistryConfig, Orchestrator, OrchestratorBuilder,
+};
 use dayseam_secrets::{KeychainStore, SecretStore};
 use sqlx::SqlitePool;
 
@@ -89,24 +92,88 @@ pub async fn build_app_state(data_dir: &Path) -> Result<AppState, DayseamError> 
     let app_bus = AppBus::new();
     let secrets: Arc<dyn SecretStore> = Arc::new(KeychainStore::new());
 
-    let orchestrator = build_orchestrator(pool.clone(), app_bus.clone())?;
+    let orchestrator = build_orchestrator(pool.clone(), app_bus.clone()).await?;
     run_startup_maintenance(&orchestrator, &pool).await;
 
     Ok(AppState::new(pool, app_bus, secrets, orchestrator))
 }
 
-/// Build the process-wide [`Orchestrator`] with empty registries.
+/// Build the process-wide [`Orchestrator`] with registries populated
+/// from the persisted source and local-repo rows.
 ///
-/// Task 5 (PR-B) owns the wiring; Task 6 (`source_add` /
-/// `report_generate`) and Task 7 (settings UI) own populating the
-/// registries. Shipping empty registries in PR-B is deliberate — the
-/// orchestrator exists on `AppState` and its startup sweep runs, but
-/// nothing can currently produce events or consume them via the
-/// Tauri IPC surface. That's fine: the next PR lands both ends at
-/// once rather than smuggling a half-working generate path through
-/// PR-B.
-fn build_orchestrator(pool: SqlitePool, app_bus: AppBus) -> Result<Orchestrator, DayseamError> {
-    OrchestratorBuilder::new(pool, app_bus, ConnectorRegistry::new(), SinkRegistry::new()).build()
+/// **Boot-only contract (Task 6 PR-A).** The registry is a snapshot of
+/// the DB at the moment `build_orchestrator` runs. Sources added or
+/// mutated after startup do *not* flow back into the registry; the
+/// Task 6 UI commands (`sources_add`, `sources_update`,
+/// `sources_delete`) emit a `ToastEvent` telling the user to restart
+/// the app for the change to take effect. The trade-off is explicit:
+/// we avoid a deeper refactor of `Orchestrator` to put the registries
+/// behind a lock, and pay it back in a later PR (see CHANGELOG).
+async fn build_orchestrator(
+    pool: SqlitePool,
+    app_bus: AppBus,
+) -> Result<Orchestrator, DayseamError> {
+    let cfg = resolve_registry_config(&pool).await?;
+    let (connectors, sinks) = default_registries(cfg);
+    OrchestratorBuilder::new(pool, app_bus, connectors, sinks).build()
+}
+
+/// Read the persisted `sources` + `local_repos` rows and fold them
+/// into the [`DefaultRegistryConfig`] the shipping connector/sink
+/// defaults expect.
+///
+/// The local timezone comes from [`chrono::Local`] at startup; travel
+/// or DST between boots is a caller concern (the connector buckets
+/// every commit into a day with *this* offset).
+///
+/// Sink destination directories are deliberately left empty here: the
+/// `MarkdownFileSink` constructor's only `dest_dirs` use is sweeping
+/// orphan temp files, and the actual write target is carried on each
+/// row's [`dayseam_core::SinkConfig::MarkdownFile::dest_dirs`]. The
+/// registry therefore does not need per-sink-row state.
+async fn resolve_registry_config(pool: &SqlitePool) -> Result<DefaultRegistryConfig, DayseamError> {
+    let sources =
+        SourceRepo::new(pool.clone())
+            .list()
+            .await
+            .map_err(|e| DayseamError::Internal {
+                code: "startup.sources_list".into(),
+                message: e.to_string(),
+            })?;
+
+    let local_repo_repo = LocalRepoRepo::new(pool.clone());
+    let mut scan_roots: Vec<PathBuf> = Vec::new();
+    let mut private_roots: Vec<PathBuf> = Vec::new();
+    for source in sources {
+        if source.kind != SourceKind::LocalGit {
+            continue;
+        }
+        if let SourceConfig::LocalGit {
+            scan_roots: roots, ..
+        } = &source.config
+        {
+            scan_roots.extend(roots.iter().cloned());
+        }
+        let repos = local_repo_repo
+            .list_for_source(&source.id)
+            .await
+            .map_err(|e| DayseamError::Internal {
+                code: "startup.local_repos_list".into(),
+                message: e.to_string(),
+            })?;
+        for repo in repos {
+            if repo.is_private {
+                private_roots.push(repo.path);
+            }
+        }
+    }
+
+    Ok(DefaultRegistryConfig {
+        local_git_scan_roots: scan_roots,
+        local_git_private_roots: private_roots,
+        local_tz: chrono::Local::now().offset().fix(),
+        markdown_dest_dirs: Vec::new(),
+    })
 }
 
 /// Run [`Orchestrator::startup`] and log the outcome. Failures are

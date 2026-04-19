@@ -24,6 +24,7 @@ pub use repos::{
     persons::PersonRepo,
     raw_payloads::{RawPayload, RawPayloadRepo},
     settings::SettingsRepo,
+    sinks::SinkRepo,
     source_identities::SourceIdentityRepo,
     sources::SourceRepo,
     sync_runs::SyncRunRepo,

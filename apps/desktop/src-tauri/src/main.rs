@@ -31,12 +31,33 @@ fn main() {
     });
 
     // Release builds compile the dev commands out entirely so the
-    // binary ships with a minimal IPC surface.
+    // binary ships with a minimal IPC surface. Keep this list in
+    // lockstep with `COMMANDS` in `build.rs` and with
+    // `capabilities/default.json` — every command mentioned here
+    // must appear in both, or Tauri 2 denies the call at runtime.
     #[cfg(feature = "dev-commands")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::settings_get,
         commands::settings_update,
         commands::logs_tail,
+        commands::persons_get_self,
+        commands::sources_list,
+        commands::sources_add,
+        commands::sources_update,
+        commands::sources_delete,
+        commands::sources_healthcheck,
+        commands::identities_list_for,
+        commands::identities_upsert,
+        commands::identities_delete,
+        commands::local_repos_list,
+        commands::local_repos_set_private,
+        commands::sinks_list,
+        commands::sinks_add,
+        commands::report_generate,
+        commands::report_cancel,
+        commands::report_get,
+        commands::report_save,
+        commands::retention_sweep_now,
         commands::dev_emit_toast,
         commands::dev_start_demo_run,
     ]);
@@ -46,6 +67,24 @@ fn main() {
         commands::settings_get,
         commands::settings_update,
         commands::logs_tail,
+        commands::persons_get_self,
+        commands::sources_list,
+        commands::sources_add,
+        commands::sources_update,
+        commands::sources_delete,
+        commands::sources_healthcheck,
+        commands::identities_list_for,
+        commands::identities_upsert,
+        commands::identities_delete,
+        commands::local_repos_list,
+        commands::local_repos_set_private,
+        commands::sinks_list,
+        commands::sinks_add,
+        commands::report_generate,
+        commands::report_cancel,
+        commands::report_get,
+        commands::report_save,
+        commands::retention_sweep_now,
     ]);
 
     builder

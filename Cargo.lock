@@ -964,11 +964,15 @@ name = "dayseam-desktop"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "connector-local-git",
+ "connectors-sdk",
  "dayseam-core",
  "dayseam-db",
  "dayseam-events",
  "dayseam-orchestrator",
+ "dayseam-report",
  "dayseam-secrets",
+ "serde",
  "serde_json",
  "sqlx",
  "tauri",

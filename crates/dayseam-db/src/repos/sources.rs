@@ -73,6 +73,32 @@ impl SourceRepo {
         rows.into_iter().map(row_to_source).collect()
     }
 
+    /// Overwrite the `label` column for `id`. No-op if the row does
+    /// not exist (the caller already re-reads via [`Self::get`] and
+    /// surfaces the `None` as a user-visible error).
+    pub async fn update_label(&self, id: &SourceId, label: &str) -> DbResult<()> {
+        sqlx::query("UPDATE sources SET label = ? WHERE id = ?")
+            .bind(label)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Overwrite the `config_json` column for `id`. The caller is
+    /// responsible for ensuring `config.kind()` matches the row's
+    /// persisted `kind`; replacing a `LocalGit` source with a `GitLab`
+    /// config is never a valid operation.
+    pub async fn update_config(&self, id: &SourceId, config: &SourceConfig) -> DbResult<()> {
+        let config_json = serde_json::to_string(config)?;
+        sqlx::query("UPDATE sources SET config_json = ? WHERE id = ?")
+            .bind(config_json)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn update_health(&self, id: &SourceId, health: &SourceHealth) -> DbResult<()> {
         let health_json = serde_json::to_string(health)?;
         let checked_at = health.checked_at.map(|t| t.to_rfc3339());

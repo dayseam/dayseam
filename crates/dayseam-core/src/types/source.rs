@@ -61,6 +61,31 @@ pub enum SourceConfig {
     },
 }
 
+impl SourceConfig {
+    /// Project a [`SourceConfig`] down to its [`SourceKind`] discriminant.
+    /// Used by the IPC layer to reject patches that would secretly
+    /// widen a `LocalGit` source into a `GitLab` one.
+    #[must_use]
+    pub fn kind(&self) -> SourceKind {
+        match self {
+            SourceConfig::GitLab { .. } => SourceKind::GitLab,
+            SourceConfig::LocalGit { .. } => SourceKind::LocalGit,
+        }
+    }
+}
+
+/// Partial update payload for the `sources_update` IPC command. Both
+/// fields are optional so the frontend can update just the label,
+/// just the config, or both in one round-trip. The command enforces
+/// that any supplied `config.kind()` matches the persisted source's
+/// `kind`; otherwise the call is rejected before any write happens.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SourcePatch {
+    pub label: Option<String>,
+    pub config: Option<SourceConfig>,
+}
+
 /// Opaque handle the secrets crate resolves against the OS keychain. The
 /// actual secret bytes never touch the database or IPC layer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

@@ -7,6 +7,24 @@
     "core:default",
     "allow-settings-get",
     "allow-settings-update",
-    "allow-logs-tail"
+    "allow-logs-tail",
+    "allow-persons-get-self",
+    "allow-sources-list",
+    "allow-sources-add",
+    "allow-sources-update",
+    "allow-sources-delete",
+    "allow-sources-healthcheck",
+    "allow-identities-list-for",
+    "allow-identities-upsert",
+    "allow-identities-delete",
+    "allow-local-repos-list",
+    "allow-local-repos-set-private",
+    "allow-sinks-list",
+    "allow-sinks-add",
+    "allow-report-generate",
+    "allow-report-cancel",
+    "allow-report-get",
+    "allow-report-save",
+    "allow-retention-sweep-now"
   ]
 }

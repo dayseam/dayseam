@@ -36,10 +36,14 @@ dayseam-db = { path = "../../../crates/dayseam-db", version = "0.0.0" }
 dayseam-events = { path = "../../../crates/dayseam-events", version = "0.0.0" }
 dayseam-secrets = { path = "../../../crates/dayseam-secrets", version = "0.0.0", features = ["keychain"] }
 dayseam-orchestrator = { path = "../../../crates/dayseam-orchestrator", version = "0.0.0" }
+dayseam-report = { path = "../../../crates/dayseam-report", version = "0.0.0" }
+connectors-sdk = { path = "../../../crates/connectors-sdk", version = "0.0.0" }
+connector-local-git = { path = "../../../crates/connectors/connector-local-git", version = "0.0.0" }
 
 [dev-dependencies]
 tempfile = "3"
 tauri = { version = "2", features = ["test"] }
+serde = { workspace = true }
 
 [features]
 # `custom-protocol` wires in Tauri's custom-protocol flag for release
