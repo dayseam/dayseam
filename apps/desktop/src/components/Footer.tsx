@@ -1,14 +1,22 @@
 interface FooterProps {
   onOpenLogs?: () => void;
+  onOpenIdentities?: () => void;
+  onOpenSinks?: () => void;
 }
 
 /**
  * Status footer — occupies the bottom strip of the window. Phase 1
  * shows the app is idle; Phase 2 replaces the text with live sync
  * progress from the log drawer and Task 9's toast system. Phase 1 also
- * exposes the "Logs" toggle that opens `LogDrawer`.
+ * exposes the "Logs" toggle that opens `LogDrawer`, and Phase 2 adds
+ * entry points for the admin dialogs (identities, sinks) alongside
+ * it.
  */
-export function Footer({ onOpenLogs }: FooterProps) {
+export function Footer({
+  onOpenLogs,
+  onOpenIdentities,
+  onOpenSinks,
+}: FooterProps) {
   return (
     <footer
       aria-label="Status"
@@ -24,6 +32,26 @@ export function Footer({ onOpenLogs }: FooterProps) {
             className="rounded px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-900"
           >
             Logs
+          </button>
+        ) : null}
+        {onOpenIdentities ? (
+          <button
+            type="button"
+            onClick={onOpenIdentities}
+            title="Manage identity mappings"
+            className="rounded px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-900"
+          >
+            Identities
+          </button>
+        ) : null}
+        {onOpenSinks ? (
+          <button
+            type="button"
+            onClick={onOpenSinks}
+            title="Manage sinks"
+            className="rounded px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-900"
+          >
+            Sinks
           </button>
         ) : null}
       </div>

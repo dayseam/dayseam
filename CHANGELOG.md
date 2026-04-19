@@ -8,6 +8,41 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **Phase 2, Task 6 PR-B1 — Admin UI: sources sidebar, add/approve flow, identity & sinks dialogs.**
+  Wires the PR-A React hooks into a navigable admin surface. `App.tsx`
+  drops the Phase-1 static `SOURCE_PLACEHOLDERS` row for a live
+  `SourcesSidebar` that reads from `useSources()` and renders a
+  health-dot chip per configured source (green = last probe ok, amber
+  = never checked, red = last probe returned a `DayseamError` — the
+  error code surfaces on hover via the `title` attribute). Each chip
+  exposes a hover-revealed "Rescan" control that fires
+  `sources_healthcheck(id)` and a scan-root count for `LocalGit`
+  sources. The "Add local git source" button opens
+  `AddLocalGitSourceDialog`, which captures a label plus one or more
+  absolute scan roots (one per line, no directory-picker dependency
+  in v0.1), calls `sources_add`, and hands the returned `Source` to
+  `ApproveReposDialog` so the user can flip `is_private` on each
+  discovered repo before the first sync. A new `Dialog` / `DialogButton`
+  primitive in `components/Dialog.tsx` handles `Escape` to close,
+  backdrop-click to close, focus-restoration on unmount, and the
+  light/dark chrome every admin dialog wears — small enough to
+  hand-roll without pulling in Radix. The `Footer` gains two entry
+  points (`Identities`, `Sinks`) that open `IdentityManagerDialog`
+  and `SinksDialog` respectively. `IdentityManagerDialog` resolves the
+  canonical self-`Person` through `persons_get_self`, lists every
+  `SourceIdentity` row with a per-row "Remove" action, and lets the
+  user add a `GitEmail` / `GitLabUserId` / `GitLabUsername` /
+  `GitHubLogin` mapping scoped either globally or to a specific
+  source. `SinksDialog` lists configured sinks with a one-line summary
+  (`Markdown · /path · frontmatter`) and exposes a form for adding
+  `MarkdownFile` sinks with one or two destination directories and a
+  YAML-frontmatter toggle. Every new component ships with Vitest
+  coverage exercising happy-path, error-path, and disabled-submit
+  invariants, plus an updated light/dark DOM snapshot that reflects
+  the new layout. The report-generation flow (date picker, streaming
+  preview, evidence popover, save dialog) remains stubbed — that's
+  PR-B2.
+
 - **Phase 2, Task 6 PR-A — Real IPC + registries wired to the DB, sans UI.**
   Replaces the Phase-1 demo-run scaffolding with the production IPC
   surface the Phase-2 UI (PR-B) will drive. `build_app_state` now
