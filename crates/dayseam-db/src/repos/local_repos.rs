@@ -45,6 +45,21 @@ impl LocalRepoRepo {
         Ok(())
     }
 
+    /// Look up a single approved repo by its absolute path. Used by
+    /// the IPC layer to return the freshly-mutated row from
+    /// `local_repos_set_private` without needing to re-list every
+    /// repo for the parent source.
+    pub async fn get(&self, path: &std::path::Path) -> DbResult<Option<LocalRepo>> {
+        let row = sqlx::query(
+            "SELECT path, label, is_private, discovered_at
+             FROM local_repos WHERE path = ?",
+        )
+        .bind(path_as_str(path)?)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_local_repo).transpose()
+    }
+
     pub async fn list_for_source(&self, source_id: &SourceId) -> DbResult<Vec<LocalRepo>> {
         let rows = sqlx::query(
             "SELECT path, label, is_private, discovered_at

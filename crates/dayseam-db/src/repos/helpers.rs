@@ -10,7 +10,8 @@
 
 use chrono::{DateTime, Utc};
 use dayseam_core::{
-    ActivityKind, ArtifactKind, LogLevel, Privacy, SourceIdentityKind, SourceKind, SyncRunStatus,
+    ActivityKind, ArtifactKind, LogLevel, Privacy, SinkKind, SourceIdentityKind, SourceKind,
+    SyncRunStatus,
 };
 
 use crate::error::DbError;
@@ -154,6 +155,22 @@ pub(crate) fn sync_run_status_from_db(s: &str) -> Result<SyncRunStatus, DbError>
         other => Err(DbError::InvalidData {
             column: "sync_runs.status".into(),
             message: format!("unknown SyncRunStatus `{other}`"),
+        }),
+    }
+}
+
+pub(crate) fn sink_kind_to_db(k: &SinkKind) -> &'static str {
+    match k {
+        SinkKind::MarkdownFile => "MarkdownFile",
+    }
+}
+
+pub(crate) fn sink_kind_from_db(s: &str) -> Result<SinkKind, DbError> {
+    match s {
+        "MarkdownFile" => Ok(SinkKind::MarkdownFile),
+        other => Err(DbError::InvalidData {
+            column: "sinks.kind".into(),
+            message: format!("unknown SinkKind `{other}`"),
         }),
     }
 }

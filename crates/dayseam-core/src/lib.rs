@@ -14,7 +14,10 @@ pub use error::DayseamError;
 pub use types::{
     activity::{ActivityEvent, ActivityKind, Actor, EntityRef, Link, Privacy, RawRef},
     artifact::{Artifact, ArtifactId, ArtifactKind, ArtifactPayload},
-    events::{LogEvent, ProgressEvent, ProgressPhase, RunId, ToastEvent, ToastSeverity},
+    events::{
+        LogEvent, ProgressEvent, ProgressPhase, ReportCompletedEvent, RunId, ToastEvent,
+        ToastSeverity,
+    },
     identity::{Identity, Person, SourceIdentity, SourceIdentityKind},
     repo::LocalRepo,
     report::{
@@ -24,5 +27,5 @@ pub use types::{
     run::{PerSourceState, SyncRun, SyncRunCancelReason, SyncRunStatus, SyncRunTrigger},
     settings::{Settings, SettingsPatch, ThemePreference},
     sink::{CapabilityConflict, Sink, SinkCapabilities, SinkConfig, SinkKind, WriteReceipt},
-    source::{SecretRef, Source, SourceConfig, SourceHealth, SourceId, SourceKind},
+    source::{SecretRef, Source, SourceConfig, SourceHealth, SourceId, SourceKind, SourcePatch},
 };

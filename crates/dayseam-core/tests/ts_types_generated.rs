@@ -18,10 +18,11 @@ use dayseam_core::{
     ActivityEvent, ActivityKind, Actor, Artifact, ArtifactId, ArtifactKind, ArtifactPayload,
     DayseamError, EntityRef, Evidence, Identity, Link, LocalRepo, LogEntry, LogEvent, LogLevel,
     PerSourceState, Person, Privacy, ProgressEvent, ProgressPhase, RawRef, RenderedBullet,
-    RenderedSection, ReportDraft, RunId, RunStatus, SecretRef, Settings, SettingsPatch, Sink,
-    SinkCapabilities, SinkConfig, SinkKind, Source, SourceConfig, SourceHealth, SourceIdentity,
-    SourceIdentityKind, SourceKind, SourceRunState, SyncRun, SyncRunCancelReason, SyncRunStatus,
-    SyncRunTrigger, ThemePreference, ToastEvent, ToastSeverity, WriteReceipt,
+    RenderedSection, ReportCompletedEvent, ReportDraft, RunId, RunStatus, SecretRef, Settings,
+    SettingsPatch, Sink, SinkCapabilities, SinkConfig, SinkKind, Source, SourceConfig,
+    SourceHealth, SourceIdentity, SourceIdentityKind, SourceKind, SourcePatch, SourceRunState,
+    SyncRun, SyncRunCancelReason, SyncRunStatus, SyncRunTrigger, ThemePreference, ToastEvent,
+    ToastSeverity, WriteReceipt,
 };
 use ts_rs::{Config, TS};
 
@@ -59,6 +60,7 @@ fn export_all(out_dir: &Path) {
     SourceKind::export_all(&cfg).expect("export SourceKind");
     SourceConfig::export_all(&cfg).expect("export SourceConfig");
     SourceHealth::export_all(&cfg).expect("export SourceHealth");
+    SourcePatch::export_all(&cfg).expect("export SourcePatch");
     SecretRef::export_all(&cfg).expect("export SecretRef");
 
     Sink::export_all(&cfg).expect("export Sink");
@@ -88,6 +90,7 @@ fn export_all(out_dir: &Path) {
     LogEvent::export_all(&cfg).expect("export LogEvent");
     ToastEvent::export_all(&cfg).expect("export ToastEvent");
     ToastSeverity::export_all(&cfg).expect("export ToastSeverity");
+    ReportCompletedEvent::export_all(&cfg).expect("export ReportCompletedEvent");
 
     Settings::export_all(&cfg).expect("export Settings");
     SettingsPatch::export_all(&cfg).expect("export SettingsPatch");

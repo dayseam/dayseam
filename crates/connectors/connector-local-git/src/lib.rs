@@ -26,4 +26,4 @@ pub mod privacy;
 pub mod walk;
 
 pub use connector::LocalGitConnector;
-pub use discovery::{DiscoveredRepo, DiscoveryConfig, DiscoveryOutcome};
+pub use discovery::{discover_repos, DiscoveredRepo, DiscoveryConfig, DiscoveryOutcome};

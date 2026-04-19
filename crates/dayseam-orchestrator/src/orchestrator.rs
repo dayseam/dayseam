@@ -254,6 +254,30 @@ impl Orchestrator {
         self.in_flight.lock().await.len()
     }
 
+    /// Borrow the [`ConnectorRegistry`] this orchestrator was built
+    /// with. Exposed so the Tauri layer's `sources_healthcheck`
+    /// command can dispatch a probe through the same connector
+    /// instance every run uses.
+    #[must_use]
+    pub fn connectors(&self) -> &ConnectorRegistry {
+        &self.connectors
+    }
+
+    /// Borrow the [`SinkRegistry`] this orchestrator was built with.
+    /// Exposed for symmetry with [`Self::connectors`]; v0.1 has no
+    /// IPC command that uses it directly but adapter tooling does.
+    #[must_use]
+    pub fn sinks(&self) -> &SinkRegistry {
+        &self.sinks
+    }
+
+    /// Borrow the shared [`HttpClient`]. Cheap to clone — every
+    /// connector run already shares this instance via [`ConnCtx`].
+    #[must_use]
+    pub fn http_client(&self) -> &HttpClient {
+        &self.http
+    }
+
     /// Dispatch a persisted [`dayseam_core::ReportDraft`] to a
     /// configured [`dayseam_core::Sink`] and return the resulting
     /// [`dayseam_core::WriteReceipt`].

@@ -14,6 +14,7 @@ pub mod logs;
 pub mod persons;
 pub mod raw_payloads;
 pub mod settings;
+pub mod sinks;
 pub mod source_identities;
 pub mod sources;
 pub mod sync_runs;

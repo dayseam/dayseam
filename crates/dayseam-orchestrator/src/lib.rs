@@ -66,6 +66,9 @@ pub mod startup;
 pub use orchestrator::{
     GenerateOutcome, GenerateRequest, Orchestrator, OrchestratorBuilder, SourceHandle,
 };
-pub use registries::{ConnectorRegistry, DefaultRegistryConfig, SinkRegistry};
-pub use retention::{SweepReport, DEFAULT_RETENTION_DAYS, RETENTION_DAYS_SETTING_KEY};
+pub use registries::{default_registries, ConnectorRegistry, DefaultRegistryConfig, SinkRegistry};
+pub use retention::{
+    resolve_cutoff, sweep as retention_sweep, SweepReport, DEFAULT_RETENTION_DAYS,
+    RETENTION_DAYS_SETTING_KEY,
+};
 pub use startup::StartupReport;

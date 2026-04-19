@@ -31,4 +31,9 @@ expression: ALL
 - orchestrator.retention.sweep_failed
 - orchestrator.save.draft_not_found
 - orchestrator.save.sink_not_registered
+- ipc.source.not_found
+- ipc.sink.not_found
+- ipc.local_repo.not_found
+- ipc.report_draft.not_found
+- ipc.source.config_kind_mismatch
 - db.schema.migration_failed

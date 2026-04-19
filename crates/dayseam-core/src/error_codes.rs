@@ -109,6 +109,23 @@ pub const ORCHESTRATOR_SAVE_DRAFT_NOT_FOUND: &str = "orchestrator.save.draft_not
 /// orchestrator build.
 pub const ORCHESTRATOR_SINK_NOT_REGISTERED: &str = "orchestrator.save.sink_not_registered";
 
+// -------- IPC layer --------------------------------------------------------
+
+/// An IPC command was given an `id` (source, sink, local repo, draft)
+/// that has no row in the database. Returned as
+/// `DayseamError::InvalidConfig` with the resource name in the message
+/// so the UI can render an actionable "not found" toast and refresh
+/// its list.
+pub const IPC_SOURCE_NOT_FOUND: &str = "ipc.source.not_found";
+pub const IPC_SINK_NOT_FOUND: &str = "ipc.sink.not_found";
+pub const IPC_LOCAL_REPO_NOT_FOUND: &str = "ipc.local_repo.not_found";
+pub const IPC_REPORT_DRAFT_NOT_FOUND: &str = "ipc.report_draft.not_found";
+/// `sources_update` was called with a `config` whose `kind` does not
+/// match the persisted source's `kind`. Surfaced so the UI never
+/// silently widens a `LocalGit` source into a `GitLab` source via a
+/// patch.
+pub const IPC_SOURCE_CONFIG_KIND_MISMATCH: &str = "ipc.source.config_kind_mismatch";
+
 // -------- Database ---------------------------------------------------------
 
 /// `sqlx::migrate!` failed to apply a pending migration. Always fatal
@@ -149,6 +166,11 @@ pub const ALL: &[&str] = &[
     ORCHESTRATOR_RETENTION_SWEEP_FAILED,
     ORCHESTRATOR_SAVE_DRAFT_NOT_FOUND,
     ORCHESTRATOR_SINK_NOT_REGISTERED,
+    IPC_SOURCE_NOT_FOUND,
+    IPC_SINK_NOT_FOUND,
+    IPC_LOCAL_REPO_NOT_FOUND,
+    IPC_REPORT_DRAFT_NOT_FOUND,
+    IPC_SOURCE_CONFIG_KIND_MISMATCH,
     DB_SCHEMA_MIGRATION_FAILED,
 ];
 
