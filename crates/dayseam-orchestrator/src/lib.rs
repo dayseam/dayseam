@@ -68,7 +68,7 @@ pub use orchestrator::{
 };
 pub use registries::{default_registries, ConnectorRegistry, DefaultRegistryConfig, SinkRegistry};
 pub use retention::{
-    resolve_cutoff, sweep as retention_sweep, SweepReport, DEFAULT_RETENTION_DAYS,
-    RETENTION_DAYS_SETTING_KEY,
+    resolve_cutoff, sweep as retention_sweep, sweep_with_resolved_cutoff, RetentionSchedule,
+    SweepReport, DEFAULT_RETENTION_DAYS, POST_RUN_SWEEP_MIN_INTERVAL, RETENTION_DAYS_SETTING_KEY,
 };
 pub use startup::StartupReport;

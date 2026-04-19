@@ -870,8 +870,17 @@ pub async fn shell_open(url: String) -> Result<(), DayseamError> {
 
 #[tauri::command]
 pub async fn retention_sweep_now(state: State<'_, AppState>) -> Result<(), DayseamError> {
-    let cutoff = resolve_cutoff(&state.pool, Utc::now()).await?;
+    let now = Utc::now();
+    let cutoff = resolve_cutoff(&state.pool, now).await?;
     let report = retention_sweep(&state.pool, cutoff).await?;
+    // Feed the debounce guard so the post-run hook (Task 7.4) does
+    // not re-sweep on the very next `report_generate` terminal —
+    // we just pruned everything in range.
+    state
+        .orchestrator
+        .retention_schedule()
+        .note_external_sweep(now)
+        .await;
     let _ = LogRepo::new(state.pool.clone())
         .append(&LogRow {
             ts: Utc::now(),
