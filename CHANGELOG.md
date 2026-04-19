@@ -8,6 +8,14 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **Phase 2, Task 7.5 — Dogfood notes scaffold.** Adds
+  [`docs/dogfood/phase-2-dogfood-notes.md`](docs/dogfood/phase-2-dogfood-notes.md)
+  as the empty-but-structured home for the three-day dogfood sweep that
+  closes plan item 7.5. Committing the template up front keeps the
+  follow-up PR a pure content update and gives Task 8 a stable path to
+  link as part of its cross-cutting review inputs. No code changes; the
+  Phase 2 Task 7 plan item now references the doc.
+
 - **Phase 2, Task 7 PR-B — PERF-08 closure + retention cancel-storm guard.**
   Closes the Phase 1 deferred [PERF-08](docs/review/phase-1-review.md#35-performance)
   and completes plan items 7.3 / 7.4. On the broadcast side, the
