@@ -87,7 +87,7 @@ pub async fn walk_day(
         .format("%Y-%m-%d")
         .to_string();
 
-    let identity_ids = identity_user_ids(source_identities, source_id);
+    let identity_ids = identity_user_ids(source_identities, source_id, logs);
 
     let mut events: Vec<ActivityEvent> = Vec::new();
     let mut fetched: u64 = 0;
@@ -254,12 +254,46 @@ pub fn day_bounds_utc(day: NaiveDate, tz: FixedOffset) -> (DateTime<Utc>, DateTi
     )
 }
 
-fn identity_user_ids(identities: &[SourceIdentity], source_id: SourceId) -> Vec<i64> {
+/// Collect the numeric GitLab user ids this walk should filter by.
+///
+/// DAY-72 CORR-addendum-08: malformed rows (non-numeric
+/// `external_actor_id`) used to be silently dropped via
+/// `.parse::<i64>().ok()`. That masked a real class of bug — if every
+/// `GitLabUserId` row failed to parse, the empty result is treated by
+/// the caller as "no filter configured" and every other user's
+/// events on the instance leak into the report, inflating
+/// `fetched_count` and burning rate-limit budget. We now emit a
+/// single Warn log per malformed row so the downgrade shows up in
+/// `reports-debug`.
+fn identity_user_ids(
+    identities: &[SourceIdentity],
+    source_id: SourceId,
+    logs: Option<&LogSender>,
+) -> Vec<i64> {
     identities
         .iter()
         .filter(|si| matches!(si.kind, SourceIdentityKind::GitLabUserId))
         .filter(|si| si.source_id.is_none() || si.source_id == Some(source_id))
-        .filter_map(|si| si.external_actor_id.parse::<i64>().ok())
+        .filter_map(|si| match si.external_actor_id.parse::<i64>() {
+            Ok(id) => Some(id),
+            Err(_) => {
+                if let Some(log_tx) = logs {
+                    log_tx.send(
+                        LogLevel::Warn,
+                        Some(source_id),
+                        format!(
+                            "ignoring malformed GitLabUserId identity row: external_actor_id={:?} is not an i64",
+                            si.external_actor_id
+                        ),
+                        serde_json::json!({
+                            "code": "gitlab.identity.malformed_user_id",
+                            "external_actor_id": si.external_actor_id,
+                        }),
+                    );
+                }
+                None
+            }
+        })
         .collect()
 }
 
@@ -348,7 +382,7 @@ mod tests {
                 source_id: Some(sid),
             },
         ];
-        let mut ids = identity_user_ids(&identities, sid);
+        let mut ids = identity_user_ids(&identities, sid, None);
         ids.sort();
         assert_eq!(ids, vec![17, 23]);
     }

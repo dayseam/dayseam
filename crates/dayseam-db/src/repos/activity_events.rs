@@ -116,21 +116,42 @@ impl ActivityRepo {
     /// List every event for a given source whose UTC date component
     /// matches `date`. The caller is responsible for translating the
     /// user's local date into the UTC window it wants to cover.
+    ///
+    /// DAY-72 PERF-addendum-04: the previous shape used
+    /// `substr(occurred_at, 1, 10) = ?`, a non-sargable expression
+    /// that forced SQLite to scan every row for the source (the
+    /// `(source_id, occurred_at)` composite index's `occurred_at`
+    /// column was unreachable because the expression wrapped it in a
+    /// function call). We now use a half-open range on
+    /// `occurred_at`, which the index can seek, and the
+    /// `ORDER BY occurred_at ASC` is satisfied by the index directly
+    /// instead of a separate sort step.
     pub async fn list_by_source_date(
         &self,
         source_id: &SourceId,
         date: NaiveDate,
     ) -> DbResult<Vec<ActivityEvent>> {
-        let date_str = date.format("%Y-%m-%d").to_string();
+        // Half-open UTC range [start, end) for the requested UTC
+        // date. `occurred_at` is stored as RFC3339 (e.g.
+        // `2026-04-20T10:15:00+00:00`), so a lexicographic
+        // comparison on UTC RFC3339 strings agrees with the
+        // underlying chronological order for every date in the
+        // supported range.
+        let start_str = format!("{}T00:00:00+00:00", date.format("%Y-%m-%d"));
+        let end_date = date
+            .succ_opt()
+            .expect("NaiveDate overflow; dates >9999-12-31 are unsupported");
+        let end_str = format!("{}T00:00:00+00:00", end_date.format("%Y-%m-%d"));
         let rows = sqlx::query(
             "SELECT id, source_id, external_id, kind, occurred_at, actor_json, title, body,
                     links_json, entities_json, parent_external_id, metadata_json, raw_ref, privacy
              FROM activity_events
-             WHERE source_id = ? AND substr(occurred_at, 1, 10) = ?
+             WHERE source_id = ? AND occurred_at >= ? AND occurred_at < ?
              ORDER BY occurred_at ASC",
         )
         .bind(source_id.to_string())
-        .bind(date_str)
+        .bind(start_str)
+        .bind(end_str)
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(row_to_event).collect()

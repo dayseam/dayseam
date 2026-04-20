@@ -20,8 +20,17 @@ impl LocalRepoRepo {
     }
 
     /// Insert-or-update on `path`. Rescans never remove an existing row;
-    /// they only refresh the label / privacy / discovered_at metadata so
+    /// they refresh the label / source_id / discovered_at metadata so
     /// user edits survive re-scans.
+    ///
+    /// `is_private` is **not** refreshed on conflict — it is owned by
+    /// the user (via `set_is_private`), and discovery has no
+    /// ground-truth for it (DAY-72 CORR-addendum-02). Every production
+    /// caller of `upsert` (the `upsert_discovered_repos` path in the
+    /// IPC layer) constructs rows with `is_private: false`; without
+    /// this carve-out, every rescan silently un-redacts the private
+    /// repos a user had marked — with no UI signal, which is the
+    /// DAY-71 shape of bug this review addendum hunts for.
     pub async fn upsert(&self, source_id: &SourceId, repo: &LocalRepo) -> DbResult<()> {
         let path_str = path_as_str(&repo.path)?;
         let is_private = if repo.is_private { 1_i64 } else { 0_i64 };
@@ -31,7 +40,6 @@ impl LocalRepoRepo {
              ON CONFLICT(path) DO UPDATE SET
                 source_id = excluded.source_id,
                 label = excluded.label,
-                is_private = excluded.is_private,
                 discovered_at = excluded.discovered_at",
         )
         .bind(path_str)

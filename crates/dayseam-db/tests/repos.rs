@@ -294,6 +294,45 @@ async fn local_repos_upsert_and_private_toggle() {
     assert!(local.list_for_source(&src.id).await.unwrap().is_empty());
 }
 
+/// DAY-72 CORR-addendum-02 regression: a user marks a repo private
+/// via `set_is_private(true)`. The next discovery-driven `upsert`
+/// carries `is_private: false` (because `upsert_discovered_repos`
+/// always constructs discovery rows that way — discovery has no
+/// ground-truth for privacy). The UPSERT must **not** clobber the
+/// user's flag.
+#[tokio::test]
+async fn local_repos_upsert_preserves_user_set_is_private_on_rescan() {
+    let (pool, _dir) = test_pool().await;
+    let sources = SourceRepo::new(pool.clone());
+    let local = LocalRepoRepo::new(pool.clone());
+    let src = fixture_local_source();
+    sources.insert(&src).await.unwrap();
+
+    let path = PathBuf::from("/Users/v/Code/secret-repo");
+    let discovered = LocalRepo {
+        path: path.clone(),
+        label: "secret-repo".into(),
+        is_private: false,
+        discovered_at: fixed_now(),
+    };
+    local.upsert(&src.id, &discovered).await.unwrap();
+
+    // User explicitly marks the repo private.
+    local.set_is_private(&path, true).await.unwrap();
+    assert!(local.get(&path).await.unwrap().unwrap().is_private);
+
+    // Rescan: discovery re-upserts with is_private=false (the shape
+    // the production `upsert_discovered_repos` always produces).
+    local.upsert(&src.id, &discovered).await.unwrap();
+
+    let after = local.get(&path).await.unwrap().unwrap();
+    assert!(
+        after.is_private,
+        "rescan must preserve user-set is_private=true; got is_private={}",
+        after.is_private
+    );
+}
+
 #[tokio::test]
 async fn activity_events_round_trip_and_reinsert_is_idempotent() {
     let (pool, _dir) = test_pool().await;

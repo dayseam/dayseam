@@ -8,6 +8,18 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **Phase 3 review addendum (DAY-72).** Deeper post-`v0.1.0` hardening
+  sweep that runs five new lenses (silent-failure, efficiency,
+  dogfood-path, cross-source-consistency, test-quality) on top of the
+  formal Phase 3 review battery. Motivated by DAY-71's two dogfood
+  bugs ("empty GitLab report" and `**/**` prefix) — both silent
+  failures the template-only Phase 3 review had no way to catch. See
+  [`docs/review/phase-3-review-addendum.md`](docs/review/phase-3-review-addendum.md)
+  for the full 20-finding table and inline-fix narratives. Eight
+  High / Medium fixes ship under "Fixed" below (`CORR-addendum-01/02/07/08`,
+  `CONS-addendum-04/06`, `PERF-addendum-04/06`); the rest are deferred
+  with linked tracking issues.
+
 - **Phase 3 hardening pass (DAY-68, Task 8 capstone).** Closes Phase 3
   against the published `v0.1.0` DMG. See
   [`docs/review/phase-3-review.md`](docs/review/phase-3-review.md) for
@@ -25,6 +37,90 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Fixed
 
+- **`connector-gitlab::project::fetch_project_path` propagates 401 /
+  403 from `/api/v4/projects/:id` instead of swallowing them as
+  `Ok(None)` (DAY-72 / CORR-addendum-01).** Auth failures fetching the
+  `path_with_namespace` for a project previously degraded to a
+  synthetic `project-<id>` token and a successful-looking walk, hiding
+  exactly the error the `SourceErrorCard` + "Reconnect" flow exists to
+  recover. The fetch now returns `DayseamError::Auth` on 401 / 403 via
+  `crate::errors::map_status` so the UI gets the specific code
+  (`gitlab.auth.invalid_token` / `gitlab.auth.insufficient_scope`).
+  Other non-success statuses (404, 5xx) still return `Ok(None)` — the
+  synthetic fallback remains correct for "project vanished" / upstream
+  blip. Tests: `fetch_project_path_propagates_401_as_auth_error`,
+  `fetch_project_path_propagates_403_as_auth_error`. Ships
+  `semver:none`.
+- **`local_repos.upsert` no longer clobbers user-set `is_private` on
+  rescan (DAY-72 / CORR-addendum-02).** Discovery scans populate
+  `is_private = false` by default; if a user flagged a repo as private
+  via Settings → Sources → Privacy, the next `upsert` would silently
+  un-privatise it and subsequent reports would leak commits the user
+  had explicitly redacted. The `ON CONFLICT DO UPDATE SET` clause now
+  refreshes every other column but leaves `is_private` whatever the
+  user made it. Test:
+  `local_repos_upsert_preserves_user_set_is_private_on_rescan`. Ships
+  `semver:none`.
+- **Cross-source dedup unions `actor.email` and `actor.external_id`
+  from the loser event instead of discarding them (DAY-72 /
+  CORR-addendum-07).** When a `CommitAuthored` appears in both
+  `local-git` (carrying `actor.email` from the commit trailer) and
+  `gitlab` (carrying `actor.external_id` from the Events API), the
+  dedup picks a canonical survivor by source priority. Before this
+  fix, whichever field the loser uniquely carried was thrown away.
+  `merge_actors` now promotes the loser's `email` / `external_id`
+  into the survivor when the survivor's was `None`. `display_name`
+  is intentionally left untouched on the winner to avoid flapping
+  between sources with different display-name conventions. Test:
+  `dedup_unions_actor_identity_fields_across_sources`. Ships
+  `semver:none`.
+- **`identity_user_ids` warns on malformed `GitLabUserId` rows
+  instead of silently dropping them (DAY-72 / CORR-addendum-08).** A
+  non-numeric `external_actor_id` used to be filtered out with
+  `.parse::<i64>().ok()`, producing an empty result identical in
+  shape to "no filter configured" — which the caller interprets as
+  "pass every event through", silently leaking every other user's
+  events on the instance into the report. The `filter_map` now
+  emits a `Warn` log with code `gitlab.identity.malformed_user_id`
+  and the offending string so the degrade shows up in
+  `reports-debug`. Ships `semver:none`.
+- **local-git `repo` `EntityRef` populates `label` for parity with
+  `connector-gitlab` (DAY-72 / CONS-addendum-04).** GitLab events
+  shipped with `label: Some(basename(path_with_namespace))`;
+  local-git events shipped with `label: None`, forcing every
+  downstream reader to re-derive the basename from the absolute
+  filesystem `external_id`. `build_commit_event` now computes the
+  label once and applies it to both the sibling `Link.label` and
+  the `repo` `EntityRef.label`. Ships `semver:none`.
+- **`render::commit_headline` drops the bolded prefix for synthetic
+  `project-<digits>` tokens (DAY-72 / CONS-addendum-06).** The GitLab
+  normaliser's docstring promised the render layer would strip the
+  prefix for the synthetic `project-42` shape (emitted when
+  `/projects/:id` was unreachable); the render layer did not, so
+  bullets rendered as `**project-42** — …`. New
+  `is_synthetic_project_token` helper + two short-circuit branches
+  in `commit_headline` make the contract hold. Test:
+  `commit_headline_drops_prefix_for_synthetic_project_token`. Ships
+  `semver:none`.
+- **`activity_events.list_by_source_date` uses a sargable half-open
+  range, restoring the composite index (DAY-72 / PERF-addendum-04).**
+  The previous filter
+  `WHERE source_id = ? AND substr(occurred_at, 1, 10) = ?` wrapped
+  `occurred_at` in a function call, defeating SQLite's ability to
+  seek on the `(source_id, occurred_at)` index. The new filter
+  `WHERE source_id = ? AND occurred_at >= ? AND occurred_at < ?`
+  seeks directly on the index, and the `ORDER BY occurred_at ASC`
+  is now satisfied by the index traversal instead of a separate
+  sort step. Ships `semver:none`.
+- **`annotate_rolled_into_mr` uses a `HashMap` index instead of a
+  nested scan (DAY-72 / PERF-addendum-06).** Previous shape was
+  O(commits × merge_requests × shas_per_mr); for a heavy day (C=200,
+  M=30, S=50) that burned ~300k string comparisons every report
+  generation. The helper now builds a `HashMap<&str, &str>`
+  (sha → mr_external_id) once — `entry().or_insert` preserves the
+  first-MR-wins tiebreak — and does a single O(1) lookup per event.
+  New complexity: O(C + ΣS). All six existing `rollup_mr` tests
+  pass unchanged. Ships `semver:none`.
 - **`HttpClient::send` returns non-retriable 4xx responses raw so the
   GitLab walker can classify them (DAY-68 / Phase 3 Task 8 CORR-01).**
   Before: any non-success HTTP status that was not retriable (401, 403,

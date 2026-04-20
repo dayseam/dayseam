@@ -12,16 +12,22 @@
 //! need so the call is resilient to GitLab's future API additions and
 //! tolerant of the self-hosted-vs-`gitlab.com` shape differences.
 //!
-//! Best-effort semantics: a 4xx/5xx or a network blip here returns
-//! `Ok(None)` so the walk stays healthy and the downstream normaliser
-//! falls back to a synthetic `project-<id>` label. The walker already
-//! validated the PAT before reaching this code path, so a 401/403 on
-//! `/projects/:id` is almost always "the user lost access to this
-//! specific project since the event was emitted" rather than a fatal
-//! credential problem, and aborting the whole walk for a pretty label
-//! would be the wrong call.
+//! Best-effort semantics for 404 / 5xx / transport errors: these
+//! return `Ok(None)` so the walk stays healthy and the downstream
+//! normaliser falls back to a synthetic `project-<id>` label.
 //!
-//! The walker emits a single Warn log per failed lookup so the
+//! **401/403 are fatal** (DAY-72 CORR-addendum-01): the walker's
+//! up-front PAT validation happens once at the start of the walk, so
+//! a mid-walk 401/403 on `/projects/:id` means the token was
+//! revoked / rotated between validation and enrichment. Collapsing
+//! that into `Ok(None)` masked the DAY-71 shape of bug: the user
+//! sees bullets labelled `**project-1234** — …` instead of a clear
+//! "Reconnect GitLab" prompt, and every subsequent day's sync keeps
+//! silently failing the same way. We now propagate these as typed
+//! `DayseamError::Auth` so `sync_runs.last_error` points the UI at
+//! the reconnect flow.
+//!
+//! The walker emits a single Warn log per fell-back lookup so the
 //! downgrade is not silent — `reports-debug` in the desktop app will
 //! show which `project_id`s fell back.
 
@@ -30,6 +36,7 @@ use std::sync::Arc;
 use connectors_sdk::{AuthStrategy, HttpClient};
 use dayseam_core::{DayseamError, SourceId};
 use dayseam_events::{LogSender, ProgressSender};
+use reqwest::StatusCode;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -79,7 +86,21 @@ pub async fn fetch_project_path(
         }
     };
 
-    if !response.status().is_success() {
+    let status = response.status();
+    if !status.is_success() {
+        // DAY-72 CORR-addendum-01: 401/403 is a real credential
+        // problem that the walk must propagate, not a pretty-label
+        // miss. A rotated PAT lands here if the token was revoked
+        // between walk-start PAT validation and enrichment; without
+        // this branch the walk silently succeeds with synthetic
+        // `project-<id>` labels on every bullet, which is the
+        // DAY-71 shape. Everything else (404 = project deleted /
+        // moved, 5xx = upstream hiccup we already retried, 4xx we
+        // don't classify) stays best-effort `Ok(None)`.
+        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+            let body = response.text().await.unwrap_or_default();
+            return Err(crate::errors::map_status(status, body).into());
+        }
         return Ok(None);
     }
 
@@ -184,8 +205,51 @@ mod tests {
         assert_eq!(got, None);
     }
 
+    /// DAY-72 CORR-addendum-01: 401 / 403 on `/projects/:id` means
+    /// the PAT was revoked / rotated / scope-downgraded between
+    /// walk-start validation and enrichment. The previous behaviour
+    /// (collapse into `Ok(None)` + synthetic `project-<id>` label)
+    /// masked a real credential problem — the user would see
+    /// `**project-1234** — …` bullets on every GitLab event with no
+    /// reconnect prompt. We now propagate as a typed
+    /// `DayseamError::Auth` so `sync_runs.last_error` points the UI
+    /// at the reconnect flow.
     #[tokio::test]
-    async fn fetch_project_path_returns_none_on_403() {
+    async fn fetch_project_path_propagates_401_as_auth_error() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v4/projects/42"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let err = fetch_project_path(
+            &http_for_tests(),
+            auth_for_tests(),
+            &server.uri(),
+            42,
+            &CancellationToken::new(),
+            None,
+            None,
+        )
+        .await
+        .expect_err("401 must propagate as auth error, not Ok(None)");
+        assert!(
+            matches!(err, DayseamError::Auth { .. }),
+            "expected DayseamError::Auth, got {err:?}"
+        );
+        let code = match &err {
+            DayseamError::Auth { code, .. } => code.clone(),
+            _ => unreachable!(),
+        };
+        assert_eq!(code, dayseam_core::error_codes::GITLAB_AUTH_INVALID_TOKEN);
+    }
+
+    #[tokio::test]
+    async fn fetch_project_path_propagates_403_as_auth_error() {
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -196,7 +260,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let got = fetch_project_path(
+        let err = fetch_project_path(
             &http_for_tests(),
             auth_for_tests(),
             &server.uri(),
@@ -206,8 +270,16 @@ mod tests {
             None,
         )
         .await
-        .expect("403 must degrade to Ok(None), not propagate");
-        assert_eq!(got, None);
+        .expect_err("403 must propagate as auth error, not Ok(None)");
+        assert!(
+            matches!(err, DayseamError::Auth { .. }),
+            "expected DayseamError::Auth, got {err:?}"
+        );
+        let code = match &err {
+            DayseamError::Auth { code, .. } => code.clone(),
+            _ => unreachable!(),
+        };
+        assert_eq!(code, dayseam_core::error_codes::GITLAB_AUTH_MISSING_SCOPE);
     }
 
     #[tokio::test]
