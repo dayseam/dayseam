@@ -651,6 +651,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "connector-confluence"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "connector-atlassian-common",
+ "connector-jira",
+ "connectors-sdk",
+ "dayseam-core",
+ "dayseam-events",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "url",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "connector-gitlab"
 version = "0.2.0"
 dependencies = [
@@ -1075,6 +1094,7 @@ dependencies = [
  "async-trait",
  "cargo_metadata",
  "chrono",
+ "connector-confluence",
  "connector-gitlab",
  "connector-jira",
  "connector-local-git",

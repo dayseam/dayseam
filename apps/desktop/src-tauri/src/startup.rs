@@ -287,6 +287,12 @@ async fn resolve_registry_config(pool: &SqlitePool) -> Result<DefaultRegistryCon
         // kind so the IPC layer has a handle to `upsert` into on
         // first-add.
         jira_sources: Vec::new(),
+        // DAY-79: same "register-empty, upsert-later" contract for
+        // Confluence. The Add-Source dialog (DAY-82) will write
+        // `SourceConfig::Confluence` rows against a shared Atlassian
+        // credential (or a dedicated one); the startup backfill
+        // stays empty here until that lands.
+        confluence_sources: Vec::new(),
     })
 }
 

@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::FixedOffset;
+use connector_confluence::{ConfluenceMux, ConfluenceSourceCfg};
 use connector_gitlab::{GitlabMux, GitlabSourceCfg};
 use connector_jira::{JiraMux, JiraSourceCfg};
 use connector_local_git::LocalGitConnector;
@@ -155,6 +156,15 @@ pub struct DefaultRegistryConfig {
     /// scaffold registers the kind but does not yet service a real
     /// walk); DAY-82 wires the Add-Source dialog to populate this.
     pub jira_sources: Vec<JiraSourceCfg>,
+    /// Configured Confluence sources (one entry per
+    /// `SourceConfig::Confluence` row). The [`ConfluenceMux`]
+    /// registered for [`SourceKind::Confluence`] dispatches per
+    /// `source_id` to the right workspace at sync time. Empty in
+    /// every deployment today (the DAY-79 scaffold registers the
+    /// kind but does not yet service a real walk); DAY-80 adds the
+    /// CQL walker, and DAY-82 wires the Add-Source dialog to
+    /// populate this.
+    pub confluence_sources: Vec<ConfluenceSourceCfg>,
 }
 
 /// Build the pair of registries used in production. Tests that need
@@ -182,6 +192,15 @@ pub fn default_registries(cfg: DefaultRegistryConfig) -> (ConnectorRegistry, Sin
     connectors.insert(
         SourceKind::Jira,
         Arc::new(JiraMux::new(cfg.local_tz, cfg.jira_sources)),
+    );
+    // DAY-79: same "register-empty, upsert-later" contract for the
+    // Confluence kind. The scaffold mux returns
+    // `DayseamError::Unsupported` from `sync` today; DAY-80 flips
+    // the `SyncRequest::Day` arm onto the CQL walker without any
+    // registry change here.
+    connectors.insert(
+        SourceKind::Confluence,
+        Arc::new(ConfluenceMux::new(cfg.confluence_sources)),
     );
 
     let mut sinks = SinkRegistry::new();
@@ -227,6 +246,7 @@ mod tests {
             markdown_dest_dirs: vec![tmp.path().to_path_buf()],
             gitlab_sources: Vec::new(),
             jira_sources: Vec::new(),
+            confluence_sources: Vec::new(),
         };
         let (connectors, sinks) = default_registries(cfg);
         assert!(connectors.get(SourceKind::LocalGit).is_some());
@@ -246,6 +266,19 @@ mod tests {
             .get(SourceKind::Jira)
             .expect("Jira kind registered");
         assert_eq!(jira.kind(), SourceKind::Jira);
+        // DAY-79: parallel invariant for the Confluence mux. The
+        // scaffold registers the kind with an empty mux so the
+        // DAY-82 Add-Source flow can slot in a fresh Confluence
+        // source without re-registering; double-checking the
+        // registered handle self-reports the right kind guards
+        // against a copy-paste regression that would silently
+        // route Confluence fan-out to the Jira mux (both happen to
+        // be typed `Arc<dyn SourceConnector>` so the compiler can't
+        // catch that mix-up on its own).
+        let confluence = connectors
+            .get(SourceKind::Confluence)
+            .expect("Confluence kind registered");
+        assert_eq!(confluence.kind(), SourceKind::Confluence);
         assert!(sinks.get(SinkKind::MarkdownFile).is_some());
     }
 }
