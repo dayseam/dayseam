@@ -8,6 +8,80 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **v0.2 `connector-jira` JQL walker (DAY-77).** Fifth task of the
+  combined Jira + Confluence phase: lands the per-day JQL walker
+  DAY-76 reserved a seat for, turning the scaffold's `sync` stub into
+  a real `SyncRequest::Day` implementation that issues one
+  `POST /rest/api/3/search/jql` per day window and normalises the
+  returned issues + expanded changelogs into the
+  `ActivityKind::Jira*` family. Three new modules: (1) `walk.rs`
+  computes day-window bounds via a crate-local `day_bounds_utc`
+  (soon to consolidate into `dayseam-core::time`), builds one JQL —
+  `(assignee = currentUser() OR comment ~ currentUser() OR reporter =
+  currentUser()) AND updated >= "…" AND updated < "…"` — with an
+  explicit `fields=summary,status,issuetype,project,priority,labels,updated,created,reporter,comment`
+  list and `expand=changelog`, paginates via
+  `connector-atlassian-common::JqlTokenPaginator` up to a
+  `MAX_PAGES=50` safety cap, and resolves the self `accountId` from
+  `ctx.source_identities` (returning an empty outcome + warn log when
+  no `SourceIdentityKind::AtlassianAccountId` row is registered —
+  DAY-71's known-cause empty invariant, never a silent data loss);
+  (2) `normalise.rs` maps one JQL issue + its changelog into zero-or-
+  more events — status transitions and assignee changes from
+  `changelog.histories[].items[]` (filtered to `author.accountId ==
+  self` for transitions, and `items[].to == self` for self-
+  assignments), comments from `fields.comment.comments[]` (filtered
+  to `author.accountId == self`, body rendered via
+  `connector-atlassian-common::adf_to_plain` so `@mentions` surface
+  as `@displayName` and never as the raw `accountId`), and issues
+  self-reported inside the window from the envelope's `fields.created`
+  + `fields.reporter`; unknown `changelog.items[].field` entries
+  (custom fields like `cf[10019]`, the `RemoteWorkItemLink` history
+  entries Phase-3's spike flagged) drop silently with a `Debug` log
+  and bump a `dropped_unknown_changelog` counter so the upstream
+  surface stays observable without failing the walk; (3) `rollup.rs`
+  implements the rapid-transition collapse the `CAR-5117` spike
+  motivated — consecutive self-authored status transitions within
+  `RAPID_TRANSITION_WINDOW_SECONDS=60` fold into one
+  `JiraIssueTransitioned` event whose `metadata.transition_count`
+  records the collapse and whose `from_status` / `to_status` span the
+  first and last change (a 6-transition cascade becomes one bullet,
+  not six). Error surface stays product-scoped: the SDK's exhausted
+  `429` retry budget remaps to `DayseamError::RateLimited { code:
+  jira.walk.rate_limited }` (never leaking the SDK's internal
+  `http.retry_budget_exhausted`), a JQL response missing the `issues`
+  array fails as `jira.walk.upstream_shape_changed` rather than
+  silently producing zero events. `JiraConnector` + `JiraMux` now
+  carry `local_tz: FixedOffset` (threaded through from
+  `DefaultRegistryConfig` in `dayseam-orchestrator::default_registries`)
+  so the day-window bounds match the user's local day; `SyncRequest::
+  Range` and `SyncRequest::Since` continue to return `Unsupported`
+  until v0.3's incremental scheduler lands. 50 total tests across
+  the crate (up from 19 in DAY-76): 28 inline unit tests covering
+  the rollup window boundary, normaliser field-by-field invariants
+  (transition self-filter, assignee-to-self, issue-created window
+  bounds, unknown-field drop, shape guards for missing
+  `key`/`project`), and walker helpers (JQL construction, request
+  body, `day_bounds_utc`, identity resolution); 5 auth tests carried
+  over from DAY-76; 9 scaffold tests (one rewritten: `SyncRequest::
+  Day` is no longer `Unsupported`, it now degrades to an empty
+  `SyncResult` when no identity is configured); and 8 new
+  wiremock-driven end-to-end integration tests in `tests/walk.rs`
+  pinning the full authn → HTTP → paginate → normalise → rollup
+  round-trip (happy path, `CAR-5117` six-transition collapse,
+  `KTON-4550` ADF `@mention` rendering privacy, colleague-authored
+  comment drop, two-page `nextPageToken` pagination,
+  `429 → jira.walk.rate_limited`, missing-`issues` shape guard,
+  no-identity early bail without firing a JQL). Ships as
+  `semver:none`: the public surface from DAY-76 is preserved (same
+  crate exports, same `SourceConnector` impl), and the walker lands
+  as a pure replacement of the `sync` body plus additive
+  `walk::walk_day` / `rollup::{collapse_rapid_transitions, …}`
+  exports — no caller downstream of `connector-jira` can observe a
+  breaking change until DAY-82 wires the UI to it. See
+  [`docs/plan/2026-04-20-v0.2-atlassian.md`](docs/plan/2026-04-20-v0.2-atlassian.md)
+  §Task 5 for the full invariant list.
+
 - **v0.2 `connector-jira` crate scaffold (DAY-76).** Fourth task of
   the combined Jira + Confluence phase: lands the Jira Cloud
   `SourceConnector` shell that DAY-77's per-day JQL walker will plug

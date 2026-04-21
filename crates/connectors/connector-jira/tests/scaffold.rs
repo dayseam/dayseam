@@ -1,4 +1,5 @@
-//! Smoke tests proving DAY-76's scaffolding invariants:
+//! Smoke tests proving the scaffolding invariants that survive
+//! alongside the DAY-77 walker:
 //!
 //! 1. `JiraConnector::kind() == SourceKind::Jira`.
 //! 2. `JiraMux` is object-safe through `Arc<dyn SourceConnector>` —
@@ -6,10 +7,15 @@
 //!    bound, so a regression here would fail every
 //!    `default_registries` call loudly.
 //! 3. `JiraMux::upsert` / `remove` round-trip by `source_id`.
-//! 4. Every [`SyncRequest`] variant returns
-//!    [`DayseamError::Unsupported`] with
-//!    [`error_codes::CONNECTOR_UNSUPPORTED_SYNC_REQUEST`] — the
-//!    walker that services `SyncRequest::Day` lands in DAY-77.
+//! 4. `SyncRequest::Range` and `SyncRequest::Since` return
+//!    [`DayseamError::Unsupported`] (the JQL walker only services
+//!    `Day` in v0.2; `Range` waits on v0.3's incremental scheduler).
+//! 5. `SyncRequest::Day` is *not* `Unsupported` any more — when no
+//!    Atlassian identity is configured for the source the walker
+//!    degrades to `Ok(SyncResult { events: [], … })` rather than
+//!    failing. End-to-end walker behaviour (pagination, normalise,
+//!    rollup, error mapping) is exercised in `tests/walk.rs` via
+//!    wiremock.
 
 use std::sync::Arc;
 
@@ -102,24 +108,29 @@ async fn jira_mux_sync_on_unregistered_source_returns_source_not_found() {
 }
 
 #[tokio::test]
-async fn sync_day_returns_unsupported_in_scaffold() {
-    // DAY-77 flips this arm onto the JQL walker. Until then the
-    // scaffold has to decline every request variant with the same
-    // registry-defined code so orchestrator fan-out never silently
-    // produces an empty `SyncResult` — which would, per the DAY-71
-    // post-mortem, render as a report with no Jira section even
-    // though the pipeline "succeeded".
+async fn sync_day_is_serviced_by_walker_degrading_when_no_identity_configured() {
+    // DAY-77 flipped this arm onto the JQL walker. The walker opens
+    // with an identity check: if no `SourceIdentityKind::AtlassianAccountId`
+    // row is registered for the source, the walker returns an empty
+    // outcome + a warn log (rather than failing), matching the
+    // DAY-71 invariant that a missing identity is a known-cause empty
+    // result, not a surprise panic. This test exercises the
+    // connector→walker wiring without needing wiremock; end-to-end
+    // walker behaviour lives in `tests/walk.rs`.
     let conn = JiraConnector::new(test_config());
     let ctx = mk_ctx(Uuid::new_v4());
-    let err = conn
+    let result = conn
         .sync(
             &ctx,
             SyncRequest::Day(NaiveDate::from_ymd_opt(2026, 4, 20).unwrap()),
         )
         .await
-        .expect_err("scaffold must not claim to service Day yet");
-    assert_eq!(err.code(), error_codes::CONNECTOR_UNSUPPORTED_SYNC_REQUEST);
-    assert!(matches!(err, DayseamError::Unsupported { .. }));
+        .expect("Day is now serviced by the walker");
+    assert!(
+        result.events.is_empty(),
+        "no identity configured → walker returns empty events"
+    );
+    assert_eq!(result.stats.fetched_count, 0);
 }
 
 #[tokio::test]
