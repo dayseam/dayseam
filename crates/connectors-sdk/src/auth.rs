@@ -18,6 +18,8 @@
 //! request.
 
 use async_trait::async_trait;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use dayseam_core::DayseamError;
 use zeroize::Zeroize;
 
@@ -67,6 +69,36 @@ pub enum AuthDescriptor {
     /// Jira Data Center. The payload is a keychain handle (`service` +
     /// `account`), never the token itself.
     Pat {
+        keychain_service: String,
+        keychain_account: String,
+    },
+    /// HTTP Basic with an `email:api_token` pair — the v0.2 shape for
+    /// Atlassian Cloud (Jira + Confluence).
+    ///
+    /// The descriptor carries **one** keychain handle per instance.
+    /// Whether that handle is *shared* with another source (the common
+    /// case — one Atlassian PAT unlocks both Jira and Confluence on the
+    /// same tenant) or *unique* to this source (separate-PAT mode — a
+    /// user who, e.g., manages Jira and Confluence on different
+    /// tenants, or uses different service accounts per product) is a
+    /// decision made at the IPC layer when `SourceConfig::{Jira,
+    /// Confluence}` rows are persisted in DAY-76 / DAY-79. The
+    /// `AuthStrategy` impl is agnostic: two instances with the same
+    /// `(keychain_service, keychain_account)` produce identical
+    /// `Authorization` headers for the same live token, and two
+    /// instances with *different* handles each resolve independently.
+    /// The ref-count guard in DAY-81 only matters in the shared-handle
+    /// case; in the separate-handle case it degenerates to 1-per-row
+    /// and delete-on-last-source behaves exactly as if the refcount
+    /// did not exist.
+    ///
+    /// `email` is **not** a secret — it appears in Jira UI, JQL result
+    /// sets, and Confluence version history — so we store it plain.
+    /// The `api_token` bytes live only in the [`SecretString`] inside
+    /// the matching [`BasicAuth`] instance and never touch the
+    /// descriptor.
+    Basic {
+        email: String,
         keychain_service: String,
         keychain_account: String,
     },
@@ -211,6 +243,99 @@ impl AuthStrategy for PatAuth {
     }
 }
 
+/// HTTP Basic authentication with a pre-encoded `email:api_token` pair,
+/// used by Atlassian Cloud (Jira + Confluence). The encoded header
+/// value is baked at construction time so the plain `email:token`
+/// bytes never outlive the constructor stack frame — what survives is
+/// a single [`SecretString`] holding `"Basic <base64…>"`.
+///
+/// Each `BasicAuth` instance owns **one** keychain handle. In the
+/// common shared-PAT case, two sources (one Jira, one Confluence) each
+/// hold a `BasicAuth` whose descriptor points at the *same*
+/// `(keychain_service, keychain_account)` row — both instances produce
+/// the same `Authorization` header for the same live token. In the
+/// separate-PAT case (different service accounts per product, or
+/// tenants on different Atlassian instances), each source's
+/// `BasicAuth` points at a *different* keychain row and the two
+/// strategies are fully independent. The implementation does not care
+/// which mode the caller picked — the sharing decision lives at the
+/// IPC / DB layer (DAY-81's refcount) and not here.
+///
+/// Like [`PatAuth`], `BasicAuth` intentionally does not implement
+/// `Clone`: duplicating a credential should be a deliberate act, not
+/// a side-effect of passing the strategy to a helper.
+pub struct BasicAuth {
+    header_value: SecretString,
+    descriptor: AuthDescriptor,
+}
+
+impl BasicAuth {
+    /// Construct an Atlassian Cloud Basic-auth strategy.
+    ///
+    /// The `email`/`api_token` pair is base64-encoded per RFC 7617 and
+    /// wrapped in a [`SecretString`] before the function returns; the
+    /// plain `api_token` argument is consumed by
+    /// [`String::into`]/`format!` and is not held in a named binding
+    /// past this call. The descriptor records the keychain handle so a
+    /// later round trip (app restart, `secret_ref` serialisation) can
+    /// rebuild an equivalent strategy.
+    pub fn atlassian(
+        email: impl Into<String>,
+        api_token: impl Into<String>,
+        keychain_service: impl Into<String>,
+        keychain_account: impl Into<String>,
+    ) -> Self {
+        let email = email.into();
+        // `pair` is formatted once, encoded, then dropped at the end of
+        // this expression; the encoded bytes live in `encoded` which
+        // feeds directly into the final `SecretString`. We don't keep
+        // `pair` in a named binding so it can't accidentally outlive
+        // its single use.
+        let encoded = BASE64_STANDARD.encode(format!("{}:{}", email, api_token.into()));
+        let header_value = SecretString::new(format!("Basic {encoded}"));
+        Self {
+            header_value,
+            descriptor: AuthDescriptor::Basic {
+                email,
+                keychain_service: keychain_service.into(),
+                keychain_account: keychain_account.into(),
+            },
+        }
+    }
+}
+
+// Manual `Debug` — derived would have reached inside `descriptor` to
+// print `email` (fine; not secret) and `header_value` (not fine — it
+// prints "***" via `SecretString`'s manual impl, but spelling the
+// redaction out here defends against the field type being swapped
+// back to a bare `String`).
+impl std::fmt::Debug for BasicAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BasicAuth")
+            .field("header_value", &"***")
+            .field("descriptor", &self.descriptor)
+            .finish()
+    }
+}
+
+#[async_trait]
+impl AuthStrategy for BasicAuth {
+    fn name(&self) -> &'static str {
+        "basic"
+    }
+
+    async fn authenticate(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::RequestBuilder, DayseamError> {
+        Ok(request.header("Authorization", self.header_value.expose()))
+    }
+
+    fn descriptor(&self) -> AuthDescriptor {
+        self.descriptor.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,5 +424,181 @@ mod tests {
             !rendered.contains("Bearer "),
             "header prefix leaked via Debug: {rendered}"
         );
+    }
+
+    // --------------------------------------------------------------
+    // DAY-74 — BasicAuth (Atlassian Cloud)
+    // --------------------------------------------------------------
+
+    /// RFC 7617 §2: "The user-id and password MUST NOT contain any
+    /// control characters […] the user-id and password is combined
+    /// with a single colon (":") character. Within the header field,
+    /// the resulting string is encoded using Base64". The Atlassian
+    /// spike (`docs/spikes/2026-04-20-atlassian-connectors-data-shape.md`
+    /// §3.1) pinned this exact shape.
+    #[tokio::test]
+    async fn basic_auth_header_is_base64_email_colon_token() {
+        let strat = BasicAuth::atlassian("foo@example.com", "bar", "svc", "acct");
+        let client = reqwest::Client::new();
+        let req = client.get("https://modulr.atlassian.net/rest/api/3/myself");
+        let out = strat.authenticate(req).await.expect("ok");
+        let built = out.build().expect("build");
+        assert_eq!(
+            built
+                .headers()
+                .get("Authorization")
+                .map(|v| v.to_str().unwrap()),
+            // base64("foo@example.com:bar") == "Zm9vQGV4YW1wbGUuY29tOmJhcg=="
+            Some("Basic Zm9vQGV4YW1wbGUuY29tOmJhcg==")
+        );
+        assert_eq!(strat.name(), "basic");
+    }
+
+    /// `Debug` must redact both the encoded header value *and* prove
+    /// that the plain-text `email:token` bytes never re-emerge — a
+    /// regression here would show up in every `tracing` span that
+    /// carries an `AuthStrategy` handle.
+    #[test]
+    fn basic_auth_debug_does_not_leak_token_or_encoded_header() {
+        let strat = BasicAuth::atlassian(
+            "user@modulrfinance.com",
+            "super-secret-api-token",
+            "dayseam.atlassian",
+            "acme",
+        );
+        let rendered = format!("{strat:?}");
+        assert!(
+            !rendered.contains("super-secret-api-token"),
+            "plain api_token leaked via Debug: {rendered}"
+        );
+        // The full `Basic <base64>` header value must also not appear.
+        // We check the canonical base64 of `user@modulrfinance.com:super-secret-api-token`.
+        let plain = "user@modulrfinance.com:super-secret-api-token";
+        let encoded = BASE64_STANDARD.encode(plain);
+        assert!(
+            !rendered.contains(&encoded),
+            "encoded header leaked via Debug: {rendered}"
+        );
+        assert!(rendered.contains("***"), "missing redaction: {rendered}");
+        // `email` is plain (not secret) and is expected to appear via
+        // the descriptor; spell that out so a future refactor that
+        // moves email into the SecretString has to justify why.
+        assert!(
+            rendered.contains("user@modulrfinance.com"),
+            "descriptor should still render the (non-secret) email: {rendered}"
+        );
+    }
+
+    /// Two `BasicAuth` instances with the same `(service, account)`
+    /// pair round-trip into identical descriptors — this is the
+    /// shared-PAT invariant the DAY-81 refcount guard hangs off. The
+    /// sharing decision lives at the IPC/DB layer; here we only prove
+    /// that the auth strategy itself is shape-equal in the shared
+    /// case and shape-distinct in the separate case.
+    #[test]
+    fn basic_auth_same_keychain_handle_produces_equal_descriptors() {
+        let a = BasicAuth::atlassian(
+            "shared@modulrfinance.com",
+            "token-A",
+            "dayseam.atlassian",
+            "acme",
+        );
+        let b = BasicAuth::atlassian(
+            "shared@modulrfinance.com",
+            "token-B", // different live token value, same keychain handle
+            "dayseam.atlassian",
+            "acme",
+        );
+        assert_eq!(
+            a.descriptor(),
+            b.descriptor(),
+            "two sources pointing at the same keychain row should serialise identically"
+        );
+    }
+
+    /// The separate-PAT mode: two sources referencing different
+    /// keychain rows (different service or account) must produce
+    /// distinct descriptors so the DB-level `secret_ref`s don't get
+    /// accidentally unified on write. This is the invariant that lets
+    /// companies with per-product service accounts use Dayseam without
+    /// leaking one product's PAT into the other product's error
+    /// surface.
+    #[test]
+    fn basic_auth_different_keychain_handles_stay_independent() {
+        let jira = BasicAuth::atlassian(
+            "jira-bot@modulrfinance.com",
+            "jira-token",
+            "dayseam.atlassian",
+            "acme-jira",
+        );
+        let confluence = BasicAuth::atlassian(
+            "confluence-bot@modulrfinance.com",
+            "confluence-token",
+            "dayseam.atlassian",
+            "acme-confluence",
+        );
+        assert_ne!(
+            jira.descriptor(),
+            confluence.descriptor(),
+            "separate keychain rows must serialise distinctly"
+        );
+        // Also prove the emails round-trip, since each source can have
+        // a product-specific service-account email.
+        match jira.descriptor() {
+            AuthDescriptor::Basic { email, .. } => {
+                assert_eq!(email, "jira-bot@modulrfinance.com");
+            }
+            other => panic!("expected Basic descriptor, got {other:?}"),
+        }
+        match confluence.descriptor() {
+            AuthDescriptor::Basic { email, .. } => {
+                assert_eq!(email, "confluence-bot@modulrfinance.com");
+            }
+            other => panic!("expected Basic descriptor, got {other:?}"),
+        }
+    }
+
+    /// Descriptor round-trips preserve the three fields that together
+    /// identify the credential row: email (for display), service +
+    /// account (for keychain lookup).
+    #[test]
+    fn basic_auth_descriptor_round_trips_all_three_fields() {
+        let strat = BasicAuth::atlassian("u@e.com", "t", "svc", "acct");
+        assert_eq!(
+            strat.descriptor(),
+            AuthDescriptor::Basic {
+                email: "u@e.com".to_string(),
+                keychain_service: "svc".to_string(),
+                keychain_account: "acct".to_string(),
+            }
+        );
+    }
+
+    /// Unicode in the email (some Atlassian Cloud tenants allow
+    /// non-ASCII addresses for SSO-federated accounts) must survive
+    /// base64 encoding intact — a silent UTF-8 corruption here would
+    /// surface as `401 invalid_credentials` with a message that points
+    /// at the wrong root cause.
+    #[tokio::test]
+    async fn basic_auth_preserves_utf8_in_email_and_token() {
+        let email = "vedanth.vasudev+🌊@modulrfinance.com";
+        let token = "token-with-🔑-emoji";
+        let strat = BasicAuth::atlassian(email, token, "svc", "acct");
+        let client = reqwest::Client::new();
+        let out = strat
+            .authenticate(client.get("https://example.invalid"))
+            .await
+            .expect("ok");
+        let built = out.build().expect("build");
+        let header = built
+            .headers()
+            .get("Authorization")
+            .and_then(|v| v.to_str().ok())
+            .expect("header present");
+        let expected = format!(
+            "Basic {}",
+            BASE64_STANDARD.encode(format!("{email}:{token}"))
+        );
+        assert_eq!(header, expected);
     }
 }
