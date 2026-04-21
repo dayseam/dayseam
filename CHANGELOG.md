@@ -8,6 +8,81 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **v0.2 `dayseam-db` — reference-counted shared secrets (DAY-81).**
+  Ninth task of the v0.2 Atlassian arc. The v0.1 `sources_delete` IPC
+  path dropped the keychain secret unconditionally, which is correct
+  for a single-source-per-secret install (every Phase 3 install) and
+  becomes silently wrong the moment two `sources` rows share a
+  `secret_ref` — the DAY-82 Atlassian shared-PAT flow where one API
+  token authenticates both a Jira and a Confluence source. Removing
+  one of the two under the old contract would strand the other with
+  a DB row that pointed at a now-absent keychain slot, which would
+  surface to the user as a silent-empty report on the next sync
+  (`build_source_auth` → Reconnect card copy is the only breadcrumb,
+  and it's confusing when the *other* source still works).
+  **Repo refactor.** `SourceRepo::delete` is now a two-statement
+  transaction that (1) reads the deleted row's `secret_ref`,
+  (2) `DELETE`s the row, and (3) asks `SELECT 1 FROM sources WHERE
+  secret_ref = ? LIMIT 1` whether any other row still points at the
+  same keychain slot. Returns `Some(SecretRef)` only when the deleted
+  row was the *last* holder of the secret — i.e. the single case where
+  the caller can safely drop the keychain entry. Returns `None` when
+  the row had no `secret_ref`, when the row did not exist, *or* when
+  another source still shares the ref (the shared-PAT case this fix
+  guards against). Doing the reference check inside the same
+  transaction as the `DELETE` is load-bearing: a pair of racing
+  deletes could otherwise each see the other's row before it was
+  removed and both think themselves the last reference, firing two
+  keychain drops for a slot that no longer has any DB referrers at
+  all (harmless) or, worse, missing each other entirely (a lingering
+  slot). **Orchestrator wiring.** `sources_delete` in
+  `apps/desktop/src-tauri/src/ipc/commands.rs` now consumes the
+  `Option<SecretRef>` from the repo and only calls
+  `best_effort_delete_secret` when it is `Some`. The pre-DAY-81
+  code read the `secret_ref` out via `repo.get(&id)` *before* the
+  `DELETE`, which under the new shape would still be correct for
+  non-shared secrets but unsound the instant a second source pointed
+  at the same slot — the read-then-delete pattern is replaced wholesale
+  to route the decision through the DB, which is the only layer that
+  can answer the question atomically. **Orphan-secret audit.** A new
+  `audit_orphan_secrets` pass runs once at startup right after the
+  orchestrator maintenance sweep. For every distinct `secret_ref`
+  persisted on the `sources` table it probes the keychain; missing
+  slots are logged as `tracing::warn!` lines (no auto-fix in either
+  direction — the keyring is the source of truth for "is this secret
+  still real?", and the DB row is the source of truth for "is this
+  source configured?"). Returns the orphan count for the test to
+  assert on; boot never fails because the audit errored, because a
+  locked / permission-denied keychain on a dev laptop would otherwise
+  brick the app on first launch. The counter-part to
+  `SourceRepo::delete`: the transactional refcount is the
+  *new-install* half of the "no dangling keychain rows" invariant,
+  the boot-time audit is the *existing-install* half (if a user on a
+  pre-DAY-81 build stranded a secret, the audit surfaces it on their
+  next boot instead of leaving them with a silent-empty report).
+  **DB helper.** `SourceRepo::distinct_secret_refs` fans out a
+  `SELECT DISTINCT secret_ref FROM sources WHERE secret_ref IS NOT
+  NULL` and parses each blob back into a `SecretRef`. Kept on the
+  repo because the JSON-blob compare the `delete` txn relies on must
+  match the listing path byte-for-byte; the two helpers share the
+  same serde contract and a future migration that rewrites the
+  column format has to revisit exactly this pair. **Tests.** 4 new
+  dayseam-db integration tests
+  (`deleting_source_preserves_shared_secret_until_last_reference`,
+  `deleting_source_with_no_secret_ref_returns_none`,
+  `deleting_nonexistent_source_is_a_no_op`, and
+  `distinct_secret_refs_lists_each_shared_slot_once`) + 2 new
+  dayseam-desktop startup tests
+  (`orphan_secret_detector_logs_but_does_not_delete` and
+  `orphan_secret_detector_is_quiet_when_every_ref_resolves`) cover
+  the full refcount + audit matrix. The existing
+  `sources_round_trip_and_delete_cascades` test was tightened to
+  assert the new return shape: sole owner of a `secret_ref` → caller
+  receives it back; the FK cascade invariant is unchanged. No IPC
+  type surface changed; PR carries `semver:none` — existing consumer
+  behaviour is preserved for non-shared installs and strictly
+  corrected for shared ones.
+
 - **v0.2 `connector-confluence::walk` — CQL-driven day walker (DAY-80).**
   Eighth task of the v0.2 Atlassian arc. DAY-79 stood up the Confluence
   scaffold with `sync` stubbed as `DayseamError::Unsupported` across
