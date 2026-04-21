@@ -180,7 +180,11 @@ async fn sources_round_trip_and_delete_cascades() {
     .await
     .unwrap();
 
-    repo.delete(&src.id).await.unwrap();
+    let orphaned = repo.delete(&src.id).await.unwrap();
+    assert_eq!(
+        orphaned, src.secret_ref,
+        "sole owner of a secret_ref → caller receives it back to drop from the keyring"
+    );
     let leftover_events: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM activity_events")
         .fetch_one(&pool)
         .await
@@ -191,6 +195,153 @@ async fn sources_round_trip_and_delete_cascades() {
         .await
         .unwrap();
     assert_eq!(leftover_raws, 0, "raw_payloads should cascade");
+}
+
+#[tokio::test]
+async fn deleting_source_preserves_shared_secret_until_last_reference() {
+    // DAY-81: when two `sources` rows share a `secret_ref` (the
+    // Atlassian shared-PAT flow: one Jira row + one Confluence row
+    // pointing at the same keychain slot), removing the first must
+    // return `None` so the IPC layer does *not* drop the keyring
+    // entry — the surviving source would otherwise silently fail to
+    // authenticate on its next run. Removing the second (now the
+    // sole holder) must return the `SecretRef` so the keyring row
+    // can finally be cleaned up.
+    let (pool, _dir) = test_pool().await;
+    let repo = SourceRepo::new(pool.clone());
+
+    let shared = SecretRef {
+        keychain_service: "app.dayseam.desktop".into(),
+        keychain_account: "atlassian:acme".into(),
+    };
+
+    let mut jira = fixture_source();
+    jira.id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+    jira.kind = SourceKind::Jira;
+    jira.label = "jira:acme".into();
+    jira.config = SourceConfig::Jira {
+        workspace_url: "https://acme.atlassian.net".into(),
+        email: "me@acme.com".into(),
+    };
+    jira.secret_ref = Some(shared.clone());
+
+    let mut confluence = fixture_source();
+    confluence.id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+    confluence.kind = SourceKind::Confluence;
+    confluence.label = "confluence:acme".into();
+    confluence.config = SourceConfig::Confluence {
+        workspace_url: "https://acme.atlassian.net".into(),
+    };
+    confluence.secret_ref = Some(shared.clone());
+
+    repo.insert(&jira).await.unwrap();
+    repo.insert(&confluence).await.unwrap();
+
+    // First delete: the Confluence row goes; Jira is still pointing
+    // at the shared secret, so the caller must receive `None`.
+    let orphaned = repo.delete(&confluence.id).await.unwrap();
+    assert!(
+        orphaned.is_none(),
+        "shared secret must survive the first delete (the other source still holds it)"
+    );
+    // Baseline sanity: Jira row is still there and still knows the
+    // shared secret.
+    let surviving = repo.get(&jira.id).await.unwrap().expect("jira present");
+    assert_eq!(surviving.secret_ref.as_ref(), Some(&shared));
+
+    // Second delete: Jira row is the last holder — `delete` returns
+    // the `SecretRef` so the IPC layer can finally drop it.
+    let orphaned = repo.delete(&jira.id).await.unwrap();
+    assert_eq!(
+        orphaned,
+        Some(shared),
+        "last reference gone → caller receives the secret_ref to drop from the keyring"
+    );
+}
+
+#[tokio::test]
+async fn deleting_source_with_no_secret_ref_returns_none() {
+    // Local-git-style row that never had a keychain slot — the
+    // return type is `Option<SecretRef>` but there's nothing to
+    // hand back; the IPC layer must not call the keyring on the
+    // way out.
+    let (pool, _dir) = test_pool().await;
+    let repo = SourceRepo::new(pool.clone());
+    let src = fixture_local_source();
+    repo.insert(&src).await.unwrap();
+    let orphaned = repo.delete(&src.id).await.unwrap();
+    assert!(
+        orphaned.is_none(),
+        "row with secret_ref=NULL → Option<SecretRef>::None"
+    );
+}
+
+#[tokio::test]
+async fn deleting_nonexistent_source_is_a_no_op() {
+    // Safety net — a stray `sources_delete` IPC call for an id that
+    // the UI raced past a concurrent remove must not synthesize a
+    // ghost `SecretRef` out of thin air and trick the keyring into
+    // a rogue delete.
+    let (pool, _dir) = test_pool().await;
+    let repo = SourceRepo::new(pool.clone());
+    let ghost = Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap();
+    let orphaned = repo.delete(&ghost).await.unwrap();
+    assert!(orphaned.is_none());
+}
+
+#[tokio::test]
+async fn distinct_secret_refs_lists_each_shared_slot_once() {
+    // DAY-81 orphan-detector helper: two rows sharing a secret +
+    // one independent row should yield two distinct refs, never
+    // three — the keychain only holds one slot per unique ref and
+    // the detector compares cardinalities.
+    let (pool, _dir) = test_pool().await;
+    let repo = SourceRepo::new(pool.clone());
+
+    let shared = SecretRef {
+        keychain_service: "app.dayseam.desktop".into(),
+        keychain_account: "atlassian:acme".into(),
+    };
+    let solo = SecretRef {
+        keychain_service: "app.dayseam.desktop".into(),
+        keychain_account: "gitlab:solo".into(),
+    };
+
+    let mut jira = fixture_source();
+    jira.id = Uuid::parse_str("dddddddd-dddd-dddd-dddd-dddddddddddd").unwrap();
+    jira.kind = SourceKind::Jira;
+    jira.config = SourceConfig::Jira {
+        workspace_url: "https://acme.atlassian.net".into(),
+        email: "me@acme.com".into(),
+    };
+    jira.secret_ref = Some(shared.clone());
+
+    let mut confluence = fixture_source();
+    confluence.id = Uuid::parse_str("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee").unwrap();
+    confluence.kind = SourceKind::Confluence;
+    confluence.config = SourceConfig::Confluence {
+        workspace_url: "https://acme.atlassian.net".into(),
+    };
+    confluence.secret_ref = Some(shared.clone());
+
+    let mut gitlab = fixture_source();
+    gitlab.id = Uuid::parse_str("ffffffff-ffff-ffff-ffff-ffffffffffff").unwrap();
+    gitlab.secret_ref = Some(solo.clone());
+
+    let local = fixture_local_source();
+
+    repo.insert(&jira).await.unwrap();
+    repo.insert(&confluence).await.unwrap();
+    repo.insert(&gitlab).await.unwrap();
+    repo.insert(&local).await.unwrap();
+
+    let mut refs = repo.distinct_secret_refs().await.unwrap();
+    refs.sort_by(|a, b| a.keychain_account.cmp(&b.keychain_account));
+    assert_eq!(
+        refs,
+        vec![shared, solo],
+        "four sources but only two distinct keychain slots"
+    );
 }
 
 #[tokio::test]

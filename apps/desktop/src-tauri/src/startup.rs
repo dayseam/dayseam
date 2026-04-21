@@ -101,6 +101,7 @@ pub async fn build_app_state(data_dir: &Path) -> Result<AppState, DayseamError> 
 
     let orchestrator = build_orchestrator(pool.clone(), app_bus.clone()).await?;
     run_startup_maintenance(&orchestrator, &pool).await;
+    audit_orphan_secrets(&pool, secrets.as_ref()).await;
 
     Ok(AppState::new(pool, app_bus, secrets, orchestrator))
 }
@@ -342,6 +343,82 @@ async fn run_startup_maintenance(orchestrator: &Orchestrator, pool: &SqlitePool)
     }
 }
 
+/// DAY-81 orphan-secret audit. For every distinct `secret_ref`
+/// persisted on the `sources` table, probe the keychain to check the
+/// slot is actually readable. Missing slots are logged as warnings;
+/// we deliberately do **not** auto-fix either side of the mismatch
+/// because both the DB row and the keychain row can be the correct
+/// source of truth in different contexts:
+///
+/// * A DB row pointing at a keychain slot the user (or a keyring GC
+///   in a brittle OS update) removed — the source is unusable and
+///   the user will hit a reconnect-style error the moment they try
+///   to sync it. We log so post-mortem traces see it on boot; we
+///   don't delete the `sources` row because the user may be about
+///   to fix the keychain out-of-band.
+/// * A keychain row the DB no longer references — harmless (no
+///   source can read it); we can't enumerate keychain entries
+///   portably from Rust anyway, so the detector is deliberately
+///   DB-driven.
+///
+/// The counter-part to this pass is `SourceRepo::delete`'s
+/// transactional "is this the last reference?" check (DAY-81), which
+/// is the *new-install* half of the "no dangling keychain rows"
+/// invariant. This function is the *existing-install* half: if the
+/// user installed a pre-DAY-81 build, shared a PAT between Jira and
+/// Confluence, then removed one of the two under the old delete
+/// path, they would have ended up with a surviving source whose
+/// `secret_ref` no longer resolved. This pass surfaces that on next
+/// boot so the user gets actionable logs instead of a silent-empty
+/// report.
+///
+/// Returns the number of orphan refs detected (never an error —
+/// audit failures are surfaced purely through `tracing::warn!`).
+async fn audit_orphan_secrets(pool: &SqlitePool, secrets: &dyn SecretStore) -> usize {
+    let refs = match SourceRepo::new(pool.clone()).distinct_secret_refs().await {
+        Ok(refs) => refs,
+        Err(err) => {
+            tracing::warn!(%err, "orphan-secret audit: listing distinct secret refs failed; skipping");
+            return 0;
+        }
+    };
+    let mut orphans = 0usize;
+    for sr in refs {
+        let key = crate::ipc::commands::secret_store_key(&sr);
+        match secrets.get(&key) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                orphans += 1;
+                tracing::warn!(
+                    service = %sr.keychain_service,
+                    account = %sr.keychain_account,
+                    "orphan-secret audit: `sources` row references a keychain slot the store can't read — source will fail to authenticate until the user reconnects"
+                );
+            }
+            Err(err) => {
+                // Probe errors are not treated as orphans — an
+                // unhealthy keychain (locked, permission denied)
+                // could otherwise stampede the warn log with rows
+                // that are actually fine. One line per probe error,
+                // no orphan count bump.
+                tracing::warn!(
+                    %err,
+                    service = %sr.keychain_service,
+                    account = %sr.keychain_account,
+                    "orphan-secret audit: keychain probe failed; skipping this ref"
+                );
+            }
+        }
+    }
+    if orphans > 0 {
+        tracing::warn!(
+            orphans,
+            "orphan-secret audit: {orphans} source(s) reference a keychain slot that is no longer readable"
+        );
+    }
+    orphans
+}
+
 async fn record_startup_log(pool: &SqlitePool) {
     let repo = LogRepo::new(pool.clone());
     // Best-effort — a startup log failing to write is not worth
@@ -478,6 +555,129 @@ mod tests {
             .filter(|r| r.kind == SourceIdentityKind::GitLabUserId && r.external_actor_id == "291")
             .count();
         assert_eq!(count, 1, "three boots must leave exactly one seeded row");
+    }
+
+    // --- DAY-81: orphan-secret audit -------------------------------------
+    //
+    // The audit is a warn-only safety net for installs whose DB row
+    // outlives its keychain slot — it must never mutate either side.
+    // The test exercises both halves: a ref that *does* resolve
+    // produces zero orphans and no warning; a ref that *doesn't*
+    // resolve produces exactly one orphan and leaves the `sources`
+    // row (and the keychain) untouched.
+
+    fn gitlab_secret_ref_for(source_id: Uuid) -> dayseam_core::SecretRef {
+        dayseam_core::SecretRef {
+            keychain_service: "dayseam.gitlab".into(),
+            keychain_account: format!("source:{source_id}"),
+        }
+    }
+
+    async fn insert_gitlab_source_with_secret(
+        pool: &SqlitePool,
+        id: Uuid,
+        secret_ref: Option<dayseam_core::SecretRef>,
+    ) {
+        SourceRepo::new(pool.clone())
+            .insert(&Source {
+                id,
+                kind: SourceKind::GitLab,
+                label: "gitlab.example.com".into(),
+                config: SourceConfig::GitLab {
+                    base_url: "https://gitlab.example.com".into(),
+                    user_id: 7,
+                    username: "vedanth".into(),
+                },
+                secret_ref,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("insert gitlab source");
+    }
+
+    #[tokio::test]
+    async fn orphan_secret_detector_logs_but_does_not_delete() {
+        // Two sources:
+        //   * `present_id` → keychain slot exists (healthy baseline)
+        //   * `orphan_id`  → keychain slot absent (the regression)
+        // The audit must return `1`, leave both `sources` rows
+        // intact, and never write to the keychain.
+        use dayseam_secrets::{InMemoryStore, Secret};
+
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+
+        let present_id = Uuid::new_v4();
+        let orphan_id = Uuid::new_v4();
+        let present_ref = gitlab_secret_ref_for(present_id);
+        let orphan_ref = gitlab_secret_ref_for(orphan_id);
+
+        insert_gitlab_source_with_secret(&pool, present_id, Some(present_ref.clone())).await;
+        insert_gitlab_source_with_secret(&pool, orphan_id, Some(orphan_ref.clone())).await;
+
+        let store = InMemoryStore::new();
+        store
+            .put(
+                &crate::ipc::commands::secret_store_key(&present_ref),
+                Secret::new("gl-pat-present".to_string()),
+            )
+            .expect("seed present slot");
+        // Deliberately do *not* seed `orphan_ref` — that's the
+        // whole point of the test.
+
+        let orphans = audit_orphan_secrets(&pool, &store).await;
+        assert_eq!(orphans, 1, "exactly one ref should fail to resolve");
+
+        // Neither `sources` row was deleted — the audit is warn-only.
+        let remaining = SourceRepo::new(pool.clone())
+            .list()
+            .await
+            .expect("list after audit");
+        let ids: Vec<Uuid> = remaining.iter().map(|s| s.id).collect();
+        assert!(
+            ids.contains(&present_id) && ids.contains(&orphan_id),
+            "warn-only audit must leave both rows intact; got {ids:?}"
+        );
+
+        // The keychain is still missing the orphan ref (no auto-fix).
+        let key = crate::ipc::commands::secret_store_key(&orphan_ref);
+        assert!(
+            store.get(&key).expect("probe").is_none(),
+            "audit must not synthesise a keychain slot"
+        );
+    }
+
+    #[tokio::test]
+    async fn orphan_secret_detector_is_quiet_when_every_ref_resolves() {
+        // Regression clamp: a freshly installed, consistent DB must
+        // report zero orphans. A bug that counted "no secret_ref at
+        // all" as an orphan would fire here.
+        use dayseam_secrets::{InMemoryStore, Secret};
+
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+
+        let with_secret = Uuid::new_v4();
+        let without_secret = Uuid::new_v4();
+        let sr = gitlab_secret_ref_for(with_secret);
+        insert_gitlab_source_with_secret(&pool, with_secret, Some(sr.clone())).await;
+        insert_gitlab_source_with_secret(&pool, without_secret, None).await;
+
+        let store = InMemoryStore::new();
+        store
+            .put(
+                &crate::ipc::commands::secret_store_key(&sr),
+                Secret::new("gl-pat".to_string()),
+            )
+            .expect("seed");
+
+        let orphans = audit_orphan_secrets(&pool, &store).await;
+        assert_eq!(
+            orphans, 0,
+            "healthy install → zero warnings; rows without secret_ref are ignored"
+        );
     }
 
     #[tokio::test]

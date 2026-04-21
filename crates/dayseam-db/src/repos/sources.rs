@@ -138,12 +138,85 @@ impl SourceRepo {
         Ok(())
     }
 
-    pub async fn delete(&self, id: &SourceId) -> DbResult<()> {
+    /// Delete the `sources` row for `id`. Returns `Some(SecretRef)`
+    /// when the deleted row held a `secret_ref` that no *other*
+    /// `sources` row still points at — i.e. the caller now owns the
+    /// keychain slot and is responsible for dropping it. Returns
+    /// `None` when the row had no secret at all, when the row did not
+    /// exist, *or* when another source still shares the same
+    /// `secret_ref` (the shared-PAT case DAY-81 guards against).
+    ///
+    /// Why this lives here rather than in the IPC layer: the
+    /// "is anyone else still pointing at this secret?" question is a
+    /// read of the `sources` table that has to happen inside the
+    /// same transaction as the `DELETE` or a second racing source
+    /// deletion could make both of them think they were the last
+    /// reference and drop the keychain row twice.
+    ///
+    /// The pre-DAY-81 shape of this method returned `()` and the IPC
+    /// layer dropped the keyring secret unconditionally. That was
+    /// correct for single-source-per-secret installs (Phase 3) and
+    /// becomes silently wrong the moment two `sources` rows share a
+    /// `secret_ref` — the v0.2 Atlassian shared-PAT flow. This
+    /// signature change is the DB-layer half of the fix; the IPC
+    /// layer's half is a `let orphaned = repo.delete(&id).await?;`
+    /// / `if let Some(sr) = orphaned { drop_keyring(&sr) }` swap.
+    pub async fn delete(&self, id: &SourceId) -> DbResult<Option<SecretRef>> {
+        let mut tx = self.pool.begin().await?;
+
+        let secret_ref_json: Option<String> =
+            sqlx::query_scalar("SELECT secret_ref FROM sources WHERE id = ?")
+                .bind(id.to_string())
+                .fetch_optional(&mut *tx)
+                .await?
+                .flatten();
+
         sqlx::query("DELETE FROM sources WHERE id = ?")
             .bind(id.to_string())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
-        Ok(())
+
+        let orphaned = match secret_ref_json {
+            None => None,
+            Some(json) => {
+                // `secret_ref` is a JSON-serialised `SecretRef`. Two
+                // `sources` rows share a secret iff they serialise
+                // byte-identically; `SecretRef` is a plain struct with
+                // a fixed field order so `serde_json::to_string` is
+                // deterministic. A future migration that rewrites the
+                // column format needs to revisit this compare.
+                let still_referenced: Option<i64> =
+                    sqlx::query_scalar("SELECT 1 FROM sources WHERE secret_ref = ? LIMIT 1")
+                        .bind(&json)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                if still_referenced.is_some() {
+                    None
+                } else {
+                    Some(serde_json::from_str::<SecretRef>(&json)?)
+                }
+            }
+        };
+
+        tx.commit().await?;
+        Ok(orphaned)
+    }
+
+    /// Count `secrets` rows — here defined as distinct `secret_ref`
+    /// JSON blobs currently referenced by at least one `sources` row.
+    /// This is the positive counterpart that the DAY-81 orphan
+    /// detector uses on startup to sanity-check the keychain
+    /// against the DB; the detector lives in the IPC layer because
+    /// the keychain access does.
+    pub async fn distinct_secret_refs(&self) -> DbResult<Vec<SecretRef>> {
+        let rows: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT secret_ref FROM sources WHERE secret_ref IS NOT NULL",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter()
+            .map(|s| serde_json::from_str::<SecretRef>(&s).map_err(Into::into))
+            .collect()
     }
 }
 

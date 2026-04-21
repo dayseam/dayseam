@@ -229,7 +229,11 @@ fn gitlab_secret_ref(source_id: SourceId) -> SecretRef {
 
 /// Render a [`SecretRef`] as the single-string key the
 /// [`dayseam_secrets::SecretStore`] trait expects (`service::account`).
-fn secret_store_key(sr: &SecretRef) -> String {
+///
+/// Pub-crate-visible so DAY-81's boot-time orphan-secret audit
+/// (`crate::startup::audit_orphan_secrets`) can probe the exact same
+/// key shape the live IPC layer writes.
+pub(crate) fn secret_store_key(sr: &SecretRef) -> String {
     format!("{}::{}", sr.keychain_service, sr.keychain_account)
 }
 
@@ -811,18 +815,20 @@ pub async fn sources_update(
 #[tauri::command]
 pub async fn sources_delete(id: SourceId, state: State<'_, AppState>) -> Result<(), DayseamError> {
     let repo = SourceRepo::new(state.pool.clone());
-    // Resolve the keychain slot *before* we delete the row so we
-    // don't leak the PAT when the user removes a GitLab source.
-    let secret_ref = repo
-        .get(&id)
-        .await
-        .map_err(|e| internal("sources.get", e))?
-        .and_then(|s| s.secret_ref);
-
-    repo.delete(&id)
+    // DAY-81: `SourceRepo::delete` resolves the "is this secret
+    // still referenced by another source?" question inside the same
+    // transaction as the `DELETE`, handing us back `Some(ref)`
+    // only when this row was the *last* holder of the secret —
+    // which is the only case where dropping the keychain entry is
+    // safe. In the shared-PAT case (Jira + Confluence sharing one
+    // API token) removing one of the two sources here returns
+    // `None`, preserving the surviving source's ability to
+    // authenticate.
+    let orphaned_secret = repo
+        .delete(&id)
         .await
         .map_err(|e| internal("sources.delete", e))?;
-    if let Some(sr) = secret_ref {
+    if let Some(sr) = orphaned_secret {
         best_effort_delete_secret(&state, &sr);
     }
     publish_restart_required_toast(&state);
