@@ -13,8 +13,9 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DayseamError, Source } from "@dayseam/ipc-types";
-import { GITLAB_ERROR_CODES } from "@dayseam/ipc-types";
+import { ATLASSIAN_ERROR_CODES, GITLAB_ERROR_CODES } from "@dayseam/ipc-types";
 import { SourceErrorCard } from "../SourceErrorCard";
+import { atlassianErrorCopy } from "../atlassianErrorCopy";
 import { gitlabErrorCopy } from "../gitlabErrorCopy";
 
 const GITLAB_SOURCE: Source = {
@@ -79,6 +80,45 @@ describe("SourceErrorCard", () => {
       <SourceErrorCard
         source={GITLAB_SOURCE}
         error={errorFor("gitlab.auth.invalid_token")}
+        onReconnect={onReconnect}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /reconnect/i }));
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(onReconnect).toHaveBeenCalledWith(GITLAB_SOURCE);
+  });
+
+  it.each(ATLASSIAN_ERROR_CODES.map((c) => [c]))(
+    "renders the atlassian copy entry for %s",
+    (code) => {
+      const onReconnect = vi.fn();
+      render(
+        <SourceErrorCard
+          source={GITLAB_SOURCE}
+          error={errorFor(code)}
+          onReconnect={onReconnect}
+        />,
+      );
+      const copy = atlassianErrorCopy[code];
+      expect(screen.getByText(copy.title)).toBeInTheDocument();
+      expect(screen.getByText(copy.body)).toBeInTheDocument();
+      expect(screen.getByText(code)).toBeInTheDocument();
+
+      const reconnect = screen.queryByRole("button", { name: /reconnect/i });
+      if (copy.action === "reconnect") {
+        expect(reconnect).not.toBeNull();
+      } else {
+        expect(reconnect).toBeNull();
+      }
+    },
+  );
+
+  it("Reconnect fires for atlassian auth codes", () => {
+    const onReconnect = vi.fn();
+    render(
+      <SourceErrorCard
+        source={GITLAB_SOURCE}
+        error={errorFor("atlassian.auth.invalid_credentials")}
         onReconnect={onReconnect}
       />,
     );

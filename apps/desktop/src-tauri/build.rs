@@ -99,6 +99,8 @@ fn main() {
         "activity_events_get",
         "shell_open",
         "gitlab_validate_pat",
+        "atlassian_validate_credentials",
+        "atlassian_sources_add",
     ];
     const DEV_COMMANDS: &[&str] = &[
         "settings_get",
@@ -126,6 +128,8 @@ fn main() {
         "activity_events_get",
         "shell_open",
         "gitlab_validate_pat",
+        "atlassian_validate_credentials",
+        "atlassian_sources_add",
         "dev_emit_toast",
         "dev_start_demo_run",
     ];

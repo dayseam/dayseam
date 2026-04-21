@@ -86,6 +86,8 @@ pub const PROD_COMMANDS: &[&str] = &[
     "activity_events_get",
     "shell_open",
     "gitlab_validate_pat",
+    "atlassian_validate_credentials",
+    "atlassian_sources_add",
 ];
 
 /// Dev-only Tauri command identifiers. Compiled in only when the
@@ -207,6 +209,24 @@ fn invalid_config(code: &str, message: impl Into<String>) -> DayseamError {
         code: code.to_string(),
         message: message.into(),
     }
+}
+
+/// Crate-visible wrapper around [`invalid_config`] so the new
+/// `ipc::atlassian` module (DAY-82) can mint the same
+/// `DayseamError::InvalidConfig` shape this module has been minting
+/// for every other command since DAY-6. Keeping the helper private
+/// by default — and exposing it through a `pub(crate)` name — is
+/// deliberate: we want one idiomatic way to raise structural
+/// errors, but only other IPC modules get to reach for it.
+pub(crate) fn invalid_config_public(code: &str, message: impl Into<String>) -> DayseamError {
+    invalid_config(code, message)
+}
+
+/// Crate-visible alias for [`publish_restart_required_toast`], used
+/// by the `ipc::atlassian` module (DAY-82) so both source-adding
+/// surfaces fire the same "restart required" toast on success.
+pub(crate) fn persist_restart_required_toast(state: &AppState) {
+    publish_restart_required_toast(state);
 }
 
 /// Keychain `service` half for every GitLab PAT this app stores.

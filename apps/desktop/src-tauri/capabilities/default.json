@@ -30,6 +30,8 @@
     "allow-activity-events-get",
     "allow-shell-open",
     "allow-gitlab-validate-pat",
+    "allow-atlassian-validate-credentials",
+    "allow-atlassian-sources-add",
     "dialog:allow-open"
   ]
 }

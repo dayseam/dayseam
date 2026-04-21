@@ -31,10 +31,15 @@ export type { SourceKind } from "./generated/SourceKind";
 export type { SourcePatch } from "./generated/SourcePatch";
 export type { SecretRef } from "./generated/SecretRef";
 export type { GitlabValidationResult } from "./generated/GitlabValidationResult";
+export type { AtlassianValidationResult } from "./generated/AtlassianValidationResult";
 export {
   GITLAB_ERROR_CODES,
   type GitlabErrorCode,
 } from "./generated/gitlabErrorCodes";
+export {
+  ATLASSIAN_ERROR_CODES,
+  type AtlassianErrorCode,
+} from "./generated/atlassianErrorCodes";
 
 export type { Sink } from "./generated/Sink";
 export type { SinkCapabilities } from "./generated/SinkCapabilities";
@@ -115,6 +120,8 @@ import type { ReportDraft as ReportDraftT } from "./generated/ReportDraft";
 import type { WriteReceipt as WriteReceiptT } from "./generated/WriteReceipt";
 import type { ActivityEvent as ActivityEventT } from "./generated/ActivityEvent";
 import type { GitlabValidationResult as GitlabValidationResultT } from "./generated/GitlabValidationResult";
+import type { AtlassianValidationResult as AtlassianValidationResultT } from "./generated/AtlassianValidationResult";
+import type { SecretRef as SecretRefT } from "./generated/SecretRef";
 
 /** Opaque handle used at the TS boundary for Tauri's `Channel<T>`. */
 export interface TauriChannel<T> {
@@ -251,6 +258,59 @@ export interface Commands {
     args: { host: string; pat: string };
     result: GitlabValidationResultT;
   };
+  /** One-shot Atlassian credential probe. Calls
+   *  `GET /rest/api/3/myself` with the email + API token over Basic
+   *  auth and, on success, returns the account triple the add-source
+   *  dialog renders in its "Connected as …" confirmation ribbon.
+   *  `apiToken` is transported as a raw JSON string and wrapped on
+   *  the Rust side in an `IpcSecretString` that redacts in `Debug`
+   *  output and zeroes its bytes on drop. Introduced in DAY-82. */
+  atlassian_validate_credentials: {
+    args: { workspaceUrl: string; email: string; apiToken: string };
+    result: AtlassianValidationResultT;
+  };
+  /** Persist one or two Atlassian sources in a single round-trip.
+   *  Four journeys share this one command:
+   *
+   *    - Journey A (shared PAT, both products). Both `enableJira`
+   *      and `enableConfluence` are `true` and `reuseSecretRef` is
+   *      `null`; the command writes one keychain row + two `sources`
+   *      rows that share its `secret_ref`.
+   *    - Journey B (single product). One of the two enable flags is
+   *      `false`; the command writes one keychain row + one `sources`
+   *      row.
+   *    - Journey C mode 1 (reuse existing PAT for the other product).
+   *      `reuseSecretRef` is `Some(_)`; the command writes **no new
+   *      keychain row** — it stamps the supplied `secret_ref` onto
+   *      the new `sources` row so DAY-81's refcount treats the pair
+   *      as shared from the start. `apiToken` MAY be `null` in this
+   *      mode — the dialog is one-click and never re-prompts for the
+   *      PAT.
+   *    - Journey C mode 2 (separate PAT for the other product). Same
+   *      shape as Journey B but from the "add another product" entry
+   *      point; `reuseSecretRef` is `null` and a distinct keychain
+   *      row is written.
+   *
+   *  `accountId` is the opaque `/rest/api/3/myself` account id
+   *  `atlassian_validate_credentials` returned in Journeys A / B /
+   *  C-mode-2, or (in Journey C mode 1) the account id the dialog
+   *  pulled off the existing source's `AtlassianAccountId` identity
+   *  row. The command stamps it onto a fresh `SourceIdentity` per
+   *  new source so the render-stage self-filter recognises events
+   *  this user authored. Returns the freshly-inserted `Source` rows.
+   *  Introduced in DAY-82. */
+  atlassian_sources_add: {
+    args: {
+      workspaceUrl: string;
+      email: string;
+      apiToken: string | null;
+      accountId: string;
+      enableJira: boolean;
+      enableConfluence: boolean;
+      reuseSecretRef: SecretRefT | null;
+    };
+    result: SourceT[];
+  };
   /** Dev-only. Compiled out of release builds via `cfg(feature = "dev-commands")`. */
   dev_emit_toast: {
     args: { event: ToastEvent };
@@ -302,6 +362,8 @@ export const PROD_COMMANDS: readonly CommandName[] = [
   "activity_events_get",
   "shell_open",
   "gitlab_validate_pat",
+  "atlassian_validate_credentials",
+  "atlassian_sources_add",
 ] as const;
 
 /** Dev-only command identifiers. Gated behind the Rust

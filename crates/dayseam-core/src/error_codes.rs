@@ -239,6 +239,40 @@ pub const IPC_GITLAB_KEYCHAIN_WRITE_FAILED: &str = "ipc.gitlab.keychain_write_fa
 /// the PAT overwrites whatever stale/corrupt Keychain row is to blame.
 pub const IPC_GITLAB_KEYCHAIN_READ_FAILED: &str = "ipc.gitlab.keychain_read_failed";
 
+/// `atlassian_sources_add` was called with both `enable_jira` and
+/// `enable_confluence` set to `false`. The Atlassian dialog also
+/// blocks the Submit button in this state (UI-level invariant 1 in
+/// DAY-82), but the IPC layer enforces the same rule so a bespoke
+/// caller cannot round-trip an empty intent into the database.
+pub const IPC_ATLASSIAN_NO_PRODUCT_SELECTED: &str = "ipc.atlassian.no_product_selected";
+
+/// `atlassian_sources_add` / `atlassian_validate_credentials` was
+/// called with an email or API token that is empty or whitespace-only.
+/// Mirrors `IPC_GITLAB_PAT_MISSING`.
+pub const IPC_ATLASSIAN_CREDENTIALS_MISSING: &str = "ipc.atlassian.credentials_missing";
+
+/// The `workspace_url` argument to an Atlassian IPC command failed
+/// to parse as an absolute `https://` URL. The dialog normalises the
+/// user's input client-side before calling IPC (DAY-82 invariant 2),
+/// so this code fires only for hand-crafted callers or a stale
+/// in-memory value; either way the request is rejected before any
+/// network call.
+pub const IPC_ATLASSIAN_INVALID_WORKSPACE_URL: &str = "ipc.atlassian.invalid_workspace_url";
+
+/// Writing the Atlassian API token to the OS keychain failed. Same
+/// rollback + retry semantics as [`IPC_GITLAB_KEYCHAIN_WRITE_FAILED`]:
+/// `atlassian_sources_add` does not persist a partial source row
+/// when this fires.
+pub const IPC_ATLASSIAN_KEYCHAIN_WRITE_FAILED: &str = "ipc.atlassian.keychain_write_failed";
+
+/// `atlassian_sources_add` was called with `reuse_secret_ref =
+/// Some(...)` but the supplied slot is empty in the OS keychain.
+/// This usually means a prior source that owned the slot was
+/// deleted (DAY-81's refcount dropped the row) and the dialog held
+/// stale state; the frontend should fall back to the full "enter a
+/// new token" path.
+pub const IPC_ATLASSIAN_REUSE_SECRET_MISSING: &str = "ipc.atlassian.reuse_secret_missing";
+
 /// `sinks_add` was called with a `config` whose body fails the IPC
 /// layer's structural check (e.g. a `MarkdownFile` sink with an
 /// empty `dest_dirs` list, a non-absolute path, or a path with `..`
