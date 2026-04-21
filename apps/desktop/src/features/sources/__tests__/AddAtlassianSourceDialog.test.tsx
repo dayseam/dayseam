@@ -78,6 +78,7 @@ function freshConfluenceSource(id: string): Source {
     config: {
       Confluence: {
         workspace_url: "https://modulrfinance.atlassian.net",
+        email: "v@modulrfinance.com",
       },
     },
     secret_ref: {

@@ -47,6 +47,16 @@ connector-gitlab = { path = "../../../crates/connectors/connector-gitlab" }
 # connectors are registered through the orchestrator registry, not
 # directly here.
 connector-atlassian-common = { path = "../../../crates/connectors/connector-atlassian-common" }
+# DAY-84 / DOG-v0.2-02. `startup::resolve_registry_config` and
+# `ipc::atlassian::atlassian_sources_add` need to build
+# `Jira|Confluence SourceCfg`s from each persisted row so the
+# orchestrator's `JiraMux` / `ConfluenceMux` both (1) hydrates the
+# row at boot and (2) upserts the row the moment the dialog writes
+# it. v0.2.0 registered both muxes empty and only ever populated
+# them via boot, which bricked `report_generate` between an Add
+# Source and the next app restart.
+connector-jira = { path = "../../../crates/connectors/connector-jira" }
+connector-confluence = { path = "../../../crates/connectors/connector-confluence" }
 # Cross-platform "open this URL in the default handler" helper. Kept
 # as a direct dep of the desktop crate (not the workspace) because
 # only the Tauri shell ever needs to shell out to the OS opener — the

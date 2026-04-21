@@ -60,4 +60,9 @@ export const gitlabErrorCopy: Record<GitlabErrorCode, GitlabErrorCopy> = {
     body: "Dayseam received a payload shape it didn't recognise from this GitLab instance. If this keeps happening, file an issue with the instance version.",
     action: "none",
   },
+  "gitlab.resource_not_found": {
+    title: "GitLab resource not found",
+    body: "GitLab returned 404 for a resource Dayseam expected to exist. The project, user, or event may have been deleted or moved — verify the source configuration and retry.",
+    action: "retry",
+  },
 };

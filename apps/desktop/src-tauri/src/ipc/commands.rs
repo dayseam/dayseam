@@ -21,7 +21,9 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use connector_local_git::{discover_repos, DiscoveryConfig};
-use connectors_sdk::{AuthStrategy, ConnCtx, NoneAuth, NoopRawStore, PatAuth, SystemClock};
+use connectors_sdk::{
+    AuthStrategy, BasicAuth, ConnCtx, NoneAuth, NoopRawStore, PatAuth, SystemClock,
+};
 use dayseam_core::{
     error_codes, ActivityEvent, DayseamError, GitlabValidationResult, LocalRepo, LogEntry,
     LogLevel, Person, ProgressEvent, ReportCompletedEvent, ReportDraft, RunId, SecretRef, Settings,
@@ -269,48 +271,94 @@ pub(crate) fn secret_store_key(sr: &SecretRef) -> String {
 ///   with `gitlab.auth.invalid_token`. The UI renders the Reconnect
 ///   card, which reopens `AddGitlabSourceDialog` in edit-mode for the
 ///   affected source.
+/// * `Jira` / `Confluence` → [`BasicAuth::atlassian`] built from the
+///   per-source `email` on the `SourceConfig::{Jira, Confluence}`
+///   row and the API token read from the keychain slot named by
+///   `secret_ref`. Two sources sharing a single `secret_ref` reuse
+///   the same keychain entry; separate credentials live in separate
+///   slots. Missing/empty slot or missing `email` → `Err(Auth)` with
+///   `atlassian.auth.invalid_credentials`, which the UI renders as a
+///   Reconnect card.
 ///
 /// Introduced in DAY-70. Before this helper, the IPC layer handed
 /// every `ConnCtx` a bare [`NoneAuth`]. For self-hosted GitLab that
 /// meant every `GET /api/v4/users/:id/events` went out without a
 /// `PRIVATE-TOKEN` header and came back `HTTP 200 []`, so
 /// `report_generate` silently produced empty reports with no visible
-/// error — the bug the original user report traced.
+/// error — the bug the original user report traced. DAY-84 extended
+/// the helper to Atlassian (DOG-v0.2-01): v0.2.0 shipped with this
+/// arm still stubbed to `Err(Unsupported)`, so every Atlassian
+/// source the dialog added came back "connector unsupported" at
+/// report time.
 fn build_source_auth(
     state: &AppState,
     source: &Source,
 ) -> Result<Arc<dyn AuthStrategy>, DayseamError> {
     match source.kind {
         SourceKind::LocalGit => Ok(Arc::new(NoneAuth)),
-        // DAY-73 / DAY-74. `SourceKind::{Jira, Confluence}` exist as
-        // enum discriminants, and `connectors-sdk::BasicAuth` now
-        // carries the Atlassian auth shape, but `SourceConfig::Jira` /
-        // `SourceConfig::Confluence` variants do not exist yet — those
-        // land in DAY-76 (Jira) and DAY-79 (Confluence) alongside the
-        // per-source `email` field a `BasicAuth` instance needs to
-        // build its header. Until then, refuse to build an auth
-        // strategy for these kinds (the only way a row of one of
-        // these kinds reaches this code path in v0.2-pre is a DB
-        // hand-edit — the `sources_create` IPC never accepts them).
-        //
-        // The wiring in DAY-76 / DAY-79 will call
-        // `BasicAuth::atlassian(email, token, keychain_service,
-        // keychain_account)` exactly once per source, passing the
-        // per-source `email` from `SourceConfig::{Jira, Confluence}`
-        // and the per-source `(service, account)` from `secret_ref`.
-        // Whether two sources share the same `secret_ref` (shared-PAT
-        // mode) or each carries its own (separate-PAT mode) is
-        // decided by the Add-Source dialog (DAY-82) and enforced at
-        // delete time by the DAY-81 refcount guard.
-        SourceKind::Jira | SourceKind::Confluence => Err(DayseamError::Unsupported {
-            code: error_codes::CONNECTOR_UNSUPPORTED_SYNC_REQUEST.to_string(),
-            message: format!(
-                "source kind {:?} has no connector registered in this build; \
-                 DAY-74 shipped `BasicAuth` in connectors-sdk, DAY-76 / DAY-79 \
-                 add `SourceConfig` variants + wire this arm",
-                source.kind
-            ),
-        }),
+        SourceKind::Jira | SourceKind::Confluence => {
+            let email = match &source.config {
+                SourceConfig::Jira { email, .. } => email.clone(),
+                SourceConfig::Confluence { email, .. } => email.clone(),
+                other => {
+                    return Err(DayseamError::Internal {
+                        code: "ipc.sources.kind_config_mismatch".to_string(),
+                        message: format!(
+                            "source {} has kind {:?} but config {:?}",
+                            source.id,
+                            source.kind,
+                            other.kind()
+                        ),
+                    });
+                }
+            };
+            if email.trim().is_empty() {
+                return Err(DayseamError::Auth {
+                    code: error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS.to_string(),
+                    message: format!(
+                        "no email on file for Atlassian source {} — reconnect to re-enter it",
+                        source.id
+                    ),
+                    retryable: false,
+                    action_hint: Some("reconnect".to_string()),
+                });
+            }
+            let secret_ref = source
+                .secret_ref
+                .clone()
+                .ok_or_else(|| DayseamError::Auth {
+                    code: error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS.to_string(),
+                    message: format!(
+                        "no API token on file for Atlassian source {} — reconnect to add one",
+                        source.id
+                    ),
+                    retryable: false,
+                    action_hint: Some("reconnect".to_string()),
+                })?;
+            let key = secret_store_key(&secret_ref);
+            let token_secret = state
+                .secrets
+                .get(&key)
+                .map_err(|e| DayseamError::Internal {
+                    code: "ipc.atlassian.keychain_read_failed".to_string(),
+                    message: format!("keychain read for {key} failed: {e}"),
+                })?
+                .ok_or_else(|| DayseamError::Auth {
+                    code: error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS.to_string(),
+                    message: format!(
+                        "keychain slot {key} is empty for source {} — reconnect to restore the API token",
+                        source.id
+                    ),
+                    retryable: false,
+                    action_hint: Some("reconnect".to_string()),
+                })?;
+            Ok(Arc::new(BasicAuth::atlassian(
+                email,
+                token_secret.expose_secret().as_str(),
+                secret_ref.keychain_service.clone(),
+                secret_ref.keychain_account.clone(),
+            )))
+        }
         SourceKind::GitLab => {
             let secret_ref = source
                 .secret_ref
@@ -479,6 +527,74 @@ async fn ensure_gitlab_self_identity(
         .await
         .map_err(|e| internal("source_identities.ensure", e))?;
     Ok(())
+}
+
+/// CONS-v0.2-01. Atlassian counterpart to
+/// [`ensure_gitlab_self_identity`]: re-seed the
+/// `AtlassianAccountId` self-identity row for a Jira or Confluence
+/// source, using the `account_id` already on file in
+/// `source_identities` (the one `atlassian_sources_add` stamped at
+/// add-time).
+///
+/// Why this exists even though `atlassian_sources_add` already
+/// seeds the row:
+///
+///   1. **`sources_update` parity.** GitLab's path calls
+///      [`ensure_gitlab_self_identity`] on every update so pre-DAY-71
+///      installs self-heal on the first reconnect. The Atlassian
+///      path had no analogous call, meaning a user whose
+///      `source_identities` row got manually removed (by a DB repair,
+///      a migration accident, or a future "delete linked identities"
+///      UI we haven't built yet) would silently render empty reports
+///      forever. This re-asserts the invariant on every update.
+///   2. **Startup backfill parity.** `backfill_atlassian_self_identities`
+///      calls this helper too; boot is the only other path that can
+///      repair a stale install without asking the user to re-add.
+///
+/// Unlike the GitLab path, the Atlassian `account_id` lives on the
+/// `source_identities` row itself (we don't persist it on
+/// `SourceConfig` — the Atlassian Cloud opaque id is only ever
+/// surfaced by a live `/rest/api/3/myself` probe). So this helper:
+///
+///   * finds the existing `AtlassianAccountId` row for this source,
+///   * re-calls `SourceIdentityRepo::ensure` with its persisted
+///     `external_actor_id` (idempotent by construction), and
+///   * returns `Ok(false)` as an outward-facing "no row yet —
+///     caller's choice whether to treat that as an error".
+///
+/// Callers that can't repair a missing row (startup backfill, pure
+/// label-edit updates) turn `Ok(false)` into a `tracing::warn!` and
+/// keep going; callers that are morally required to have one
+/// (`sources_update` after `atlassian_sources_add` already ran)
+/// treat it as silent-success because the only way to reach that
+/// state is deliberate DB surgery.
+async fn ensure_atlassian_self_identity(
+    state: &AppState,
+    source_id: SourceId,
+) -> Result<bool, DayseamError> {
+    let person = PersonRepo::new(state.pool.clone())
+        .bootstrap_self(SELF_DEFAULT_DISPLAY_NAME)
+        .await
+        .map_err(|e| internal("persons.bootstrap_self", e))?;
+
+    let identity_repo = SourceIdentityRepo::new(state.pool.clone());
+    let rows = identity_repo
+        .list_for_source(person.id, &source_id)
+        .await
+        .map_err(|e| internal("source_identities.list_for_source", e))?;
+
+    let Some(existing) = rows
+        .into_iter()
+        .find(|r| r.kind == SourceIdentityKind::AtlassianAccountId)
+    else {
+        return Ok(false);
+    };
+
+    identity_repo
+        .ensure(&existing)
+        .await
+        .map_err(|e| internal("source_identities.ensure", e))?;
+    Ok(true)
 }
 
 fn publish_restart_required_toast(state: &AppState) {
@@ -799,6 +915,25 @@ pub async fn sources_update(
         let effective_config = patch.config.as_ref().unwrap_or(&existing.config);
         if let SourceConfig::GitLab { user_id, .. } = effective_config {
             ensure_gitlab_self_identity(&state, id, *user_id).await?;
+        }
+    }
+    if matches!(existing.kind, SourceKind::Jira | SourceKind::Confluence) {
+        // CONS-v0.2-01. Same parity argument as GitLab above: a
+        // silent-repair invariant on every update. Unlike GitLab we
+        // can't reconstruct the `account_id` from config alone, so
+        // a missing row can't self-heal here — we downgrade to a
+        // structured warning and let the user's next reconnect pass
+        // through `atlassian_sources_add`, which does seed it.
+        match ensure_atlassian_self_identity(&state, id).await? {
+            true => {}
+            false => {
+                tracing::warn!(
+                    source_id = %id,
+                    source_kind = ?existing.kind,
+                    "sources_update: no AtlassianAccountId identity on file — self-filtering will \
+                     silently skip this source's events until the user reconnects it",
+                );
+            }
         }
     }
 
@@ -2036,6 +2171,192 @@ mod tests {
         assert_eq!(auth.name(), "none");
     }
 
+    // --- Atlassian auth (DOG-v0.2-01 regression) -------------------------
+    //
+    // v0.2.0 shipped `build_source_auth` with the Jira/Confluence arm
+    // stubbed to `Err(DayseamError::Unsupported)` — the dialog would
+    // happily add Atlassian sources and validate credentials, and then
+    // the first `report_generate` returned
+    // "connector.unsupported_sync_request" with no pointer back to the
+    // auth helper that refused to build a strategy. These tests pin
+    // the fixed contract: the arm builds a `BasicAuth` from the
+    // per-source email + keychain-stored API token, and errors out
+    // via the `atlassian.auth.invalid_credentials` reconnect flow when
+    // either is missing.
+
+    fn atlassian_secret_ref() -> SecretRef {
+        SecretRef {
+            keychain_service: "dayseam.atlassian".into(),
+            keychain_account: "workspace:acme".into(),
+        }
+    }
+
+    fn jira_source(id: Uuid, email: &str, secret_ref: Option<SecretRef>) -> Source {
+        Source {
+            id,
+            kind: SourceKind::Jira,
+            label: "Jira — acme".into(),
+            config: SourceConfig::Jira {
+                workspace_url: "https://acme.atlassian.net".into(),
+                email: email.into(),
+            },
+            secret_ref,
+            created_at: Utc::now(),
+            last_sync_at: None,
+            last_health: SourceHealth::unchecked(),
+        }
+    }
+
+    fn confluence_source(id: Uuid, email: &str, secret_ref: Option<SecretRef>) -> Source {
+        Source {
+            id,
+            kind: SourceKind::Confluence,
+            label: "Confluence — acme".into(),
+            config: SourceConfig::Confluence {
+                workspace_url: "https://acme.atlassian.net".into(),
+                email: email.into(),
+            },
+            secret_ref,
+            created_at: Utc::now(),
+            last_sync_at: None,
+            last_health: SourceHealth::unchecked(),
+        }
+    }
+
+    #[tokio::test]
+    async fn build_source_auth_builds_basic_auth_for_jira_source() {
+        let (state, _dir) = make_state().await;
+        let sr = atlassian_secret_ref();
+        state
+            .secrets
+            .put(
+                &secret_store_key(&sr),
+                Secret::new("atlassian-api-token".into()),
+            )
+            .expect("put");
+        let source = jira_source(Uuid::new_v4(), "me@acme.com", Some(sr.clone()));
+        let auth = build_source_auth(&state, &source).expect("build auth");
+        assert_eq!(auth.name(), "basic");
+        assert_eq!(
+            auth.descriptor(),
+            connectors_sdk::AuthDescriptor::Basic {
+                email: "me@acme.com".into(),
+                keychain_service: sr.keychain_service.clone(),
+                keychain_account: sr.keychain_account.clone(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn build_source_auth_builds_basic_auth_for_confluence_source() {
+        // Journey C in the Add-Source dialog (Confluence-only) must
+        // work even without a paired Jira sibling. v0.2.0 stored the
+        // Confluence row without an email field, so this case was
+        // impossible to service; DAY-84 added `email` to
+        // `SourceConfig::Confluence` precisely for this.
+        let (state, _dir) = make_state().await;
+        let sr = atlassian_secret_ref();
+        state
+            .secrets
+            .put(
+                &secret_store_key(&sr),
+                Secret::new("atlassian-api-token".into()),
+            )
+            .expect("put");
+        let source = confluence_source(Uuid::new_v4(), "me@acme.com", Some(sr.clone()));
+        let auth = build_source_auth(&state, &source).expect("build auth");
+        assert_eq!(auth.name(), "basic");
+        assert_eq!(
+            auth.descriptor(),
+            connectors_sdk::AuthDescriptor::Basic {
+                email: "me@acme.com".into(),
+                keychain_service: sr.keychain_service.clone(),
+                keychain_account: sr.keychain_account.clone(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn build_source_auth_errors_when_atlassian_secret_ref_missing() {
+        let (state, _dir) = make_state().await;
+        let source = jira_source(Uuid::new_v4(), "me@acme.com", None);
+        let err = build_source_auth(&state, &source).expect_err("must error");
+        match err {
+            DayseamError::Auth {
+                code, action_hint, ..
+            } => {
+                assert_eq!(code, error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS);
+                assert_eq!(action_hint.as_deref(), Some("reconnect"));
+            }
+            other => panic!("expected Auth, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn build_source_auth_errors_when_atlassian_keychain_slot_empty() {
+        let (state, _dir) = make_state().await;
+        let source = confluence_source(Uuid::new_v4(), "me@acme.com", Some(atlassian_secret_ref()));
+        let err = build_source_auth(&state, &source).expect_err("must error");
+        match err {
+            DayseamError::Auth {
+                code, action_hint, ..
+            } => {
+                assert_eq!(code, error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS);
+                assert_eq!(action_hint.as_deref(), Some("reconnect"));
+            }
+            other => panic!("expected Auth, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn build_source_auth_errors_when_atlassian_email_is_blank() {
+        // A v0.2.0 Confluence row deserialised with
+        // `#[serde(default)] email = ""` lands here; surface a clear
+        // reconnect error instead of letting `BasicAuth::atlassian`
+        // encode an empty-email header upstream.
+        let (state, _dir) = make_state().await;
+        let sr = atlassian_secret_ref();
+        state
+            .secrets
+            .put(
+                &secret_store_key(&sr),
+                Secret::new("atlassian-api-token".into()),
+            )
+            .expect("put");
+        let source = confluence_source(Uuid::new_v4(), "", Some(sr));
+        let err = build_source_auth(&state, &source).expect_err("must error");
+        match err {
+            DayseamError::Auth {
+                code, action_hint, ..
+            } => {
+                assert_eq!(code, error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS);
+                assert_eq!(action_hint.as_deref(), Some("reconnect"));
+            }
+            other => panic!("expected Auth, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn build_source_auth_returns_none_auth_for_local_git_post_atlassian() {
+        // Sanity: adding the Atlassian arm did not break the earlier
+        // LocalGit short-circuit.
+        let (state, _dir) = make_state().await;
+        let source = Source {
+            id: Uuid::new_v4(),
+            kind: SourceKind::LocalGit,
+            label: "work repos".into(),
+            config: SourceConfig::LocalGit {
+                scan_roots: vec![PathBuf::from("/tmp/repos")],
+            },
+            secret_ref: None,
+            created_at: Utc::now(),
+            last_sync_at: None,
+            last_health: SourceHealth::unchecked(),
+        };
+        let auth = build_source_auth(&state, &source).expect("local-git auth");
+        assert_eq!(auth.name(), "none");
+    }
+
     #[tokio::test]
     async fn best_effort_delete_secret_clears_keychain_slot() {
         let (state, _dir) = make_state().await;
@@ -2285,6 +2606,168 @@ mod tests {
             .expect("self");
         let resolved = SourceIdentityRepo::new(state.pool.clone())
             .resolve_person_id(Some(&source_id), SourceIdentityKind::GitLabUserId, "777")
+            .await
+            .expect("resolve");
+        assert_eq!(resolved, Some(person.id));
+    }
+
+    // --- CONS-v0.2-01: Atlassian self-identity re-ensure ---------------
+
+    /// Persist a minimally-valid Jira [`Source`] row plus a seeded
+    /// `AtlassianAccountId` [`SourceIdentity`] — the shape
+    /// `atlassian_sources_add` leaves behind on the happy path.
+    async fn seed_atlassian_source_with_identity(
+        state: &AppState,
+        source_id: Uuid,
+        kind: SourceKind,
+        account_id: &str,
+    ) {
+        let config = match kind {
+            SourceKind::Jira => SourceConfig::Jira {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: "me@acme.com".into(),
+            },
+            SourceKind::Confluence => SourceConfig::Confluence {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: "me@acme.com".into(),
+            },
+            other => panic!("seed_atlassian_source_with_identity: non-atlassian kind {other:?}"),
+        };
+        SourceRepo::new(state.pool.clone())
+            .insert(&Source {
+                id: source_id,
+                kind,
+                label: "Acme".into(),
+                config,
+                secret_ref: None,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("insert atlassian source fixture");
+
+        let person = PersonRepo::new(state.pool.clone())
+            .bootstrap_self(SELF_DEFAULT_DISPLAY_NAME)
+            .await
+            .expect("self person");
+        SourceIdentityRepo::new(state.pool.clone())
+            .ensure(&SourceIdentity {
+                id: Uuid::new_v4(),
+                person_id: person.id,
+                source_id: Some(source_id),
+                kind: SourceIdentityKind::AtlassianAccountId,
+                external_actor_id: account_id.to_string(),
+            })
+            .await
+            .expect("seed atlassian identity fixture");
+    }
+
+    #[tokio::test]
+    async fn ensure_atlassian_self_identity_reseeds_existing_row_idempotently() {
+        // The common case: atlassian_sources_add already stamped the
+        // row; sources_update / startup backfill just re-assert it.
+        // A regression that makes ensure() throw on the re-assert
+        // would regress every v0.2 atlassian install to empty
+        // reports, so the idempotency guarantee gets its own test.
+        let (state, _dir) = make_state().await;
+        let source_id = Uuid::new_v4();
+        seed_atlassian_source_with_identity(&state, source_id, SourceKind::Jira, "557058:abc")
+            .await;
+
+        let first = ensure_atlassian_self_identity(&state, source_id)
+            .await
+            .expect("first ensure");
+        assert!(first, "row exists on disk, ensure must report true");
+        let second = ensure_atlassian_self_identity(&state, source_id)
+            .await
+            .expect("second ensure must be a no-op, not an error");
+        assert!(second);
+
+        let person = PersonRepo::new(state.pool.clone())
+            .bootstrap_self(SELF_DEFAULT_DISPLAY_NAME)
+            .await
+            .expect("self");
+        let rows = SourceIdentityRepo::new(state.pool.clone())
+            .list_for_source(person.id, &source_id)
+            .await
+            .expect("list");
+        assert_eq!(
+            rows.iter()
+                .filter(|r| r.kind == SourceIdentityKind::AtlassianAccountId
+                    && r.external_actor_id == "557058:abc")
+                .count(),
+            1,
+            "repeat ensure must not duplicate the atlassian identity"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_atlassian_self_identity_returns_false_when_no_identity_on_file() {
+        // The manual-DB-surgery path: the source row is still there
+        // but the identity row is gone. The helper must return
+        // Ok(false) (not Err) so callers can decide whether to warn
+        // or re-add-with-API. A regression that changes the return
+        // type to an error would make sources_update fail hard for
+        // users in that state.
+        let (state, _dir) = make_state().await;
+        let source_id = Uuid::new_v4();
+        SourceRepo::new(state.pool.clone())
+            .insert(&Source {
+                id: source_id,
+                kind: SourceKind::Jira,
+                label: "Orphan".into(),
+                config: SourceConfig::Jira {
+                    workspace_url: "https://acme.atlassian.net/".into(),
+                    email: "me@acme.com".into(),
+                },
+                secret_ref: None,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("seed orphan source");
+
+        let result = ensure_atlassian_self_identity(&state, source_id)
+            .await
+            .expect("orphan source must not error");
+        assert!(
+            !result,
+            "missing identity must report Ok(false) so caller can warn rather than fail",
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_atlassian_self_identity_resolves_via_identity_repo() {
+        // Parity with the GitLab resolve test: after ensure, the
+        // identity is reachable via resolve_person_id keyed on the
+        // same (source, kind, external_actor_id) the render-stage
+        // filter uses. If this ever stops returning Some(self), the
+        // self-filtering bug has regressed.
+        let (state, _dir) = make_state().await;
+        let source_id = Uuid::new_v4();
+        seed_atlassian_source_with_identity(
+            &state,
+            source_id,
+            SourceKind::Confluence,
+            "557058:xyz",
+        )
+        .await;
+        ensure_atlassian_self_identity(&state, source_id)
+            .await
+            .expect("ensure");
+
+        let person = PersonRepo::new(state.pool.clone())
+            .bootstrap_self(SELF_DEFAULT_DISPLAY_NAME)
+            .await
+            .expect("self");
+        let resolved = SourceIdentityRepo::new(state.pool.clone())
+            .resolve_person_id(
+                Some(&source_id),
+                SourceIdentityKind::AtlassianAccountId,
+                "557058:xyz",
+            )
             .await
             .expect("resolve");
         assert_eq!(resolved, Some(person.id));

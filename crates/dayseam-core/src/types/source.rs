@@ -96,19 +96,26 @@ pub enum SourceConfig {
     /// connector joins `/wiki/rest/api/*` and `/wiki/api/v2/*` onto
     /// it, but the auth probe (`GET /rest/api/3/myself`) shares the
     /// Jira endpoint because a single Atlassian Cloud credential
-    /// authenticates both products. That is why this row does **not**
-    /// carry its own `email`: the Add-Source dialog (DAY-82) attaches
-    /// each Confluence row to the same `secret_ref` + email the
-    /// paired `Jira` row already knows about, so the walker hydrates
-    /// a `BasicAuth` from the sibling `SourceConfig::Jira` row when
-    /// the two are registered as a shared-credential pair. Separate
-    /// credentials (one keychain entry per product) are a planned
-    /// follow-up; the shape here already supports either by keeping
-    /// the email out of this row.
+    /// authenticates both products.
     ///
-    /// Added in DAY-79 (v0.2 Atlassian Confluence scaffold).
+    /// `email` is the account identity the per-source
+    /// [`connectors_sdk::BasicAuth`] is constructed from at the IPC
+    /// layer. Mirrors [`Self::Jira::email`] so a Confluence-only
+    /// source (Journey C in the Add-Source dialog) can authenticate
+    /// without relying on a paired Jira sibling for the email —
+    /// v0.2.0 shipped without this field, which broke every
+    /// Confluence-only install the moment it tried to run a report
+    /// (DOG-v0.2-01 in the v0.2.1 capstone). The `#[serde(default)]`
+    /// keeps `sources_list` decoding any stray v0.2.0 row; the IPC
+    /// auth builder then returns a clear `confluence.auth.*` error
+    /// that routes the UI to the Reconnect flow.
+    ///
+    /// Added in DAY-79 (v0.2 Atlassian Confluence scaffold); `email`
+    /// added in DAY-84 (v0.2.1 capstone).
     Confluence {
         workspace_url: String,
+        #[serde(default)]
+        email: String,
     },
 }
 

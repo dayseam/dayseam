@@ -16,6 +16,19 @@ pub const GITLAB_RATE_LIMITED: &str = "gitlab.rate_limited";
 pub const GITLAB_UPSTREAM_5XX: &str = "gitlab.upstream_5xx";
 pub const GITLAB_UPSTREAM_SHAPE_CHANGED: &str = "gitlab.upstream_shape_changed";
 
+/// CONS-v0.2-02: a GitLab endpoint returned 404. The most common
+/// cause in the dogfood path is a `base_url` that points at a host
+/// that doesn't serve GitLab, a project path that no longer exists,
+/// or a PAT whose scope can see the group but not a given project
+/// (GitLab surfaces a scope miss as 404 rather than 403 for
+/// projects inside private groups). Emitted as
+/// [`DayseamError::Network`] so the UI surfaces a "check the URL /
+/// reconnect" card rather than silently remapping to
+/// `gitlab.upstream_5xx` (which would hint at a transient outage
+/// and make the user wait for nothing). Mirrors
+/// [`ATLASSIAN_CLOUD_RESOURCE_NOT_FOUND`] at the taxonomy level.
+pub const GITLAB_RESOURCE_NOT_FOUND: &str = "gitlab.resource_not_found";
+
 // -------- Atlassian (Jira + Confluence) connectors -------------------------
 //
 // Added in DAY-73. Jira and Confluence share one Atlassian Cloud
@@ -319,6 +332,7 @@ pub const ALL: &[&str] = &[
     GITLAB_RATE_LIMITED,
     GITLAB_UPSTREAM_5XX,
     GITLAB_UPSTREAM_SHAPE_CHANGED,
+    GITLAB_RESOURCE_NOT_FOUND,
     ATLASSIAN_AUTH_INVALID_CREDENTIALS,
     ATLASSIAN_AUTH_MISSING_SCOPE,
     ATLASSIAN_CLOUD_RESOURCE_NOT_FOUND,

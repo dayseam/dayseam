@@ -1053,7 +1053,9 @@ version = "0.2.0"
 dependencies = [
  "chrono",
  "connector-atlassian-common",
+ "connector-confluence",
  "connector-gitlab",
+ "connector-jira",
  "connector-local-git",
  "connectors-sdk",
  "dayseam-core",

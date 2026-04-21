@@ -67,14 +67,32 @@ describe("normaliseWorkspaceUrl", () => {
     expect(normaliseWorkspaceUrl("modulrfinance!").kind).toBe("invalid");
   });
 
-  it("accepts a full custom-host shape like 'example.com'", () => {
-    // A hostname with a dot and no scheme is expanded to https://
-    // rather than treated as a slug — covers the user who pastes
-    // the bare host of a custom Atlassian domain.
-    expect(normaliseWorkspaceUrl("example.com")).toEqual({
-      kind: "ok",
-      url: "https://example.com",
-    });
+  // DOG-v0.2-03 (security). The pre-fix dialog accepted any host
+  // that parsed as a URL — pasting `example.com` or
+  // `attacker.example` would shape into a perfectly stored
+  // `SourceConfig::*.workspace_url`, and the next
+  // `atlassian_validate_credentials` round-trip would post the
+  // user's API token to that origin. The post-fix rule: only hosts
+  // under the `.atlassian.net` apex are accepted.
+  it("rejects hosts outside the .atlassian.net apex (security)", () => {
+    expect(normaliseWorkspaceUrl("example.com").kind).toBe("invalid");
+    expect(normaliseWorkspaceUrl("https://attacker.example/").kind).toBe(
+      "invalid",
+    );
+    expect(
+      normaliseWorkspaceUrl("https://acme.atlassian.net.attacker.example/")
+        .kind,
+    ).toBe("invalid");
+    expect(
+      normaliseWorkspaceUrl("https://atlassian.net.attacker.example/").kind,
+    ).toBe("invalid");
+  });
+
+  it("accepts the .atlassian.net apex itself, case-insensitively", () => {
+    expect(normaliseWorkspaceUrl("https://Acme.Atlassian.NET").kind).toBe(
+      "ok",
+    );
+    expect(normaliseWorkspaceUrl("https://atlassian.net").kind).toBe("ok");
   });
 });
 

@@ -83,6 +83,7 @@ pub async fn seed_source(
             },
             SourceKind::Confluence => SourceConfig::Confluence {
                 workspace_url: "https://mock.atlassian.net".to_string(),
+                email: "vedanth@mock.atlassian.net".to_string(),
             },
         },
         secret_ref: None,

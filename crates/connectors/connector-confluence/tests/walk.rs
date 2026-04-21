@@ -783,3 +783,74 @@ fn assert_request_expands_atlas_doc_format(req: &Request) {
         "request expand must include content.body.atlas_doc_format: {url}"
     );
 }
+
+// ---- 9. TST-v0.2-01: auth failures surface typed DayseamError::Auth ----
+//
+// Parity with the new Jira 401/403 tests: the Confluence walker
+// must remap upstream `401` to `atlassian.auth.invalid_credentials`
+// and `403` to `atlassian.auth.missing_scope` rather than silently
+// bleed an SDK-layer code (which the UI doesn't key on) or,
+// worse, swallow the failure into an empty outcome. The dogfood
+// path relies on these exact codes for the reconnect toast copy.
+
+#[tokio::test]
+async fn walk_day_maps_401_to_atlassian_auth_invalid_credentials() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/wiki/rest/api/search"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("unauthorized"))
+        .mount(&server)
+        .await;
+
+    let err = walk_day(
+        &http_for_tests(),
+        auth_for_tests(),
+        &workspace(&server),
+        source_id(),
+        &self_identity(),
+        day(),
+        utc(),
+        &CancellationToken::new(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("401 must surface as an auth error, not a silent empty outcome");
+
+    assert_eq!(err.code(), error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS);
+    assert!(
+        matches!(err, DayseamError::Auth { .. }),
+        "expected Auth variant, got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn walk_day_maps_403_to_atlassian_auth_missing_scope() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/wiki/rest/api/search"))
+        .respond_with(ResponseTemplate::new(403).set_body_string("forbidden"))
+        .mount(&server)
+        .await;
+
+    let err = walk_day(
+        &http_for_tests(),
+        auth_for_tests(),
+        &workspace(&server),
+        source_id(),
+        &self_identity(),
+        day(),
+        utc(),
+        &CancellationToken::new(),
+        None,
+        None,
+    )
+    .await
+    .expect_err("403 must surface as a missing-scope auth error");
+
+    assert_eq!(err.code(), error_codes::ATLASSIAN_AUTH_MISSING_SCOPE);
+    assert!(
+        matches!(err, DayseamError::Auth { .. }),
+        "expected Auth variant, got: {err:?}"
+    );
+}

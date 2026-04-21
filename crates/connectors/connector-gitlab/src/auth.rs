@@ -72,10 +72,14 @@ pub async fn validate_pat(host: &str, pat: &str) -> Result<GitlabUserInfo, Dayse
         return Ok(user);
     }
 
-    // 401 → invalid_token, 403 → missing_scope, 5xx → upstream_5xx.
-    // A 429 from /user is out-of-band and mapped to upstream_5xx so
-    // it surfaces as "try again" rather than silently retrying inside
-    // an interactive probe.
+    // 401 → invalid_token, 403 → missing_scope, 404 → resource_not_found,
+    // 429 → rate_limited, 5xx → upstream_5xx. The `map_status` helper
+    // owns the routing table; we just hand it the status and a
+    // context string. CONS-v0.2-02: the explicit 429 arm below is
+    // now redundant (map_status handles it), but we keep it as a
+    // defensive layer — a future refactor that accidentally turns
+    // the map_status 429 arm into the `_` catch-all would still be
+    // caught here.
     if status == StatusCode::TOO_MANY_REQUESTS {
         return Err(GitlabUpstreamError::RateLimited {
             retry_after_secs: 0,
