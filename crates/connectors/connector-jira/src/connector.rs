@@ -26,27 +26,44 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
-use connectors_sdk::{ConnCtx, SourceConnector, SyncRequest, SyncResult};
-use dayseam_core::{error_codes, DayseamError, SourceHealth, SourceId, SourceKind};
+use chrono::{FixedOffset, Utc};
+use connectors_sdk::{ConnCtx, SourceConnector, SyncRequest, SyncResult, SyncStats};
+use dayseam_core::{error_codes, DayseamError, ProgressPhase, SourceHealth, SourceId, SourceKind};
 use tokio::sync::RwLock;
 
 use crate::config::JiraConfig;
+use crate::walk::walk_day;
 
 /// One configured Jira source. Holds only the per-source
 /// configuration that does **not** live in the [`connectors_sdk::BasicAuth`]
 /// attached to each `ConnCtx`. Cloning is cheap — `JiraConfig` is a
 /// `Clone` of two short strings.
+///
+/// `local_tz` is the user's configured timezone, threaded through from
+/// `JiraMux::new` so the JQL walker can compute the correct UTC window
+/// for a local day (DAY-77).
 #[derive(Debug, Clone)]
 pub struct JiraConnector {
     config: JiraConfig,
+    local_tz: FixedOffset,
 }
 
 impl JiraConnector {
-    /// Construct a connector handle for a single Jira source.
+    /// Construct a connector handle for a single Jira source. `local_tz`
+    /// defaults to UTC when the connector is built outside a
+    /// [`JiraMux`]; production paths always go through the mux and
+    /// inherit the orchestrator's configured offset.
     #[must_use]
     pub fn new(config: JiraConfig) -> Self {
-        Self { config }
+        Self::with_local_tz(config, FixedOffset::east_opt(0).expect("0 offset"))
+    }
+
+    /// Construct a connector handle with an explicit `local_tz`. The
+    /// mux uses this variant so every connector in the map shares
+    /// whatever timezone the orchestrator was booted with.
+    #[must_use]
+    pub fn with_local_tz(config: JiraConfig, local_tz: FixedOffset) -> Self {
+        Self { config, local_tz }
     }
 
     /// Borrow the configured workspace URL + email. Exposed for the
@@ -112,17 +129,64 @@ impl SourceConnector for JiraConnector {
     async fn sync(&self, ctx: &ConnCtx, request: SyncRequest) -> Result<SyncResult, DayseamError> {
         ctx.bail_if_cancelled()?;
 
-        // DAY-76 scaffold: the walker lands in DAY-77. Until then,
-        // every request shape — `Day`, `Range`, `Since` — is
-        // uniformly `Unsupported`. This mirrors how `LocalGit` /
-        // `GitLab` v0.1 handled `Range` / `Since` before they grew
-        // range-aware walkers.
-        let _ = request;
-        Err(DayseamError::Unsupported {
-            code: error_codes::CONNECTOR_UNSUPPORTED_SYNC_REQUEST.to_string(),
-            message:
-                "jira connector scaffold (DAY-76): SyncRequest::Day lands in DAY-77's JQL walker"
-                    .to_string(),
+        let day = match request {
+            SyncRequest::Day(d) => d,
+            SyncRequest::Range { .. } | SyncRequest::Since(_) => {
+                return Err(DayseamError::Unsupported {
+                    code: error_codes::CONNECTOR_UNSUPPORTED_SYNC_REQUEST.to_string(),
+                    message: "jira connector v0.2 only services SyncRequest::Day; \
+                             Range + Since land with v0.3's incremental scheduler"
+                        .to_string(),
+                });
+            }
+        };
+
+        ctx.progress.send(
+            Some(ctx.source_id),
+            ProgressPhase::Starting {
+                message: format!("Fetching Jira activity for {day}"),
+            },
+        );
+
+        let outcome = walk_day(
+            &ctx.http,
+            ctx.auth.clone(),
+            &self.config.workspace_url,
+            ctx.source_id,
+            &ctx.source_identities,
+            day,
+            self.local_tz,
+            &ctx.cancel,
+            Some(&ctx.progress),
+            Some(&ctx.logs),
+        )
+        .await?;
+
+        ctx.progress.send(
+            Some(ctx.source_id),
+            ProgressPhase::Completed {
+                message: format!(
+                    "Jira fetched {} issue(s), emitted {} event(s)",
+                    outcome.fetched_count,
+                    outcome.events.len(),
+                ),
+            },
+        );
+
+        let stats = SyncStats {
+            fetched_count: outcome.fetched_count,
+            filtered_by_identity: outcome.filtered_by_identity,
+            filtered_by_date: outcome.filtered_by_date,
+            http_retries: 0,
+        };
+
+        Ok(SyncResult {
+            events: outcome.events,
+            artifacts: Vec::new(),
+            checkpoint: None,
+            stats,
+            warnings: Vec::new(),
+            raw_refs: Vec::new(),
         })
     }
 }
@@ -142,28 +206,44 @@ pub struct JiraSourceCfg {
 /// Semantically identical to [`connector_gitlab::GitlabMux`]: an
 /// `Arc<RwLock<HashMap<SourceId, JiraConnector>>>` the Add-Source /
 /// Reconnect flow can upsert into without rebuilding the registry.
-#[derive(Debug, Clone, Default)]
+/// `local_tz` is shared by every inner connector so a single user
+/// timezone applies across all Jira workspaces.
+#[derive(Debug, Clone)]
 pub struct JiraMux {
+    local_tz: FixedOffset,
     inner: Arc<RwLock<HashMap<SourceId, JiraConnector>>>,
+}
+
+impl Default for JiraMux {
+    fn default() -> Self {
+        Self::new(
+            FixedOffset::east_opt(0).expect("0 offset"),
+            std::iter::empty(),
+        )
+    }
 }
 
 impl JiraMux {
     /// Build a mux pre-populated with `sources`. Empty iterators are
     /// the common case at boot on a brand-new install.
     #[must_use]
-    pub fn new(sources: impl IntoIterator<Item = JiraSourceCfg>) -> Self {
+    pub fn new(local_tz: FixedOffset, sources: impl IntoIterator<Item = JiraSourceCfg>) -> Self {
         let mut map = HashMap::new();
         for cfg in sources {
-            map.insert(cfg.source_id, JiraConnector::new(cfg.config));
+            map.insert(
+                cfg.source_id,
+                JiraConnector::with_local_tz(cfg.config, local_tz),
+            );
         }
         Self {
+            local_tz,
             inner: Arc::new(RwLock::new(map)),
         }
     }
 
     /// Add or replace the inner connector for `cfg.source_id`.
     pub async fn upsert(&self, cfg: JiraSourceCfg) {
-        let conn = JiraConnector::new(cfg.config);
+        let conn = JiraConnector::with_local_tz(cfg.config, self.local_tz);
         self.inner.write().await.insert(cfg.source_id, conn);
     }
 

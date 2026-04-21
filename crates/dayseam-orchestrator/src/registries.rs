@@ -179,7 +179,10 @@ pub fn default_registries(cfg: DefaultRegistryConfig) -> (ConnectorRegistry, Sin
     // Jira sources, so the DAY-82 Add-Source flow can `upsert` into
     // a live mux without rebuilding the registry — mirroring the
     // GitLab path above.
-    connectors.insert(SourceKind::Jira, Arc::new(JiraMux::new(cfg.jira_sources)));
+    connectors.insert(
+        SourceKind::Jira,
+        Arc::new(JiraMux::new(cfg.local_tz, cfg.jira_sources)),
+    );
 
     let mut sinks = SinkRegistry::new();
     sinks.insert(
