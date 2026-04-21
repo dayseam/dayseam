@@ -75,6 +75,8 @@ const commandSurface: Record<keyof Commands, true> = {
   activity_events_get: true,
   shell_open: true,
   gitlab_validate_pat: true,
+  atlassian_validate_credentials: true,
+  atlassian_sources_add: true,
   dev_emit_toast: true,
   dev_start_demo_run: true,
 };

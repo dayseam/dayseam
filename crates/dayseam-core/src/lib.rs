@@ -28,7 +28,7 @@ pub use types::{
     settings::{Settings, SettingsPatch, ThemePreference},
     sink::{CapabilityConflict, Sink, SinkCapabilities, SinkConfig, SinkKind, WriteReceipt},
     source::{
-        GitlabValidationResult, SecretRef, Source, SourceConfig, SourceHealth, SourceId,
-        SourceKind, SourcePatch,
+        AtlassianValidationResult, GitlabValidationResult, SecretRef, Source, SourceConfig,
+        SourceHealth, SourceId, SourceKind, SourcePatch,
     },
 };

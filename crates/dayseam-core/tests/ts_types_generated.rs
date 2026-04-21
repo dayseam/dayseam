@@ -16,13 +16,14 @@ use std::process::Command;
 
 use dayseam_core::{
     error_codes, ActivityEvent, ActivityKind, Actor, Artifact, ArtifactId, ArtifactKind,
-    ArtifactPayload, DayseamError, EntityRef, Evidence, GitlabValidationResult, Identity, Link,
-    LocalRepo, LogEntry, LogEvent, LogLevel, PerSourceState, Person, Privacy, ProgressEvent,
-    ProgressPhase, RawRef, RenderedBullet, RenderedSection, ReportCompletedEvent, ReportDraft,
-    RunId, RunStatus, SecretRef, Settings, SettingsPatch, Sink, SinkCapabilities, SinkConfig,
-    SinkKind, Source, SourceConfig, SourceHealth, SourceIdentity, SourceIdentityKind, SourceKind,
-    SourcePatch, SourceRunState, SyncRun, SyncRunCancelReason, SyncRunStatus, SyncRunTrigger,
-    ThemePreference, ToastEvent, ToastSeverity, WriteReceipt,
+    ArtifactPayload, AtlassianValidationResult, DayseamError, EntityRef, Evidence,
+    GitlabValidationResult, Identity, Link, LocalRepo, LogEntry, LogEvent, LogLevel,
+    PerSourceState, Person, Privacy, ProgressEvent, ProgressPhase, RawRef, RenderedBullet,
+    RenderedSection, ReportCompletedEvent, ReportDraft, RunId, RunStatus, SecretRef, Settings,
+    SettingsPatch, Sink, SinkCapabilities, SinkConfig, SinkKind, Source, SourceConfig,
+    SourceHealth, SourceIdentity, SourceIdentityKind, SourceKind, SourcePatch, SourceRunState,
+    SyncRun, SyncRunCancelReason, SyncRunStatus, SyncRunTrigger, ThemePreference, ToastEvent,
+    ToastSeverity, WriteReceipt,
 };
 use ts_rs::{Config, TS};
 
@@ -63,6 +64,7 @@ fn export_all(out_dir: &Path) {
     SourcePatch::export_all(&cfg).expect("export SourcePatch");
     SecretRef::export_all(&cfg).expect("export SecretRef");
     GitlabValidationResult::export_all(&cfg).expect("export GitlabValidationResult");
+    AtlassianValidationResult::export_all(&cfg).expect("export AtlassianValidationResult");
 
     Sink::export_all(&cfg).expect("export Sink");
     SinkKind::export_all(&cfg).expect("export SinkKind");
@@ -100,6 +102,7 @@ fn export_all(out_dir: &Path) {
     DayseamError::export_all(&cfg).expect("export DayseamError");
 
     export_gitlab_error_codes(out_dir);
+    export_atlassian_error_codes(out_dir);
 }
 
 /// Regenerate `gitlabErrorCodes.ts` so the frontend parity test always sees
@@ -128,6 +131,43 @@ fn export_gitlab_error_codes(out_dir: &std::path::Path) {
     body.push_str("] as const;\n\n");
     body.push_str("export type GitlabErrorCode = (typeof GITLAB_ERROR_CODES)[number];\n");
     std::fs::write(out_dir.join("gitlabErrorCodes.ts"), body).expect("write gitlabErrorCodes.ts");
+}
+
+/// Regenerate `atlassianErrorCodes.ts` with every `atlassian.*`,
+/// `jira.*`, and `confluence.*` code from `error_codes::ALL`. The
+/// Atlassian stack splits its codes across three prefixes — shared
+/// auth / cloud / ADF concerns sit under `atlassian.`, per-product
+/// walker failures sit under `jira.` or `confluence.` — so the
+/// generated set is a union of those three families rather than a
+/// single prefix filter. `SourceErrorCard` keys its copy lookup off
+/// this literal array, which keeps the "every code has copy" parity
+/// test honest when a new code is added in Rust.
+fn export_atlassian_error_codes(out_dir: &std::path::Path) {
+    let codes: Vec<&str> = error_codes::ALL
+        .iter()
+        .copied()
+        .filter(|c| {
+            c.starts_with("atlassian.") || c.starts_with("jira.") || c.starts_with("confluence.")
+        })
+        .collect();
+    let mut body = String::new();
+    body.push_str("// AUTO-GENERATED FILE. Do not edit by hand.\n");
+    body.push_str(
+        "// Regenerated from `dayseam_core::error_codes::ALL` by the\n\
+         // `ts_types_generated` test. Includes every `atlassian.*`,\n\
+         // `jira.*`, and `confluence.*` code — the three-prefix split\n\
+         // the Atlassian stack uses. Add the copy entry in\n\
+         // `src/features/sources/atlassianErrorCopy.ts` whenever this\n\
+         // list grows, otherwise the frontend parity test fails.\n\n",
+    );
+    body.push_str("export const ATLASSIAN_ERROR_CODES = [\n");
+    for code in &codes {
+        body.push_str(&format!("  \"{code}\",\n"));
+    }
+    body.push_str("] as const;\n\n");
+    body.push_str("export type AtlassianErrorCode = (typeof ATLASSIAN_ERROR_CODES)[number];\n");
+    std::fs::write(out_dir.join("atlassianErrorCodes.ts"), body)
+        .expect("write atlassianErrorCodes.ts");
 }
 
 fn repo_root() -> PathBuf {

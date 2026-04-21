@@ -185,3 +185,30 @@ pub struct GitlabValidationResult {
     pub user_id: i64,
     pub username: String,
 }
+
+/// Successful return shape of the `atlassian_validate_credentials` IPC
+/// command. Mirrors the internal `connector_atlassian_common::cloud::
+/// AtlassianAccountInfo` but lives here because only `dayseam-core`
+/// types are routed through `ts-rs` (and the upstream struct does not
+/// implement `Serialize` to keep the walker crate free of IPC
+/// concerns).
+///
+/// The dialog uses `display_name` + `email` for the "Connected as …"
+/// confirmation ribbon and stashes `account_id` so the subsequent
+/// `atlassian_sources_add` call can seed the `AtlassianAccountId`
+/// self-identity without a second `/rest/api/3/myself` round-trip.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AtlassianValidationResult {
+    /// Opaque Atlassian Cloud account id returned by
+    /// `GET /rest/api/3/myself`. Used as the
+    /// `SourceIdentity::external_actor_id` under kind
+    /// [`crate::SourceIdentityKind::AtlassianAccountId`].
+    pub account_id: String,
+    /// Display name the workspace shows for this account. Surfaced in
+    /// the dialog's confirmation ribbon ("Connected as Vedanth V").
+    pub display_name: String,
+    /// Email the workspace has on file for this account. Optional —
+    /// Atlassian accounts whose email privacy is enabled omit it.
+    pub email: Option<String>,
+}

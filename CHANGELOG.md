@@ -8,6 +8,98 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **v0.2 `apps/desktop` — Atlassian add-source UI + IPC (DAY-82).**
+  Tenth task of the v0.2 Atlassian arc. Ships the user-facing surface
+  for connecting Jira and Confluence so every earlier task in the arc
+  (DAY-73 walker, DAY-76/77 Jira + Confluence connectors, DAY-78
+  orchestrator wiring, DAY-79 onboarding checklist, DAY-80 identity
+  manager, DAY-81 shared-secret refcount) becomes reachable from the
+  desktop shell instead of only from integration tests. **New IPC
+  commands.** `atlassian_validate_credentials(workspaceUrl, email,
+  apiToken) -> AtlassianValidationResult` probes
+  `GET /rest/api/3/myself` with Basic auth over `connectors-sdk`'s
+  `HttpClient`, returning the `{account_id, display_name, email}`
+  triple the dialog needs both for its "Connected as …" confirmation
+  ribbon and for seeding `SourceIdentity::AtlassianAccountId` on
+  persist. `atlassian_sources_add(workspaceUrl, email, apiToken,
+  accountId, enableJira, enableConfluence, reuseSecretRef?) ->
+  Source[]` is a single round-trip that covers the four journeys
+  the product supports — Journey A (shared PAT, both products),
+  Journey B (single product), Journey C mode 1 (reuse the existing
+  product's `secret_ref` for the other product, no new keychain
+  row), Journey C mode 2 (separate PAT for the other product). The
+  command is transactional end-to-end: if any step fails after the
+  keychain write, `rollback_sources_add` drops partial `sources`
+  rows and — only when the caller asked us to mint a new slot —
+  deletes the keychain entry, leaving the DB and keychain in the
+  same state as before the command. Both commands live in
+  `apps/desktop/src-tauri/src/ipc/atlassian.rs` and are registered
+  in `main.rs` + `build.rs` + `capabilities/default.json` +
+  `PROD_COMMANDS` so the Tauri capability / Rust handler / TS type
+  quadruple-write invariant from `ARCHITECTURE.md` §6 stays intact.
+  **Keychain account scheme.** New Atlassian slots are keyed
+  `dayseam.atlassian::slot:<uuid>` — UUID-based rather than
+  id-per-product — so the shared-PAT flow can point two `sources`
+  rows at the same `keychain_account` and DAY-81's refcounted
+  delete path treats the pair as shared from the first insert. The
+  Journey-C mode-1 reuse path takes an `Option<SecretRef>` directly,
+  never re-prompts for the PAT, and writes zero new keychain rows.
+  **New DTO.** `AtlassianValidationResult` is a `dayseam-core` type
+  exported via `ts-rs` (the upstream
+  `connector-atlassian-common::cloud::AtlassianAccountInfo` stays
+  free of IPC concerns); mirrors the cloud crate's account triple
+  plus optional email. **Dialog.**
+  `AddAtlassianSourceDialog.tsx` renders one checkbox per product,
+  a workspace-URL field that previews the normalised canonical form
+  live (bare slugs expand to `https://<slug>.atlassian.net`, full
+  URLs strip trailing slashes, `http://` is refused outright rather
+  than silently upgraded), an "Open token page" shell-out, a paste
+  field for the API token, and a Validate button that wires into
+  `atlassian_validate_credentials` before the submit button is
+  enabled. When an Atlassian source already exists the dialog
+  detects the asymmetry, pre-collapses to the missing product, and
+  surfaces a "Reuse / paste different token" radio pair —
+  Journey-C is a one-click flow when the existing source already
+  has a cached account id, or a short paste-and-validate otherwise.
+  **URL normalisation.**
+  `apps/desktop/src/features/sources/atlassian-workspace-url.ts`
+  encapsulates the one canonical form every downstream code path
+  (IPC, DB, identity seeding, keychain account) needs; the unit
+  test table exercises every documented input shape. **Error copy
+  parity.** `SourceErrorCard.tsx` learns the nine Atlassian error
+  codes from DAY-76/77 (`atlassian.auth.invalid_credentials`,
+  `atlassian.auth.missing_scope`, `atlassian.network.*`,
+  `jira.*`, `confluence.*`) and renders product-specific messages
+  with a "Reconnect" action for the auth-flavoured codes —
+  `atlassianErrorCopy.ts` carries one entry per code and the
+  `atlassianErrorCopy` parity test in
+  `apps/desktop/src/features/sources/__tests__/atlassianErrorCopy.test.ts`
+  fails if the Rust catalogue and the TS copy drift. **Sidebar
+  wiring.** The "Add source" menu grows a third item ("Add Atlassian
+  source") and the sidebar passes the current `sources` list into
+  the dialog so the Journey-C detection runs against live state
+  instead of an extra IPC round-trip. Reconnect for Atlassian is a
+  follow-up — Phase 3 GitLab shipped with a reconnect flow and
+  Atlassian's will land in a subsequent ticket once the update IPC
+  exists. **Tests.** 7 new Vitest cases in
+  `AddAtlassianSourceDialog.test.tsx` cover the
+  at-least-one-product gate, URL normalisation preview,
+  `http://` rejection, Journey A (shared PAT, both products),
+  Journey B (single product), Journey C mode 2 (separate PAT
+  with pre-collapsed product selection), and Journey C mode 1
+  (reuse with the defensive "missing account id" error path).
+  11 new `atlassian-workspace-url.test.ts` cases table-check every
+  documented shape. 9 new backend IPC integration tests in
+  `ipc/atlassian.rs` exercise the same four journeys plus the
+  rejection paths (both-products-disabled, empty-keychain-slot
+  in reuse mode, missing `api_token` when not reusing, empty
+  email, malformed URL, empty `account_id`). The capabilities
+  parity test learns the two new commands; the
+  `ipc-commands-parity` Vitest catches any TS-type drift. Ships
+  semver:none — the v0.2 milestone is defined in `AGENTS.md` as
+  "Atlassian works end-to-end from the desktop UI", and this task
+  is the final rung.
+
 - **v0.2 `dayseam-db` — reference-counted shared secrets (DAY-81).**
   Ninth task of the v0.2 Atlassian arc. The v0.1 `sources_delete` IPC
   path dropped the keychain secret unconditionally, which is correct

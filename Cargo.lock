@@ -1052,6 +1052,7 @@ name = "dayseam-desktop"
 version = "0.2.0"
 dependencies = [
  "chrono",
+ "connector-atlassian-common",
  "connector-gitlab",
  "connector-local-git",
  "connectors-sdk",

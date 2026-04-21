@@ -34,6 +34,7 @@ import type { DayseamError, Source, SourceHealth } from "@dayseam/ipc-types";
 import { useLocalRepos, useSources } from "../../ipc";
 import { AddLocalGitSourceDialog } from "./AddLocalGitSourceDialog";
 import { AddGitlabSourceDialog } from "./AddGitlabSourceDialog";
+import { AddAtlassianSourceDialog } from "./AddAtlassianSourceDialog";
 import { ApproveReposDialog } from "./ApproveReposDialog";
 import { SourceErrorCard } from "./SourceErrorCard";
 
@@ -81,6 +82,10 @@ export function SourcesSidebar() {
   // different props.
   const [addLocalGitOpen, setAddLocalGitOpen] = useState(false);
   const [addGitlabOpen, setAddGitlabOpen] = useState(false);
+  // Atlassian dialog is one dialog regardless of whether the user
+  // already has one Atlassian product configured — the dialog
+  // detects that state itself and steps into Journey C.
+  const [addAtlassianOpen, setAddAtlassianOpen] = useState(false);
   // The two-option "Add source" menu. Closed by default; a click on
   // either item opens the relevant dialog and closes the menu.
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -225,6 +230,18 @@ export function SourcesSidebar() {
             >
               Add GitLab source
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setAddMenuOpen(false);
+                setAddAtlassianOpen(true);
+              }}
+              data-testid="sources-add-menu-atlassian"
+              className="block w-full px-3 py-1 text-left text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-900"
+            >
+              Add Atlassian source
+            </button>
           </div>
         ) : null}
       </div>
@@ -275,6 +292,16 @@ export function SourcesSidebar() {
         }}
         onSaved={() => {
           setEditing(null);
+          void refresh();
+        }}
+      />
+
+      <AddAtlassianSourceDialog
+        open={addAtlassianOpen}
+        onClose={() => setAddAtlassianOpen(false)}
+        existingSources={sources}
+        onAdded={() => {
+          setAddAtlassianOpen(false);
           void refresh();
         }}
       />
