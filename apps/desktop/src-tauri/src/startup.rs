@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Offset;
+use connector_confluence::{ConfluenceConfig, ConfluenceSourceCfg};
 use connector_gitlab::GitlabSourceCfg;
+use connector_jira::{JiraConfig, JiraSourceCfg};
 use dayseam_core::{
     DayseamError, LogLevel, SourceConfig, SourceIdentity, SourceIdentityKind, SourceKind,
 };
@@ -95,6 +97,8 @@ pub async fn build_app_state(data_dir: &Path) -> Result<AppState, DayseamError> 
 
     record_startup_log(&pool).await;
     backfill_gitlab_self_identities(&pool).await;
+    backfill_atlassian_self_identities(&pool).await;
+    backfill_atlassian_confluence_email(&pool).await;
 
     let app_bus = AppBus::new();
     let secrets: Arc<dyn SecretStore> = Arc::new(KeychainStore::new());
@@ -187,6 +191,210 @@ async fn backfill_gitlab_self_identities(pool: &SqlitePool) {
     }
 }
 
+/// CONS-v0.2-01 backfill: Atlassian counterpart to
+/// [`backfill_gitlab_self_identities`].
+///
+/// Unlike the GitLab path, the `account_id` is not recoverable from
+/// `SourceConfig` — it's only ever surfaced by a live
+/// `/rest/api/3/myself` probe at add-time and then persisted on the
+/// `source_identities` row. That means this backfill can only
+/// *re-assert* an existing identity (a cheap no-op that exercises
+/// the idempotency guarantee and guards against future regressions
+/// where `source_identities` rows get out of sync), and must fall
+/// back to a structured warning for any Atlassian source whose
+/// identity row went missing. Manual DB surgery is the only way to
+/// reach that state today, but surfacing it in logs is strictly
+/// better than silently shipping empty reports.
+async fn backfill_atlassian_self_identities(pool: &SqlitePool) {
+    let sources = match SourceRepo::new(pool.clone()).list().await {
+        Ok(sources) => sources,
+        Err(err) => {
+            tracing::warn!(
+                %err,
+                "backfill(atlassian): source listing failed; skipping identity seeding"
+            );
+            return;
+        }
+    };
+
+    let atlassian_sources: Vec<(uuid::Uuid, SourceKind)> = sources
+        .into_iter()
+        .filter(|s| matches!(s.kind, SourceKind::Jira | SourceKind::Confluence))
+        .map(|s| (s.id, s.kind))
+        .collect();
+    if atlassian_sources.is_empty() {
+        return;
+    }
+
+    let person_id = match PersonRepo::new(pool.clone()).bootstrap_self("Me").await {
+        Ok(p) => p.id,
+        Err(err) => {
+            tracing::warn!(
+                %err,
+                "backfill(atlassian): persons.bootstrap_self failed; skipping identity seeding"
+            );
+            return;
+        }
+    };
+
+    let identity_repo = SourceIdentityRepo::new(pool.clone());
+    for (source_id, kind) in atlassian_sources {
+        let rows = match identity_repo.list_for_source(person_id, &source_id).await {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::warn!(
+                    %err,
+                    %source_id,
+                    ?kind,
+                    "backfill(atlassian): list_for_source failed; skipping this source"
+                );
+                continue;
+            }
+        };
+        let existing = rows
+            .into_iter()
+            .find(|r| r.kind == SourceIdentityKind::AtlassianAccountId);
+        let Some(existing) = existing else {
+            tracing::warn!(
+                %source_id,
+                ?kind,
+                "backfill(atlassian): no AtlassianAccountId identity on file — reports will \
+                 silently skip this source's events until the user reconnects it",
+            );
+            continue;
+        };
+        match identity_repo.ensure(&existing).await {
+            Ok(true) => {
+                tracing::info!(
+                    %source_id,
+                    ?kind,
+                    external_actor_id = %existing.external_actor_id,
+                    "backfill(atlassian): re-seeded AtlassianAccountId self-identity"
+                );
+            }
+            Ok(false) => {}
+            Err(err) => {
+                tracing::warn!(
+                    %err,
+                    %source_id,
+                    ?kind,
+                    "backfill(atlassian): failed to ensure AtlassianAccountId self-identity"
+                );
+            }
+        }
+    }
+}
+
+/// DAY-84 upgrade backfill: copy the sibling Atlassian email into any
+/// `Confluence` row whose `SourceConfig::Confluence::email` is empty.
+///
+/// v0.2.0 shipped `SourceConfig::Confluence` with only `workspace_url`.
+/// v0.2.1 (this hotfix) adds a required-at-auth-time `email` field; the
+/// `#[serde(default)]` attribute keeps old rows deserialisable, but
+/// [`crate::ipc::commands::build_source_auth`] then rejects the empty
+/// email with `atlassian.auth.invalid_credentials` before any network
+/// call. For users who connected on v0.2.0 via Journey A (shared PAT
+/// across Jira + Confluence), the sibling Jira row still holds the
+/// email the dialog collected — we copy it across at boot so reports
+/// resume working without a manual Reconnect.
+///
+/// Matching key is the `secret_ref` (keychain slot). Two sources
+/// pointing at the same slot share a credential by construction
+/// (Journey A / Journey C mode 1), which means they share a user, and
+/// therefore share an email. We deliberately do **not** fall back to
+/// matching on workspace URL alone: that would risk copying the wrong
+/// email across two independently-added Confluence instances on the
+/// same tenant.
+///
+/// Confluence-only installs (no sibling Jira row) hit the warn branch —
+/// manual Reconnect is the right flow for them because the email is
+/// genuinely not recoverable from any on-disk state.
+async fn backfill_atlassian_confluence_email(pool: &SqlitePool) {
+    let sources = match SourceRepo::new(pool.clone()).list().await {
+        Ok(sources) => sources,
+        Err(err) => {
+            tracing::warn!(
+                %err,
+                "backfill(confluence_email): source listing failed; skipping"
+            );
+            return;
+        }
+    };
+
+    let repo = SourceRepo::new(pool.clone());
+    for source in &sources {
+        let (workspace_url, empty_email) = match &source.config {
+            SourceConfig::Confluence {
+                workspace_url,
+                email,
+            } if email.trim().is_empty() => (workspace_url.clone(), true),
+            _ => continue,
+        };
+        if !empty_email {
+            continue;
+        }
+
+        let Some(secret_ref) = source.secret_ref.as_ref() else {
+            tracing::warn!(
+                source_id = %source.id,
+                "backfill(confluence_email): Confluence row has empty email and no secret_ref — \
+                 user must reconnect manually",
+            );
+            continue;
+        };
+
+        let sibling_email = sources.iter().find_map(|other| {
+            if other.id == source.id {
+                return None;
+            }
+            let other_ref = other.secret_ref.as_ref()?;
+            if other_ref.keychain_service != secret_ref.keychain_service
+                || other_ref.keychain_account != secret_ref.keychain_account
+            {
+                return None;
+            }
+            match &other.config {
+                SourceConfig::Jira { email, .. } | SourceConfig::Confluence { email, .. }
+                    if !email.trim().is_empty() =>
+                {
+                    Some(email.clone())
+                }
+                _ => None,
+            }
+        });
+
+        let Some(email) = sibling_email else {
+            tracing::warn!(
+                source_id = %source.id,
+                "backfill(confluence_email): Confluence row has empty email and no Atlassian \
+                 sibling with the same secret_ref — user must reconnect manually",
+            );
+            continue;
+        };
+
+        let new_config = SourceConfig::Confluence {
+            workspace_url,
+            email: email.clone(),
+        };
+        match repo.update_config(&source.id, &new_config).await {
+            Ok(()) => {
+                tracing::info!(
+                    source_id = %source.id,
+                    "backfill(confluence_email): copied sibling Atlassian email into Confluence \
+                     row to recover from v0.2.0 upgrade"
+                );
+            }
+            Err(err) => {
+                tracing::warn!(
+                    %err,
+                    source_id = %source.id,
+                    "backfill(confluence_email): update_config failed; user must reconnect"
+                );
+            }
+        }
+    }
+}
+
 /// Build the process-wide [`Orchestrator`] with registries populated
 /// from the persisted source and local-repo rows.
 ///
@@ -234,6 +442,8 @@ async fn resolve_registry_config(pool: &SqlitePool) -> Result<DefaultRegistryCon
     let mut scan_roots: Vec<PathBuf> = Vec::new();
     let mut private_roots: Vec<PathBuf> = Vec::new();
     let mut gitlab_sources: Vec<GitlabSourceCfg> = Vec::new();
+    let mut jira_sources: Vec<JiraSourceCfg> = Vec::new();
+    let mut confluence_sources: Vec<ConfluenceSourceCfg> = Vec::new();
     for source in sources {
         match (&source.kind, &source.config) {
             (
@@ -268,6 +478,48 @@ async fn resolve_registry_config(pool: &SqlitePool) -> Result<DefaultRegistryCon
                     user_id: *user_id,
                 });
             }
+            // DOG-v0.2-02: hydrate the Jira / Confluence muxes at
+            // boot. v0.2.0 left these two arms as `Vec::new()` with a
+            // "comes later in DAY-82" comment; the dialog then *did*
+            // land and wrote rows, but the muxes stayed empty, so
+            // every post-restart `report_generate` for an Atlassian
+            // source hit `source_not_found` in the connector
+            // registry. Malformed rows (workspace URL that no longer
+            // parses — e.g. manually hand-edited) are logged and
+            // skipped rather than crashing boot; the UI surfaces the
+            // same source as "Unchecked" until the user fixes it.
+            (
+                SourceKind::Jira,
+                SourceConfig::Jira {
+                    workspace_url,
+                    email,
+                },
+            ) => match JiraConfig::from_raw(workspace_url, email) {
+                Ok(config) => jira_sources.push(JiraSourceCfg {
+                    source_id: source.id,
+                    config,
+                }),
+                Err(err) => tracing::warn!(
+                    source_id = %source.id,
+                    workspace_url = %workspace_url,
+                    error = %err,
+                    "skipping Jira source with unparseable workspace_url at startup",
+                ),
+            },
+            (SourceKind::Confluence, SourceConfig::Confluence { workspace_url, .. }) => {
+                match ConfluenceConfig::from_raw(workspace_url) {
+                    Ok(config) => confluence_sources.push(ConfluenceSourceCfg {
+                        source_id: source.id,
+                        config,
+                    }),
+                    Err(err) => tracing::warn!(
+                        source_id = %source.id,
+                        workspace_url = %workspace_url,
+                        error = %err,
+                        "skipping Confluence source with unparseable workspace_url at startup",
+                    ),
+                }
+            }
             // Kind/config mismatch is a core-level invariant violation
             // (serde round-trip prevents it); skip defensively rather
             // than panic at startup.
@@ -281,19 +533,8 @@ async fn resolve_registry_config(pool: &SqlitePool) -> Result<DefaultRegistryCon
         local_tz: chrono::Local::now().offset().fix(),
         markdown_dest_dirs: Vec::new(),
         gitlab_sources,
-        // DAY-76: Jira sources land at boot via the same
-        // `sources` table once the Add-Source dialog (DAY-82) knows
-        // how to write a `SourceConfig::Jira` row. Until then the
-        // mux boots empty; the default registry still registers the
-        // kind so the IPC layer has a handle to `upsert` into on
-        // first-add.
-        jira_sources: Vec::new(),
-        // DAY-79: same "register-empty, upsert-later" contract for
-        // Confluence. The Add-Source dialog (DAY-82) will write
-        // `SourceConfig::Confluence` rows against a shared Atlassian
-        // credential (or a dedicated one); the startup backfill
-        // stays empty here until that lands.
-        confluence_sources: Vec::new(),
+        jira_sources,
+        confluence_sources,
     })
 }
 
@@ -466,6 +707,122 @@ mod tests {
     // backfill is the only path that fixes existing installs without
     // asking the user to delete-and-re-add their source, so it's worth
     // protecting with an explicit integration test.
+
+    // --- DOG-v0.2-02: Atlassian mux hydration on boot --------------------
+    //
+    // v0.2.0 left `jira_sources` / `confluence_sources` hard-coded to
+    // `Vec::new()` with a "wait for DAY-82" comment. DAY-82 *did*
+    // ship the Add-Source dialog, but startup never caught up — so a
+    // fresh install added an Atlassian source, restarted, and still
+    // hit `connector.source_not_found` on every report because the
+    // mux had no entry for the row. This test pins the post-fix
+    // contract: a persisted Jira / Confluence row must be visible to
+    // its mux after `resolve_registry_config` runs.
+
+    #[tokio::test]
+    async fn resolve_registry_config_hydrates_atlassian_sources() {
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+
+        let jira_id = Uuid::new_v4();
+        SourceRepo::new(pool.clone())
+            .insert(&Source {
+                id: jira_id,
+                kind: SourceKind::Jira,
+                label: "Jira — acme".into(),
+                config: SourceConfig::Jira {
+                    workspace_url: "https://acme.atlassian.net".into(),
+                    email: "me@acme.com".into(),
+                },
+                secret_ref: None,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("insert jira");
+
+        let conf_id = Uuid::new_v4();
+        SourceRepo::new(pool.clone())
+            .insert(&Source {
+                id: conf_id,
+                kind: SourceKind::Confluence,
+                label: "Confluence — acme".into(),
+                config: SourceConfig::Confluence {
+                    workspace_url: "https://acme.atlassian.net".into(),
+                    email: "me@acme.com".into(),
+                },
+                secret_ref: None,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("insert confluence");
+
+        let cfg = resolve_registry_config(&pool).await.expect("resolve");
+
+        assert_eq!(
+            cfg.jira_sources.len(),
+            1,
+            "boot must hydrate the persisted Jira row into the mux config"
+        );
+        assert_eq!(cfg.jira_sources[0].source_id, jira_id);
+        assert_eq!(
+            cfg.confluence_sources.len(),
+            1,
+            "boot must hydrate the persisted Confluence row into the mux config"
+        );
+        assert_eq!(cfg.confluence_sources[0].source_id, conf_id);
+    }
+
+    #[tokio::test]
+    async fn resolve_registry_config_skips_atlassian_rows_with_unparseable_url() {
+        // Defensive: a hand-edited or pre-DAY-84 row whose
+        // `workspace_url` is no longer parseable must not crash boot.
+        // The bad row is logged-and-skipped; siblings still hydrate.
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+
+        SourceRepo::new(pool.clone())
+            .insert(&Source {
+                id: Uuid::new_v4(),
+                kind: SourceKind::Jira,
+                label: "broken".into(),
+                config: SourceConfig::Jira {
+                    workspace_url: "not a url".into(),
+                    email: "me@acme.com".into(),
+                },
+                secret_ref: None,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("insert broken jira");
+
+        let good_id = Uuid::new_v4();
+        SourceRepo::new(pool.clone())
+            .insert(&Source {
+                id: good_id,
+                kind: SourceKind::Jira,
+                label: "Jira — acme".into(),
+                config: SourceConfig::Jira {
+                    workspace_url: "https://acme.atlassian.net".into(),
+                    email: "me@acme.com".into(),
+                },
+                secret_ref: None,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("insert good jira");
+
+        let cfg = resolve_registry_config(&pool).await.expect("resolve");
+        assert_eq!(cfg.jira_sources.len(), 1, "broken row must be skipped");
+        assert_eq!(cfg.jira_sources[0].source_id, good_id);
+    }
 
     async fn insert_gitlab_source(pool: &SqlitePool, id: Uuid, user_id: i64) {
         SourceRepo::new(pool.clone())
@@ -678,6 +1035,484 @@ mod tests {
             orphans, 0,
             "healthy install → zero warnings; rows without secret_ref are ignored"
         );
+    }
+
+    // --- CONS-v0.2-01: Atlassian self-identity startup backfill ---------
+
+    async fn insert_atlassian_source(pool: &SqlitePool, id: Uuid, kind: SourceKind) {
+        let config = match kind {
+            SourceKind::Jira => SourceConfig::Jira {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: "me@acme.com".into(),
+            },
+            SourceKind::Confluence => SourceConfig::Confluence {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: "me@acme.com".into(),
+            },
+            other => panic!("insert_atlassian_source: non-atlassian kind {other:?}"),
+        };
+        SourceRepo::new(pool.clone())
+            .insert(&Source {
+                id,
+                kind,
+                label: "Acme".into(),
+                config,
+                secret_ref: None,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("insert atlassian source");
+    }
+
+    async fn insert_atlassian_identity(
+        pool: &SqlitePool,
+        person_id: Uuid,
+        source_id: Uuid,
+        account_id: &str,
+    ) {
+        SourceIdentityRepo::new(pool.clone())
+            .ensure(&SourceIdentity {
+                id: Uuid::new_v4(),
+                person_id,
+                source_id: Some(source_id),
+                kind: SourceIdentityKind::AtlassianAccountId,
+                external_actor_id: account_id.to_string(),
+            })
+            .await
+            .expect("seed atlassian identity");
+    }
+
+    #[tokio::test]
+    async fn atlassian_backfill_reseeds_existing_identity_idempotently() {
+        // Happy path: atlassian_sources_add already seeded the row.
+        // The backfill's job is a cheap re-assert, not a repair.
+        // This guards against a regression that makes the ensure()
+        // call throw on the second boot.
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+        let source_id = Uuid::new_v4();
+        insert_atlassian_source(&pool, source_id, SourceKind::Jira).await;
+        let person = PersonRepo::new(pool.clone())
+            .bootstrap_self("Me")
+            .await
+            .expect("self");
+        insert_atlassian_identity(&pool, person.id, source_id, "557058:abc").await;
+
+        backfill_atlassian_self_identities(&pool).await;
+        backfill_atlassian_self_identities(&pool).await;
+
+        let rows = SourceIdentityRepo::new(pool.clone())
+            .list_for_source(person.id, &source_id)
+            .await
+            .expect("list");
+        assert_eq!(
+            rows.iter()
+                .filter(|r| r.kind == SourceIdentityKind::AtlassianAccountId
+                    && r.external_actor_id == "557058:abc")
+                .count(),
+            1,
+            "repeat backfill must not duplicate the atlassian identity",
+        );
+    }
+
+    #[tokio::test]
+    async fn atlassian_backfill_warns_and_continues_when_identity_missing() {
+        // Manual-DB-surgery case: a Confluence source row exists but
+        // its AtlassianAccountId row was deleted. Backfill can't
+        // recover the opaque account_id without an API call, so it
+        // must log and move on — never throw, never bootstrap a
+        // bogus identity, never skip later sources.
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+        let orphan_id = Uuid::new_v4();
+        let healthy_id = Uuid::new_v4();
+        insert_atlassian_source(&pool, orphan_id, SourceKind::Confluence).await;
+        insert_atlassian_source(&pool, healthy_id, SourceKind::Jira).await;
+        let person = PersonRepo::new(pool.clone())
+            .bootstrap_self("Me")
+            .await
+            .expect("self");
+        // Only seed the second source; first is deliberately missing.
+        insert_atlassian_identity(&pool, person.id, healthy_id, "557058:healthy").await;
+
+        // Must not panic.
+        backfill_atlassian_self_identities(&pool).await;
+
+        let orphan_rows = SourceIdentityRepo::new(pool.clone())
+            .list_for_source(person.id, &orphan_id)
+            .await
+            .expect("orphan list");
+        assert!(
+            orphan_rows
+                .iter()
+                .all(|r| r.kind != SourceIdentityKind::AtlassianAccountId),
+            "backfill must not invent an account_id for the orphan source",
+        );
+
+        let healthy_rows = SourceIdentityRepo::new(pool.clone())
+            .list_for_source(person.id, &healthy_id)
+            .await
+            .expect("healthy list");
+        assert_eq!(
+            healthy_rows
+                .iter()
+                .filter(|r| r.kind == SourceIdentityKind::AtlassianAccountId
+                    && r.external_actor_id == "557058:healthy")
+                .count(),
+            1,
+            "orphan warning must not short-circuit the healthy source's re-seed",
+        );
+    }
+
+    #[tokio::test]
+    async fn atlassian_backfill_skips_when_no_atlassian_sources_present() {
+        // LocalGit-only install: the atlassian backfill must not
+        // bootstrap a self-person or otherwise touch the DB.
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+
+        backfill_atlassian_self_identities(&pool).await;
+
+        let existing = PersonRepo::new(pool).get_self().await.expect("get_self");
+        assert!(
+            existing.is_none(),
+            "no Atlassian sources ⇒ no bootstrap, got person row: {existing:?}",
+        );
+    }
+
+    // --- DAY-84 Confluence email upgrade backfill -----------------------
+    //
+    // v0.2.0 persisted `SourceConfig::Confluence { workspace_url }` with
+    // no `email` field. v0.2.1 added an `email` field (with
+    // `#[serde(default)]` so old rows still deserialise) and made
+    // `build_source_auth` reject empty emails with
+    // `atlassian.auth.invalid_credentials`. Without this backfill, every
+    // user who connected Confluence on v0.2.0 via the shared-PAT
+    // journey is locked out of Confluence reports after upgrading until
+    // they manually Reconnect — even though the token is fine.
+    // These tests pin the three cases:
+    //
+    // 1. Shared-secret sibling has a non-empty email → copy it across.
+    // 2. Confluence-only install (no sibling) → leave row alone, log.
+    // 3. Confluence row already has an email → no-op.
+
+    async fn insert_atlassian_source_with(
+        pool: &SqlitePool,
+        id: Uuid,
+        config: SourceConfig,
+        secret_ref: Option<dayseam_core::SecretRef>,
+    ) {
+        let kind = config.kind();
+        SourceRepo::new(pool.clone())
+            .insert(&Source {
+                id,
+                kind,
+                label: "Acme".into(),
+                config,
+                secret_ref,
+                created_at: Utc::now(),
+                last_sync_at: None,
+                last_health: SourceHealth::unchecked(),
+            })
+            .await
+            .expect("insert atlassian source with config");
+    }
+
+    fn shared_secret_ref() -> dayseam_core::SecretRef {
+        dayseam_core::SecretRef {
+            keychain_service: "dayseam.atlassian".into(),
+            keychain_account: "slot:shared".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn confluence_email_backfill_copies_from_jira_sibling_sharing_secret_ref() {
+        // The v0.2.0-upgrade scenario the user hit in dogfood: Jira
+        // row has email + shared secret_ref, Confluence row has empty
+        // email + same secret_ref. Backfill must copy the email
+        // across so `build_source_auth` stops rejecting.
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+        let sr = shared_secret_ref();
+        let jira_id = Uuid::new_v4();
+        let conf_id = Uuid::new_v4();
+        insert_atlassian_source_with(
+            &pool,
+            jira_id,
+            SourceConfig::Jira {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: "v@acme.com".into(),
+            },
+            Some(sr.clone()),
+        )
+        .await;
+        insert_atlassian_source_with(
+            &pool,
+            conf_id,
+            SourceConfig::Confluence {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: String::new(),
+            },
+            Some(sr.clone()),
+        )
+        .await;
+
+        backfill_atlassian_confluence_email(&pool).await;
+
+        let after = SourceRepo::new(pool.clone())
+            .get(&conf_id)
+            .await
+            .expect("get confluence")
+            .expect("confluence row");
+        match after.config {
+            SourceConfig::Confluence { email, .. } => {
+                assert_eq!(
+                    email, "v@acme.com",
+                    "backfill must copy the Jira sibling's email into the Confluence row"
+                );
+            }
+            other => panic!("expected Confluence config, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn confluence_email_backfill_leaves_row_alone_when_no_sibling() {
+        // Confluence-only install — no Jira sibling to copy from.
+        // Backfill must log + skip, leaving the row with empty email
+        // so `build_source_auth` routes the user to Reconnect.
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+        let conf_id = Uuid::new_v4();
+        insert_atlassian_source_with(
+            &pool,
+            conf_id,
+            SourceConfig::Confluence {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: String::new(),
+            },
+            Some(shared_secret_ref()),
+        )
+        .await;
+
+        backfill_atlassian_confluence_email(&pool).await;
+
+        let after = SourceRepo::new(pool.clone())
+            .get(&conf_id)
+            .await
+            .expect("get")
+            .expect("row");
+        match after.config {
+            SourceConfig::Confluence { email, .. } => {
+                assert!(
+                    email.is_empty(),
+                    "no sibling → email stays empty so Reconnect is forced, got {email:?}"
+                );
+            }
+            other => panic!("expected Confluence config, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn confluence_email_backfill_is_noop_when_email_already_present() {
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+        let conf_id = Uuid::new_v4();
+        insert_atlassian_source_with(
+            &pool,
+            conf_id,
+            SourceConfig::Confluence {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: "already@acme.com".into(),
+            },
+            Some(shared_secret_ref()),
+        )
+        .await;
+
+        backfill_atlassian_confluence_email(&pool).await;
+
+        let after = SourceRepo::new(pool.clone())
+            .get(&conf_id)
+            .await
+            .expect("get")
+            .expect("row");
+        match after.config {
+            SourceConfig::Confluence { email, .. } => {
+                assert_eq!(email, "already@acme.com");
+            }
+            other => panic!("expected Confluence config, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn confluence_email_backfill_migrates_raw_v0_2_0_shape_json() {
+        // Regression for the exact failure the user hit in dogfood:
+        // a Confluence row written by v0.2.0 has NO `email` field in
+        // its `config_json` column. On upgrade, v0.2.1's
+        // `#[serde(default)]` must deserialise it as `email: ""`, and
+        // this boot-time backfill must copy the sibling Jira email
+        // across before `build_source_auth` sees the row and rejects
+        // with `atlassian.auth.invalid_credentials`.
+        //
+        // Unlike the other tests in this block, we write raw JSON via
+        // sqlx instead of going through `SourceRepo::insert` — that
+        // way the `#[serde(default)]` attribute is actually exercised
+        // on the read path. If a future refactor drops
+        // `#[serde(default)]` from `SourceConfig::Confluence::email`
+        // (or changes the wire shape in any way that breaks old
+        // rows), this test fails loudly. The three
+        // struct-literal-based tests below do not catch that
+        // regression because they always serialise the new shape
+        // (`{"email":""}` vs v0.2.0's missing key).
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+
+        let sr = shared_secret_ref();
+
+        // Jira sibling: same secret_ref, non-empty email. This path
+        // is the v0.2.0 shape already — Jira carried `email` from
+        // day one.
+        let jira_id = Uuid::new_v4();
+        insert_atlassian_source_with(
+            &pool,
+            jira_id,
+            SourceConfig::Jira {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: "v@acme.com".into(),
+            },
+            Some(sr.clone()),
+        )
+        .await;
+
+        // Confluence row in *literal v0.2.0 shape*: no `email` key.
+        // We go behind `SourceRepo::insert`'s back because the Rust
+        // struct literal `SourceConfig::Confluence { email: "".into() }`
+        // would serialise as `{"email":""}`, which is a strict
+        // superset of v0.2.0 and does not exercise the
+        // `#[serde(default)]` leg.
+        let conf_id = Uuid::new_v4();
+        let v020_config_json = r#"{"Confluence":{"workspace_url":"https://acme.atlassian.net/"}}"#;
+        let sr_json = serde_json::to_string(&sr).expect("ser secret_ref");
+        let health_json = serde_json::to_string(&SourceHealth::unchecked()).expect("ser health");
+        sqlx::query(
+            "INSERT INTO sources \
+             (id, kind, label, config_json, secret_ref, created_at, \
+              last_sync_at, last_health_json) \
+             VALUES (?, ?, ?, ?, ?, ?, NULL, ?)",
+        )
+        .bind(conf_id.to_string())
+        .bind("Confluence")
+        .bind("Acme — Confluence")
+        .bind(v020_config_json)
+        .bind(sr_json)
+        .bind(Utc::now().to_rfc3339())
+        .bind(health_json)
+        .execute(&pool)
+        .await
+        .expect("insert raw v0.2.0-shape Confluence row");
+
+        // Pin the `#[serde(default)]` contract: the v0.2.0-shape JSON
+        // (with no `email` key) must still round-trip through
+        // `SourceRepo::get`. If this assertion ever fails, every
+        // v0.2.0 Confluence row becomes unreadable on upgrade — the
+        // backfill below would never run because `list` would return
+        // a `DbError` before it gets here.
+        let before = SourceRepo::new(pool.clone())
+            .get(&conf_id)
+            .await
+            .expect("get")
+            .expect("raw v0.2.0-shape row must deserialise via #[serde(default)]");
+        match &before.config {
+            SourceConfig::Confluence { email, .. } => {
+                assert!(
+                    email.is_empty(),
+                    "v0.2.0 JSON has no `email` key; `#[serde(default)]` \
+                     must materialise it as an empty string (got {email:?})",
+                );
+            }
+            other => panic!("expected Confluence, got {other:?}"),
+        }
+
+        // The actual upgrade migration.
+        backfill_atlassian_confluence_email(&pool).await;
+
+        let after = SourceRepo::new(pool.clone())
+            .get(&conf_id)
+            .await
+            .expect("get")
+            .expect("row still present");
+        match after.config {
+            SourceConfig::Confluence {
+                email,
+                workspace_url,
+            } => {
+                assert_eq!(
+                    email, "v@acme.com",
+                    "raw v0.2.0-shape row must inherit sibling Jira's email \
+                     so `build_source_auth` stops rejecting it",
+                );
+                assert_eq!(
+                    workspace_url, "https://acme.atlassian.net/",
+                    "workspace_url must survive the backfill untouched",
+                );
+            }
+            other => panic!("expected Confluence, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn confluence_email_backfill_skips_sibling_with_different_secret_ref() {
+        // Defensive: two independently-connected Atlassian tenants
+        // share a host but not a credential. Backfill must not copy
+        // the email across — that would leak identity.
+        let dir = TempDir::new().expect("temp dir");
+        let pool = open(&dir.path().join("state.db")).await.expect("open");
+        let jira_id = Uuid::new_v4();
+        let conf_id = Uuid::new_v4();
+        insert_atlassian_source_with(
+            &pool,
+            jira_id,
+            SourceConfig::Jira {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: "jira-only@acme.com".into(),
+            },
+            Some(dayseam_core::SecretRef {
+                keychain_service: "dayseam.atlassian".into(),
+                keychain_account: "slot:jira".into(),
+            }),
+        )
+        .await;
+        insert_atlassian_source_with(
+            &pool,
+            conf_id,
+            SourceConfig::Confluence {
+                workspace_url: "https://acme.atlassian.net/".into(),
+                email: String::new(),
+            },
+            Some(dayseam_core::SecretRef {
+                keychain_service: "dayseam.atlassian".into(),
+                keychain_account: "slot:conf".into(),
+            }),
+        )
+        .await;
+
+        backfill_atlassian_confluence_email(&pool).await;
+
+        let after = SourceRepo::new(pool.clone())
+            .get(&conf_id)
+            .await
+            .expect("get")
+            .expect("row");
+        match after.config {
+            SourceConfig::Confluence { email, .. } => {
+                assert!(
+                    email.is_empty(),
+                    "different secret_refs → must not copy, got {email:?}"
+                );
+            }
+            other => panic!("expected Confluence config, got {other:?}"),
+        }
     }
 
     #[tokio::test]

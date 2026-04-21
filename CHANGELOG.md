@@ -6,6 +6,122 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-21
+
+### Fixed
+
+- **v0.2 capstone review — hardening hotfix (DAY-84).** Twelfth and
+  final task of the v0.2 Atlassian arc. The v0.2.0 release was cut
+  by the release workflow immediately after [DAY-83](https://github.com/vedanthvdev/dayseam/pull/82)
+  merged with a `semver:minor` label — before the capstone review
+  battery had a chance to run. This hotfix lands the seven P0/HIGH
+  findings the review surfaced. The remaining 22 Medium + Low findings
+  are filed as five themed GitHub umbrella issues ([#83](https://github.com/vedanthvdev/dayseam/issues/83),
+  [#84](https://github.com/vedanthvdev/dayseam/issues/84),
+  [#85](https://github.com/vedanthvdev/dayseam/issues/85),
+  [#86](https://github.com/vedanthvdev/dayseam/issues/86),
+  [#87](https://github.com/vedanthvdev/dayseam/issues/87))
+  and deferred to v0.3. Full reviewer writeups in
+  [`docs/review/v0.2-review.md`](docs/review/v0.2-review.md); the
+  three-day dogfood sweep is scaffolded in
+  [`docs/dogfood/v0.2-dogfood-notes.md`](docs/dogfood/v0.2-dogfood-notes.md)
+  and runs against the published v0.2.1 DMG. **DOG-v0.2-01 —
+  `build_source_auth` now constructs `BasicAuth` for
+  Jira/Confluence.** The `Unsupported` stub that had silently
+  survived from DAY-74 is gone. Adding a Jira source, restarting,
+  and pressing Generate report now returns a real `ReportDraft`
+  instead of aborting the entire run with `CONNECTOR_UNSUPPORTED_SYNC_REQUEST`
+  (which, because `build_source_auth` runs in the pre-loop with
+  `?`, previously also erased any GitLab bullets selected for the
+  same run). **DOG-v0.2-02 — Jira/Confluence muxes are hydrated
+  at startup + upserted on add.** `resolve_registry_config` in
+  `startup.rs` now matches `(SourceKind::Jira, SourceConfig::Jira { … })`
+  + the Confluence twin and pushes `JiraSourceCfg` /
+  `ConfluenceSourceCfg` into the mux constructor. `atlassian_sources_add_impl`
+  now calls `mux.upsert(…)` after the DB/keychain transaction
+  commits. The "restart required" toast that previously masked
+  this gap is no longer necessary. **DOG-v0.2-03 — workspace URL
+  normalisation enforces `.atlassian.net` (security).** Both the
+  client-side `normaliseWorkspaceUrl` and the server-side
+  `parse_workspace_url` now reject any host that doesn't end in
+  `.atlassian.net` (case-insensitive, post-IDN). Previously, a user
+  who typoed a hostname — or pasted a phishing link — would ship
+  their PAT to `https://evil.com/rest/api/3/myself` on the Validate
+  button press, carrying `Authorization: Basic <base64(email:token)>`.
+  New error reason: *"Only Atlassian Cloud hosts (e.g. `modulrfinance.atlassian.net`)
+  are supported."* **CORR-v0.2-01 — `confluence_page` entity on
+  `ConfluenceComment` events.** `normalise_comment` now pushes a
+  `confluence_page` entity onto every comment event via a new
+  `comment_parent_page_ref` helper that pulls the parent page id +
+  title from `content.ancestors[]` / `content.container`. Without
+  it, five comments on five different pages in one space collapsed
+  to one synthetic `ConfluencePage` artifact with `page_id = "UNKNOWN"`
+  and colliding `artifact_id`s — the evidence popover resolved to
+  the same artifact for every comment. New rollup test
+  `confluence_comment_on_different_pages_bucket_into_separate_synthetic_artifacts`.
+  **CONS-v0.2-01 — Atlassian self-identity parity with GitLab.**
+  New `ensure_atlassian_self_identity` helper (idempotent on the
+  unique index, re-asserts from existing DB rows without a network
+  hop) wired into `sources_update` for `SourceKind::Jira |
+  SourceKind::Confluence`. New `backfill_atlassian_self_identities`
+  in `startup.rs` mirrors the DAY-71 GitLab backfill, invoked right
+  after it. Without these, a PAT rotation or workspace-URL edit
+  through `sources_update` would re-write the keychain but not
+  touch `source_identities` — and a missing `AtlassianAccountId`
+  row silently drops every event in the render-stage self-filter,
+  the exact DAY-71 silent-empty shape re-introduced for Atlassian.
+  **TST-v0.2-01 — `walk_day` auth-mapping tests for Jira +
+  Confluence.** New `walk_day_maps_401_to_atlassian_auth_invalid_credentials`
+  + `walk_day_maps_403_to_atlassian_auth_missing_scope` in both
+  `connector-jira/tests/walk.rs` and `connector-confluence/tests/walk.rs`.
+  Before, the 401/403 surface was tested only through `validate_auth`
+  and `discover_cloud` — a refactor that converted `walk_day`'s
+  non-success branch to "log + `Ok(SyncOutcome::empty())`" would
+  have passed every existing test and re-introduced DAY-71
+  silent-empty. **CONS-v0.2-02 — 404/429 arms in
+  `gitlab::map_status`.** New `GITLAB_RESOURCE_NOT_FOUND = "gitlab.resource_not_found"`
+  error code + `GitlabUpstreamError::ResourceNotFound { message }`
+  variant → `DayseamError::Network`. `map_status` now routes
+  `NOT_FOUND` to `ResourceNotFound` (was misreported as
+  `gitlab.upstream_5xx`) and `TOO_MANY_REQUESTS` to `RateLimited`
+  with a conservative `retry_after_secs: 0` (the SDK layer reads
+  the real `Retry-After` header). The `validate_pat_is_active`
+  comment was updated to explain that the now-redundant 429 arm is
+  kept as a defensive layer against a future refactor that accidentally
+  drops the 429 routing from `map_status`. New tests
+  `map_status_routes_404_to_resource_not_found` +
+  `map_status_routes_429_to_rate_limited_with_zero_retry_after_as_conservative_default`
+  + the `error_taxonomy_matches_design` insta snapshot regenerated.
+  Full taxonomy cleanup — dot-separator depth, `invalid_token` vs
+  `invalid_credentials`, 5xx routing to `Network` vs `UpstreamChanged`
+  — is deferred to [#87](https://github.com/vedanthvdev/dayseam/issues/87)
+  (CONS-v0.2-03/04/05) and wants a single connector-conventions ADR
+  in v0.3 before the GitHub connector starts. **DOG-v0.2-04 —
+  v0.2.0 → v0.2.1 Confluence email upgrade backfill.** Caught during
+  dogfood of this very PR: v0.2.0 persisted `SourceConfig::Confluence`
+  with only `workspace_url`; this hotfix added a required `email`
+  field with `#[serde(default)]` so old rows still deserialise, but
+  `build_source_auth` then rejected them with
+  `atlassian.auth.invalid_credentials` — before any network call,
+  even though the token was fine. Users who connected Jira and
+  Confluence together on v0.2.0 saw Jira bullets render and
+  Confluence bullets silently missing with a confusing "token rejected"
+  message. `backfill_atlassian_confluence_email` now runs on boot:
+  for every Confluence row with empty email, it finds the sibling
+  Atlassian source that shares the same `secret_ref` (Journey A's
+  shared-PAT invariant) and copies the sibling's email across via
+  `SourceRepo::update_config`. Confluence-only installs (no sibling)
+  are logged + left alone so the Reconnect flow catches them — we
+  deliberately do not fall back to matching on workspace URL alone,
+  which would risk copying an email across two independently-added
+  tenants on the same host. New tests
+  `confluence_email_backfill_copies_from_jira_sibling_sharing_secret_ref`,
+  `…_leaves_row_alone_when_no_sibling`,
+  `…_is_noop_when_email_already_present`,
+  `…_skips_sibling_with_different_secret_ref`.
+
+## [0.2.0] - 2026-04-21
+
 ### Added
 
 - **v0.2 orchestrator registry wiring + Playwright happy-path E2E for

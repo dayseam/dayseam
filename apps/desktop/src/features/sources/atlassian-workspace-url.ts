@@ -90,6 +90,25 @@ export function normaliseWorkspaceUrl(raw: string): WorkspaceUrlNormalisation {
     };
   }
 
+  // DOG-v0.2-03 (security). Reject any host outside Atlassian
+  // Cloud's `.atlassian.net` apex. Without this, a paste of
+  // `https://attacker.example/` would survive client-side
+  // normalisation; the IPC layer rejects the same input as a
+  // belt-and-braces second check (`parse_workspace_url`), but
+  // catching it here keeps the `BasicAuth` build inside the dialog
+  // from posting the API token to the wrong origin during the
+  // pre-submit `atlassian_validate_credentials` round-trip.
+  const hostLower = parsed.hostname.toLowerCase();
+  const hostOk =
+    hostLower === "atlassian.net" || hostLower.endsWith(".atlassian.net");
+  if (!hostOk) {
+    return {
+      kind: "invalid",
+      reason:
+        "Workspace URL must be a `*.atlassian.net` Atlassian Cloud tenant.",
+    };
+  }
+
   // Path components other than `/` are not part of the workspace URL
   // — the Jira and Confluence REST roots (`/rest/api/3/...`,
   // `/wiki/api/v2/...`) are appended by the connector. Silently

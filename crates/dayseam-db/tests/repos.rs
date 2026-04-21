@@ -231,6 +231,7 @@ async fn deleting_source_preserves_shared_secret_until_last_reference() {
     confluence.label = "confluence:acme".into();
     confluence.config = SourceConfig::Confluence {
         workspace_url: "https://acme.atlassian.net".into(),
+        email: "me@acme.com".into(),
     };
     confluence.secret_ref = Some(shared.clone());
 
@@ -321,6 +322,7 @@ async fn distinct_secret_refs_lists_each_shared_slot_once() {
     confluence.kind = SourceKind::Confluence;
     confluence.config = SourceConfig::Confluence {
         workspace_url: "https://acme.atlassian.net".into(),
+        email: "me@acme.com".into(),
     };
     confluence.secret_ref = Some(shared.clone());
 

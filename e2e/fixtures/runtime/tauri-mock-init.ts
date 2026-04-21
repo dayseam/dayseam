@@ -514,7 +514,7 @@ export function dayseamTauriMockInit(catalogue: Catalogue): void {
             kind: "Confluence",
             label: "Confluence",
             config: {
-              Confluence: { workspace_url: workspaceUrl },
+              Confluence: { workspace_url: workspaceUrl, email: emailArg },
             },
             secret_ref: { ...sharedSecretRef },
             created_at: new Date().toISOString(),

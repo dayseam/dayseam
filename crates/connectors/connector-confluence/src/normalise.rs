@@ -320,6 +320,28 @@ fn normalise_comment(
     let source_id_str = source_id.to_string();
     let id = ActivityEvent::deterministic_id(&source_id_str, &external_id, kind_token);
 
+    // CORR-v0.2-01. Surface the parent page as a first-class
+    // `confluence_page` entity. Without this, the rollup's
+    // `OrphanKey::ConfluencePage` falls back to the literal string
+    // `"UNKNOWN"` (`crates/dayseam-report/src/rollup.rs::orphan_key`),
+    // which collapses every comment on every page on the day into a
+    // single bucket — the bug ships as one bullet "Comments (×17)
+    // on UNKNOWN" instead of one bullet per parent page. The
+    // `comment_parent_page_id` helper already finds the id; we
+    // re-walk the same `ancestors` / `container` shape here to keep
+    // the entity in sync with the rollup key without parsing the
+    // `page:<id>` string back apart.
+    let mut entities = vec![
+        space_entity(space_key, space_name),
+        comment_entity(content_id),
+    ];
+    if let Some((parent_id, parent_title)) = comment_parent_page_ref(content) {
+        entities.push(page_entity(
+            &parent_id,
+            parent_title.as_deref().unwrap_or(""),
+        ));
+    }
+
     Ok(Some(ActivityEvent {
         id,
         source_id,
@@ -330,10 +352,7 @@ fn normalise_comment(
         title: format!("Comment on {}", link.label.as_deref().unwrap_or("page")),
         body,
         links: vec![link.clone()],
-        entities: vec![
-            space_entity(space_key, space_name),
-            comment_entity(content_id),
-        ],
+        entities,
         parent_external_id: comment_parent_page_id(content),
         metadata: json!({
             "location": location,
@@ -478,6 +497,42 @@ fn actor_from_history(created_by: &Value) -> Actor {
 /// hints. Returns `None` if neither is present — the walker then emits
 /// the comment without a `parent_external_id`, which the rollup layer
 /// treats as "unattached comment".
+/// CORR-v0.2-01. Extract the parent page's raw id (no `page:` prefix)
+/// and, when available, its title. The title is carried on
+/// `ancestors[].title` (the `/rest/api/content/{id}/comment` expand
+/// `ancestors` populates it); the container shape doesn't carry a
+/// title, so the fallback path intentionally returns `None` there —
+/// `page_entity` then renders a labelless entity, which is strictly
+/// better than an `UNKNOWN` rollup bucket.
+fn comment_parent_page_ref(content: &Value) -> Option<(String, Option<String>)> {
+    if let Some(ancestors) = content.get("ancestors").and_then(Value::as_array) {
+        if let Some(last) = ancestors.last() {
+            if let Some(id) = last.get("id").and_then(Value::as_str) {
+                let title = last
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string);
+                return Some((id.to_string(), title));
+            }
+        }
+    }
+    if let Some(container_id) = content
+        .get("container")
+        .and_then(|c| c.get("id"))
+        .and_then(Value::as_str)
+    {
+        let title = content
+            .get("container")
+            .and_then(|c| c.get("title"))
+            .and_then(Value::as_str)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string);
+        return Some((container_id.to_string(), title));
+    }
+    None
+}
+
 fn comment_parent_page_id(content: &Value) -> Option<String> {
     if let Some(ancestors) = content.get("ancestors").and_then(Value::as_array) {
         // The immediate parent is the *last* ancestor (ancestors are
@@ -742,6 +797,76 @@ mod tests {
             Some("page:6222414046"),
             "comment must attach to its parent page id",
         );
+        // CORR-v0.2-01 regression. The rollup groups Confluence
+        // comments by the `confluence_page` entity's external_id; if
+        // the normaliser doesn't push one, the rollup falls back to
+        // `"UNKNOWN"` and fans every comment on every page into a
+        // single bullet. Title is absent on the container shape, so
+        // we only assert the id.
+        let page_entity = ev
+            .entities
+            .iter()
+            .find(|e| e.kind == "confluence_page")
+            .expect(
+                "comment event must carry a confluence_page entity so the rollup can key on it",
+            );
+        assert_eq!(page_entity.external_id, "6222414046");
+        assert!(page_entity.label.is_none());
+    }
+
+    #[test]
+    fn comment_with_ancestors_carries_parent_page_title() {
+        // CORR-v0.2-01 regression. When Atlassian populates
+        // `ancestors[].title` (the `?expand=ancestors` path), the
+        // normaliser should carry the parent page title on the
+        // `confluence_page` entity so the rollup bullet reads
+        // "Comment on <Page Title>" rather than a bare id.
+        let comment = json!({
+            "content": {
+                "id": "9000",
+                "type": "comment",
+                "title": "Re: Something",
+                "space": { "key": "FET", "name": "Front-End Tribe" },
+                "history": {
+                    "createdDate": "2026-04-20T10:43:00.000Z",
+                    "createdBy": { "accountId": SELF_ID, "displayName": "Me" }
+                },
+                "extensions": { "location": "inline" },
+                "body": {
+                    "atlas_doc_format": {
+                        "value": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"lgtm\"}]}]}"
+                    }
+                },
+                "ancestors": [
+                    { "id": "1000", "title": "Root" },
+                    { "id": "2000", "title": "Authy — Playwright implementation" }
+                ],
+                "_links": { "webui": "/spaces/FET/pages/2000/Authy?focusedCommentId=9000" }
+            },
+            "url": "/spaces/FET/pages/2000/Authy?focusedCommentId=9000",
+            "_links": { "base": "https://acme.atlassian.net/wiki" }
+        });
+        let ev = normalise_result(
+            Uuid::new_v4(),
+            &workspace(),
+            SELF_ID,
+            window(),
+            &comment,
+            None,
+        )
+        .unwrap()
+        .expect("self-authored comment with ancestors should emit");
+        let page_entity = ev
+            .entities
+            .iter()
+            .find(|e| e.kind == "confluence_page")
+            .expect("comment must carry parent page entity");
+        assert_eq!(page_entity.external_id, "2000");
+        assert_eq!(
+            page_entity.label.as_deref(),
+            Some("Authy — Playwright implementation"),
+        );
+        assert_eq!(ev.parent_external_id.as_deref(), Some("page:2000"));
     }
 
     #[test]

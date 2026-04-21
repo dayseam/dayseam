@@ -37,6 +37,14 @@ pub enum GitlabUpstreamError {
     /// field. Produces [`error_codes::GITLAB_UPSTREAM_SHAPE_CHANGED`]
     /// so the UI can tell "connector bug" from "credentials are wrong".
     ShapeChanged { message: String },
+    /// CONS-v0.2-02. 404 on a GitLab endpoint — the resource (project,
+    /// group, user) isn't reachable. Split out from the catch-all so
+    /// the UI surfaces "check the URL / scope" rather than
+    /// "upstream is down", and so the code matches the atlassian
+    /// 404 arm at the taxonomy level. Maps to
+    /// [`error_codes::GITLAB_RESOURCE_NOT_FOUND`] on the
+    /// [`DayseamError::Network`] variant.
+    ResourceNotFound { message: String },
 }
 
 impl From<GitlabUpstreamError> for DayseamError {
@@ -81,6 +89,10 @@ impl From<GitlabUpstreamError> for DayseamError {
                 code: error_codes::GITLAB_UPSTREAM_SHAPE_CHANGED.to_string(),
                 message,
             },
+            GitlabUpstreamError::ResourceNotFound { message } => DayseamError::Network {
+                code: error_codes::GITLAB_RESOURCE_NOT_FOUND.to_string(),
+                message,
+            },
         }
     }
 }
@@ -94,6 +106,25 @@ pub fn map_status(status: StatusCode, message: impl Into<String>) -> GitlabUpstr
     match status {
         StatusCode::UNAUTHORIZED => GitlabUpstreamError::AuthInvalidToken,
         StatusCode::FORBIDDEN => GitlabUpstreamError::AuthMissingScope,
+        // CONS-v0.2-02. Explicit 404 and 429 arms mirror the
+        // atlassian-common `map_status` taxonomy. Without these,
+        // 429 landed in the `_` catch-all and was misclassified as
+        // `Upstream5xx` — the UI then showed a transient-outage
+        // card for what is really a "slow down" signal, and the
+        // connector's rate-limit loop never got to see the right
+        // variant. 404 in the catch-all was a "here's a 5xx" lie
+        // that hid the real cause (wrong `base_url`, stale project
+        // path, or scope-miss on a private group).
+        StatusCode::NOT_FOUND => GitlabUpstreamError::ResourceNotFound { message },
+        StatusCode::TOO_MANY_REQUESTS => GitlabUpstreamError::RateLimited {
+            // The SDK's retry loop already honoured the `Retry-After`
+            // header before calling us — when we see 429 here, the
+            // retry budget is exhausted and the original header is
+            // no longer authoritative. Zero is the conservative
+            // default; callers that still have a fresher value can
+            // construct `RateLimited` directly.
+            retry_after_secs: 0,
+        },
         s if s.is_server_error() => GitlabUpstreamError::Upstream5xx { status: s, message },
         _ => GitlabUpstreamError::Upstream5xx {
             status,
@@ -220,7 +251,48 @@ mod tests {
         assert!(matches!(e, GitlabUpstreamError::Upstream5xx { .. }));
     }
 
-    /// The seven codes this module maps into must exist in the central
+    /// CONS-v0.2-02 parity with atlassian-common: 404 must surface as
+    /// a typed `ResourceNotFound`, and 429 as `RateLimited` with the
+    /// conservative zero-second retry-after default. Pre-v0.2.1 both
+    /// fell into the `_` catch-all and were misclassified as
+    /// `Upstream5xx`, which lies to the UI about both the cause and
+    /// whether a retry is likely to help.
+    #[test]
+    fn map_status_routes_404_to_resource_not_found() {
+        let e = map_status(StatusCode::NOT_FOUND, "no such project");
+        match e {
+            GitlabUpstreamError::ResourceNotFound { message } => {
+                assert!(message.contains("no such project"));
+            }
+            other => panic!("expected ResourceNotFound, got {other:?}"),
+        }
+        let err: DayseamError = map_status(StatusCode::NOT_FOUND, "missing").into();
+        assert_eq!(err.code(), error_codes::GITLAB_RESOURCE_NOT_FOUND);
+        assert_eq!(err.variant(), "Network");
+    }
+
+    #[test]
+    fn map_status_routes_429_to_rate_limited_with_zero_retry_after_as_conservative_default() {
+        let e = map_status(StatusCode::TOO_MANY_REQUESTS, "slow down");
+        assert_eq!(
+            e,
+            GitlabUpstreamError::RateLimited {
+                retry_after_secs: 0
+            }
+        );
+        let err: DayseamError = e.into();
+        assert_eq!(err.code(), error_codes::GITLAB_RATE_LIMITED);
+        match err {
+            DayseamError::RateLimited {
+                retry_after_secs, ..
+            } => {
+                assert_eq!(retry_after_secs, 0);
+            }
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
+    }
+
+    /// The eight codes this module maps into must exist in the central
     /// [`error_codes::ALL`] registry — a rename on either side of the
     /// edge is caught by the `registry_snapshot` test in `dayseam-core`,
     /// but a *silent drop* here (adding a code without mapping it)
@@ -235,6 +307,7 @@ mod tests {
             error_codes::GITLAB_RATE_LIMITED,
             error_codes::GITLAB_UPSTREAM_5XX,
             error_codes::GITLAB_UPSTREAM_SHAPE_CHANGED,
+            error_codes::GITLAB_RESOURCE_NOT_FOUND,
         ];
         for code in expected {
             assert!(

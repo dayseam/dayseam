@@ -9,6 +9,7 @@ expression: ALL
 - gitlab.rate_limited
 - gitlab.upstream_5xx
 - gitlab.upstream_shape_changed
+- gitlab.resource_not_found
 - atlassian.auth.invalid_credentials
 - atlassian.auth.missing_scope
 - atlassian.cloud.resource_not_found

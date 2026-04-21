@@ -116,10 +116,29 @@ fn parse_workspace_url(input: &str) -> Result<Url, DayseamError> {
             ),
         ));
     }
-    if parsed.host_str().unwrap_or("").is_empty() {
+    let host = parsed.host_str().unwrap_or("");
+    if host.is_empty() {
         return Err(invalid_config_public(
             error_codes::IPC_ATLASSIAN_INVALID_WORKSPACE_URL,
             "workspace_url has no host component",
+        ));
+    }
+    // DOG-v0.2-03 (security). Reject any host that is not under
+    // Atlassian Cloud's `.atlassian.net` apex. Without this guard a
+    // user (or a hostile clipboard contents) could persist
+    // `https://attacker.example/` and the next BasicAuth handshake
+    // would ship the API token to that origin. Lower-casing first so
+    // case-mangled hosts (`Acme.Atlassian.NET`) are evaluated against
+    // the same apex; `url::Url` already lower-cases on parse, but
+    // belt-and-braces here keeps the rule self-contained.
+    let host_lower = host.to_ascii_lowercase();
+    let host_ok = host_lower == "atlassian.net" || host_lower.ends_with(".atlassian.net");
+    if !host_ok {
+        return Err(invalid_config_public(
+            error_codes::IPC_ATLASSIAN_INVALID_WORKSPACE_URL,
+            format!(
+                "workspace_url host must be a `*.atlassian.net` Atlassian Cloud tenant; got `{host}`"
+            ),
         ));
     }
     if parsed.path() != "/" && !parsed.path().is_empty() {
@@ -478,6 +497,7 @@ pub async fn atlassian_sources_add_impl(
             ),
             config: SourceConfig::Confluence {
                 workspace_url: canonical_url.clone(),
+                email: email.clone(),
             },
             secret_ref: Some(secret_ref.clone()),
             created_at: now,
@@ -627,6 +647,43 @@ mod tests {
         // URLs without a scheme fail `Url::parse` with "relative URL without a base".
         let err = parse_workspace_url("modulrfinance.atlassian.net").unwrap_err();
         assert_eq!(err.code(), error_codes::IPC_ATLASSIAN_INVALID_WORKSPACE_URL);
+    }
+
+    #[test]
+    fn parse_workspace_url_rejects_non_atlassian_host() {
+        // DOG-v0.2-03 (security). A hostile or typo-squatted host
+        // must not survive the IPC even if the rest of the URL shape
+        // looks valid; otherwise the next `BasicAuth` request would
+        // POST the user's API token at `attacker.example`.
+        for bad in [
+            "https://attacker.example/",
+            "https://acme.atlassian.net.attacker.example/",
+            "https://atlassian.net.attacker.example/",
+            "https://acme.example.com/",
+        ] {
+            let err = parse_workspace_url(bad).unwrap_err();
+            assert_eq!(
+                err.code(),
+                error_codes::IPC_ATLASSIAN_INVALID_WORKSPACE_URL,
+                "{bad} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_workspace_url_accepts_atlassian_apex_and_subdomains() {
+        // Belt-and-braces: the canonical workspace shape is
+        // `<slug>.atlassian.net`, but the rule is "host is under the
+        // `.atlassian.net` apex". Accept the apex itself defensively
+        // so a future product flow that targets the apex (rare) does
+        // not need a re-deploy.
+        for good in [
+            "https://acme.atlassian.net",
+            "https://my-team.atlassian.net/",
+            "https://Acme.Atlassian.NET",
+        ] {
+            parse_workspace_url(good).unwrap_or_else(|e| panic!("{good} must parse: {e}"));
+        }
     }
 
     #[test]
