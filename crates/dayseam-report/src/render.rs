@@ -262,18 +262,41 @@ fn commit_headline(repo_path: &std::path::Path, event: &ActivityEvent) -> String
     // least reads cleanly — the upstream fix lives in
     // [`connector_gitlab::normalise::compose_entities`], this is the
     // safety net.
+    //
+    // DAY-72 CONS-addendum-06: the GitLab connector also emits a
+    // synthetic `project-<id>` external_id when `/projects/:id`
+    // returned 404 or the field was missing. The normaliser's
+    // docstring promised the render layer would drop the bolded
+    // prefix for this shape; without this branch the bullet
+    // rendered as `**project-42** — <title>`, which is worse than
+    // useless (the user cannot act on a synthetic token).
     let raw = repo_path.to_string_lossy();
     if raw.is_empty() || raw.as_ref() == "/" {
+        return event.title.clone();
+    }
+    if is_synthetic_project_token(&raw) {
         return event.title.clone();
     }
     let repo_label = repo_path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| raw.into_owned());
-    if repo_label.is_empty() {
+    if repo_label.is_empty() || is_synthetic_project_token(&repo_label) {
         return event.title.clone();
     }
     format!("**{repo_label}** — {}", event.title)
+}
+
+/// Recognise the synthetic `project-<digits>` token the GitLab
+/// connector emits when it could not resolve `path_with_namespace`.
+/// Kept local to the render layer so every place that stringifies a
+/// repo path applies the same normalisation.
+fn is_synthetic_project_token(s: &str) -> bool {
+    if let Some(rest) = s.strip_prefix("project-") {
+        !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit())
+    } else {
+        false
+    }
 }
 
 fn short_sha(sha: &str) -> String {
@@ -431,5 +454,31 @@ mod tests {
         let event = fixture_event("feat: land payments slice");
         let got = commit_headline(Path::new("modulr/modulo-local-infra"), &event);
         assert_eq!(got, "**modulo-local-infra** — feat: land payments slice");
+    }
+
+    /// DAY-72 CONS-addendum-06: the GitLab connector emits a
+    /// synthetic `project-<digits>` token when `/projects/:id`
+    /// returned 404 or the field was missing. The normaliser's
+    /// docstring promised the render layer would strip the prefix
+    /// for that shape; without this branch the bullet rendered as
+    /// `**project-42** — …`, which is worse than useless.
+    #[test]
+    fn commit_headline_drops_prefix_for_synthetic_project_token() {
+        let event = fixture_event("Opened MR: feat: land payments slice");
+        assert_eq!(
+            commit_headline(Path::new("project-42"), &event),
+            "Opened MR: feat: land payments slice",
+            "synthetic project-<digits> token must not render a bolded prefix"
+        );
+        assert_eq!(
+            commit_headline(Path::new("project-9999"), &event),
+            "Opened MR: feat: land payments slice"
+        );
+        // Sanity: `project-foo` (non-digits suffix) is not the
+        // synthetic shape and is rendered as a regular repo label.
+        assert_eq!(
+            commit_headline(Path::new("project-foo"), &event),
+            "**project-foo** — Opened MR: feat: land payments slice"
+        );
     }
 }

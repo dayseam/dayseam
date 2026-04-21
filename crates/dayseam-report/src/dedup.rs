@@ -103,6 +103,17 @@ pub fn dedup_commit_authored(events: Vec<ActivityEvent>) -> Vec<ActivityEvent> {
 /// monotonically upgrades to `RedactedPrivateRepo` if either side
 /// carries it — the design §10.3 contract is "the louder side wins",
 /// where "louder" means "more restrictive".
+///
+/// `actor` is also unioned on its identity-axis fields (`email`,
+/// `external_id`): the winner keeps its `display_name` but inherits
+/// the loser's `email` when the winner has `None`, and likewise for
+/// `external_id`. A local-git `CommitAuthored` carries
+/// `actor.email = Some(<git email>)` with no `external_id`, while a
+/// GitLab `CommitAuthored` carries `actor.external_id = Some(<user
+/// id>)` with no email; without this union, cross-source dedup
+/// strips one of the two identity signals and the render-stage
+/// `event_is_self` filter silently drops the merged event (DAY-72
+/// CORR-addendum-07 / SILENT-05).
 fn merge_two(a: ActivityEvent, b: ActivityEvent) -> ActivityEvent {
     let (mut winner, loser) = if body_rank(&a) >= body_rank(&b) && pick_a_on_tie(&a, &b) {
         (a, b)
@@ -113,7 +124,28 @@ fn merge_two(a: ActivityEvent, b: ActivityEvent) -> ActivityEvent {
     winner.links = union_links(winner.links, loser.links);
     winner.entities = union_entities(winner.entities, loser.entities);
     winner.privacy = louder_privacy(winner.privacy, loser.privacy);
+    winner.actor = merge_actors(winner.actor, loser.actor);
 
+    winner
+}
+
+/// Union the identity-axis fields of two actors. The winner's
+/// `display_name` is preserved; `email` and `external_id` are taken
+/// from the loser when the winner has `None`. Either side may be the
+/// local-git actor (email-bearing) and the other the GitLab actor
+/// (external-id-bearing); the merge preserves both so the downstream
+/// self-filter can match on whichever identity kind the user has
+/// configured.
+fn merge_actors(
+    mut winner: dayseam_core::Actor,
+    loser: dayseam_core::Actor,
+) -> dayseam_core::Actor {
+    if winner.email.is_none() {
+        winner.email = loser.email;
+    }
+    if winner.external_id.is_none() {
+        winner.external_id = loser.external_id;
+    }
     winner
 }
 
@@ -393,6 +425,59 @@ mod tests {
         let out = dedup_commit_authored(vec![local_private, gitlab_normal]);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].privacy, Privacy::RedactedPrivateRepo);
+    }
+
+    /// DAY-72 CORR-addendum-07 regression: dedup must union the
+    /// identity-axis fields of the two actors so the render-stage
+    /// `event_is_self` filter can match on whichever `SourceIdentity`
+    /// kind the user has configured. A local-git row carries
+    /// `actor.email = Some(...)`, a GitLab row carries
+    /// `actor.external_id = Some(...)`; the merged survivor must
+    /// preserve both.
+    #[test]
+    fn dedup_unions_actor_identity_fields_across_sources() {
+        let a = src(1);
+        let b = src(2);
+
+        let mut local = event(
+            a,
+            "sha1",
+            ActivityKind::CommitAuthored,
+            Some("short local body"),
+            Privacy::Normal,
+        );
+        local.actor = Actor {
+            display_name: "Vedanth".into(),
+            email: Some("me@example.com".into()),
+            external_id: None,
+        };
+
+        let mut gitlab = event(
+            b,
+            "sha1",
+            ActivityKind::CommitAuthored,
+            Some("a far more detailed body that wins the body-length tie"),
+            Privacy::Normal,
+        );
+        gitlab.actor = Actor {
+            display_name: "vedanth".into(),
+            email: None,
+            external_id: Some("17".into()),
+        };
+
+        let out = dedup_commit_authored(vec![local, gitlab]);
+        assert_eq!(out.len(), 1);
+        let merged = &out[0].actor;
+        assert_eq!(
+            merged.email.as_deref(),
+            Some("me@example.com"),
+            "winner actor must inherit loser's email"
+        );
+        assert_eq!(
+            merged.external_id.as_deref(),
+            Some("17"),
+            "winner actor must retain its own external_id"
+        );
     }
 
     /// Idempotent: `dedup(dedup(x)) == dedup(x)` for any input.

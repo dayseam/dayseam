@@ -28,6 +28,8 @@
 //! in the order the connector emitted them (which is deterministic,
 //! keyed on `(occurred_at, external_id, id)` after sorting).
 
+use std::collections::HashMap;
+
 use dayseam_core::{ActivityEvent, ActivityKind};
 
 /// Pure data describing an MR's commit list, independent of the
@@ -73,6 +75,22 @@ pub fn annotate_rolled_into_mr(events: &mut [ActivityEvent], mrs: &[MergeRequest
         return;
     }
 
+    // DAY-72 PERF-addendum-06: build a sha → mr_external_id index
+    // once, then do a single O(1) lookup per event. The previous
+    // shape was a nested scan (events × mrs × shas_per_mr) which,
+    // for a heavy day (C=200 commits, M=30 MRs, S=50 shas each),
+    // burned ~300k string comparisons on every report generation.
+    // `entry().or_insert` preserves first-MR-wins semantics because
+    // we iterate `mrs` in caller order.
+    let mut sha_to_mr: HashMap<&str, &str> = HashMap::new();
+    for mr in mrs {
+        for sha in &mr.commit_shas {
+            sha_to_mr
+                .entry(sha.as_str())
+                .or_insert(mr.external_id.as_str());
+        }
+    }
+
     for event in events.iter_mut() {
         if event.kind != ActivityKind::CommitAuthored {
             continue;
@@ -80,14 +98,8 @@ pub fn annotate_rolled_into_mr(events: &mut [ActivityEvent], mrs: &[MergeRequest
         if event.parent_external_id.is_some() {
             continue;
         }
-        // First-MR-wins: iterate in caller order and stop on the
-        // first hit. Cloning the small `external_id` string avoids a
-        // borrow-after-assign when writing back to the event.
-        if let Some(mr) = mrs
-            .iter()
-            .find(|mr| mr.commit_shas.iter().any(|sha| sha == &event.external_id))
-        {
-            event.parent_external_id = Some(mr.external_id.clone());
+        if let Some(mr_id) = sha_to_mr.get(event.external_id.as_str()) {
+            event.parent_external_id = Some((*mr_id).to_string());
         }
     }
 }

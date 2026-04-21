@@ -274,6 +274,18 @@ fn build_commit_event(
     let message = commit.message().unwrap_or("").trim().to_string();
     let (title, body) = split_message(&message);
     let repo_url = format!("file://{}", repo_root.display());
+    // DAY-72 CONS-addendum-04: surface the repo's human label on the
+    // `repo` `EntityRef` to match the shape `connector-gitlab` emits
+    // (where `label = Some(basename(path_with_namespace))`). Before
+    // this, local-git events carried `label: None` while GitLab
+    // events carried a populated label, forcing every downstream
+    // reader (rollup, render, future tooling) to re-derive the
+    // basename from `external_id`. Keeping the contract uniform
+    // across connectors was an explicit review-addendum goal.
+    let repo_label = repo_root
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "repo".to_string());
 
     ActivityEvent {
         id,
@@ -290,17 +302,12 @@ fn build_commit_event(
         body,
         links: vec![Link {
             url: repo_url,
-            label: Some(
-                repo_root
-                    .file_name()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "repo".to_string()),
-            ),
+            label: Some(repo_label.clone()),
         }],
         entities: vec![EntityRef {
             kind: "repo".to_string(),
             external_id: repo_root.display().to_string(),
-            label: None,
+            label: Some(repo_label),
         }],
         parent_external_id: None,
         metadata: serde_json::json!({}),
