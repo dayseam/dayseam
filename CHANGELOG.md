@@ -8,6 +8,46 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **v0.2 `connector-confluence` — crate scaffold (DAY-79).**
+  Seventh task of the v0.2 Atlassian arc. Parallels the DAY-76 Jira
+  scaffold: a new `crates/connectors/connector-confluence` crate that
+  registers `SourceKind::Confluence` with the orchestrator, exposes
+  `ConfluenceConnector` + `ConfluenceMux` (the per-kind multiplexer
+  the DAY-82 Add-Source flow upserts into), ships
+  `validate_auth` + `list_identities` on top of
+  [`connector_atlassian_common`], and stubs `sync` as
+  `DayseamError::Unsupported` across every `SyncRequest` variant —
+  the CQL walker lands in DAY-80. `ConfluenceConfig` carries only
+  the `workspace_url` (no `email`): a Confluence source pairs with
+  a sibling `SourceConfig::Jira` row that already knows the email,
+  so the IPC layer rebuilds a `BasicAuth` from the shared secret on
+  demand and a single keychain entry can serve both products.
+  **Core-types.** `dayseam-core` gains a
+  `SourceConfig::Confluence { workspace_url }` variant (additive,
+  `semver:none` — previously unreachable because no connector could
+  emit one). The matching `ts-rs` bindings regenerate automatically.
+  **Orchestrator.** `DefaultRegistryConfig` gains a
+  `confluence_sources: Vec<ConfluenceSourceCfg>` field; the default
+  registry registers `SourceKind::Confluence` with an empty mux on
+  every install (mirroring the Jira "register-empty, upsert-later"
+  contract) so the DAY-82 Add-Source dialog can slot a fresh
+  Confluence source in without rebuilding the registry. The desktop
+  startup backfill passes an empty list until DAY-82 lands the
+  dialog. **Tests.** The plan's four scaffold invariants land as
+  `connector-confluence/tests/scaffold.rs` (registered kind,
+  non-Day unsupported, Arc<dyn SourceConnector> object-safety,
+  `ConfluenceMux::upsert`/`remove` round-trip) and
+  `connector-confluence/tests/auth.rs` (200/401/403/404 classification
+  against the shared `GET /rest/api/3/myself` endpoint, plus the
+  shared-identity invariant: the Jira and Confluence `list_identities`
+  helpers emit rows with byte-identical `(kind, external_actor_id)`
+  from the same `AtlassianAccountInfo`, which is what makes "one
+  credential serves both products" real at the walker-filter layer).
+  The orchestrator integration helper drops its
+  `unreachable!("Confluence lands in DAY-79")` stub in favour of a
+  real `SourceConfig::Confluence` row. `semver:none` — the kind +
+  scaffold are additive, the walker behaviour flip is DAY-80.
+
 - **v0.2 `dayseam-report` — `group_key_from_event` + cross-source
   enrichment (DAY-78).** Sixth task of the v0.2 Atlassian arc. The
   report engine used to bucket every event by a single `repo_path`

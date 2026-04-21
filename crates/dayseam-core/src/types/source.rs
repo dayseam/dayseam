@@ -89,6 +89,27 @@ pub enum SourceConfig {
         workspace_url: String,
         email: String,
     },
+    /// Atlassian Confluence Cloud workspace.
+    ///
+    /// `workspace_url` is the same tenant base URL [`Self::Jira`]
+    /// carries — e.g. `https://acme.atlassian.net`. The Confluence
+    /// connector joins `/wiki/rest/api/*` and `/wiki/api/v2/*` onto
+    /// it, but the auth probe (`GET /rest/api/3/myself`) shares the
+    /// Jira endpoint because a single Atlassian Cloud credential
+    /// authenticates both products. That is why this row does **not**
+    /// carry its own `email`: the Add-Source dialog (DAY-82) attaches
+    /// each Confluence row to the same `secret_ref` + email the
+    /// paired `Jira` row already knows about, so the walker hydrates
+    /// a `BasicAuth` from the sibling `SourceConfig::Jira` row when
+    /// the two are registered as a shared-credential pair. Separate
+    /// credentials (one keychain entry per product) are a planned
+    /// follow-up; the shape here already supports either by keeping
+    /// the email out of this row.
+    ///
+    /// Added in DAY-79 (v0.2 Atlassian Confluence scaffold).
+    Confluence {
+        workspace_url: String,
+    },
 }
 
 impl SourceConfig {
@@ -101,6 +122,7 @@ impl SourceConfig {
             SourceConfig::GitLab { .. } => SourceKind::GitLab,
             SourceConfig::LocalGit { .. } => SourceKind::LocalGit,
             SourceConfig::Jira { .. } => SourceKind::Jira,
+            SourceConfig::Confluence { .. } => SourceKind::Confluence,
         }
     }
 }

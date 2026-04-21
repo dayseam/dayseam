@@ -12,6 +12,7 @@ members = [
     "crates/connectors/connector-gitlab",
     "crates/connectors/connector-atlassian-common",
     "crates/connectors/connector-jira",
+    "crates/connectors/connector-confluence",
     "crates/sinks-sdk",
     "crates/sinks/sink-markdown-file",
     "crates/dayseam-orchestrator",
