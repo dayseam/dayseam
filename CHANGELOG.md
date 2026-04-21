@@ -8,6 +8,37 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **v0.2 Atlassian `BasicAuth` strategy (DAY-74).** Second task of the
+  combined Jira + Confluence phase: lands the HTTP-Basic auth shape
+  the walkers in DAY-77 / DAY-80 will authenticate through, plus the
+  matching `AuthDescriptor::Basic` durable-descriptor variant so
+  persisted `secret_ref`s round-trip into equivalent strategies on
+  app restart. `BasicAuth::atlassian(email, api_token,
+  keychain_service, keychain_account)` pre-encodes `email:api_token`
+  at construction time and wraps the full `Basic <base64…>` header
+  value in a `SecretString` — plain token bytes never outlive the
+  constructor stack frame, and `Debug` redacts both the encoded
+  header and the plain token via a manual impl. Designed to be
+  **agnostic to the shared-PAT / separate-PAT decision**: two
+  sources that pass the same `(service, account)` pair collapse
+  into a shared-PAT keychain row (the common case — one Atlassian
+  token unlocks both Jira and Confluence on the same tenant), and
+  two sources that pass different pairs stay independent (the
+  separate-service-account or separate-tenant case). The DAY-81
+  refcount guard is still the correct delete-path for the shared
+  case and degenerates to `refcount == 1` per row in the separate
+  case. 12 unit tests (header shape, UTF-8, debug-no-leak,
+  descriptor round-trip, shared/separate descriptor equality) + 5
+  wiremock integration tests (live header attachment, 401/403
+  flowing through as raw responses per the Phase-3 CORR-01
+  invariant, shared-handle / separate-handle on-the-wire parity).
+  Ships as `semver:none`: no connector consumes `BasicAuth` yet —
+  DAY-76 (Jira) and DAY-79 (Confluence) add the `SourceConfig`
+  variants that the desktop IPC will hand the strategy to. See
+  [`docs/plan/2026-04-20-v0.2-atlassian.md`](docs/plan/2026-04-20-v0.2-atlassian.md)
+  §11 row DAY-74 and the amended §Task 2 discussion of the
+  shared-vs-separate PAT design.
+
 - **v0.2 Atlassian core types (DAY-73).** First task of the
   combined Jira + Confluence phase: lands the vocabulary the
   walkers in DAY-77 / DAY-80 will speak. Adds `SourceKind::Jira`

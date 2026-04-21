@@ -22,6 +22,13 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
 rand = "0.8"
+# DAY-74. `BasicAuth::atlassian` base64-encodes `email:api_token`
+# at construction time so the plain `email:token` bytes never
+# outlive the constructor stack frame. The `base64` crate is the
+# de-facto workspace-level encoder and is also the one
+# `connector-atlassian-common` (DAY-75) will need for its
+# `cloudId` discovery path.
+base64 = "0.22"
 # `zeroize` here is deliberately pulled in directly rather than via
 # `dayseam-secrets`. The layering test in tests/no_cross_crate_leak.rs
 # forbids connectors-sdk from depending on dayseam-secrets; we still

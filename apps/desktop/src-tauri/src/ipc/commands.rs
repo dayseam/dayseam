@@ -258,20 +258,32 @@ fn build_source_auth(
 ) -> Result<Arc<dyn AuthStrategy>, DayseamError> {
     match source.kind {
         SourceKind::LocalGit => Ok(Arc::new(NoneAuth)),
-        // DAY-73. `SourceKind::{Jira, Confluence}` exist as enum
-        // discriminants so DB reads round-trip, but no connector is
-        // registered for them in v0.2-pre. If a v0.2-pre user somehow
-        // ends up with a persisted Jira / Confluence source row (only
-        // possible by hand-editing the DB), refuse to build an auth
-        // strategy and surface an `Unsupported` error rather than
-        // silently defaulting to `NoneAuth`. DAY-74 replaces this with
-        // the real `BasicAuth` strategy.
+        // DAY-73 / DAY-74. `SourceKind::{Jira, Confluence}` exist as
+        // enum discriminants, and `connectors-sdk::BasicAuth` now
+        // carries the Atlassian auth shape, but `SourceConfig::Jira` /
+        // `SourceConfig::Confluence` variants do not exist yet — those
+        // land in DAY-76 (Jira) and DAY-79 (Confluence) alongside the
+        // per-source `email` field a `BasicAuth` instance needs to
+        // build its header. Until then, refuse to build an auth
+        // strategy for these kinds (the only way a row of one of
+        // these kinds reaches this code path in v0.2-pre is a DB
+        // hand-edit — the `sources_create` IPC never accepts them).
+        //
+        // The wiring in DAY-76 / DAY-79 will call
+        // `BasicAuth::atlassian(email, token, keychain_service,
+        // keychain_account)` exactly once per source, passing the
+        // per-source `email` from `SourceConfig::{Jira, Confluence}`
+        // and the per-source `(service, account)` from `secret_ref`.
+        // Whether two sources share the same `secret_ref` (shared-PAT
+        // mode) or each carries its own (separate-PAT mode) is
+        // decided by the Add-Source dialog (DAY-82) and enforced at
+        // delete time by the DAY-81 refcount guard.
         SourceKind::Jira | SourceKind::Confluence => Err(DayseamError::Unsupported {
             code: error_codes::CONNECTOR_UNSUPPORTED_SYNC_REQUEST.to_string(),
             message: format!(
                 "source kind {:?} has no connector registered in this build; \
-                 Atlassian support lands in DAY-74 (BasicAuth) and DAY-76 / DAY-79 \
-                 (connector scaffolds)",
+                 DAY-74 shipped `BasicAuth` in connectors-sdk, DAY-76 / DAY-79 \
+                 add `SourceConfig` variants + wire this arm",
                 source.kind
             ),
         }),
