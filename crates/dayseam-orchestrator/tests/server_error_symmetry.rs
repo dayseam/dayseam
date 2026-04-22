@@ -5,11 +5,11 @@
 //! matches its sibling connectors.
 //!
 //! Why this lives in the orchestrator crate: `dayseam-orchestrator` is
-//! the lowest point in the dep graph that already depends on all three
-//! connector crates, so this is where a compile-or-test regression in
-//! any one of them breaks first. If a future connector forgets to map
-//! 500 / 502 / 503 / 504 / 410, this test fails with a message naming
-//! the connector and the missing status.
+//! the lowest point in the dep graph that already depends on every
+//! registered connector crate, so this is where a compile-or-test
+//! regression in any one of them breaks first. If a future connector
+//! forgets to map 500 / 502 / 503 / 504 / 410, this test fails with a
+//! message naming the connector and the missing status.
 //!
 //! The invariant has three parts:
 //! 1. 5xx statuses (500, 502, 503, 504) each map to a
@@ -21,12 +21,14 @@
 //!    `{service}.resource_gone`. Before DAY-89 both connector families
 //!    lumped 410 into the catch-all 5xx/shape-changed arm, so a
 //!    permanently-deleted upstream resource kept retrying.
-//! 3. The registered `error_codes::ALL` set contains each of the six
-//!    derived codes (`{jira,confluence,gitlab} × {upstream_5xx,
-//!    resource_gone}`). This keeps the taxonomy-completeness check
-//!    honest even after a future rename.
+//! 3. The registered `error_codes::ALL` set contains each of the
+//!    eight derived codes (`{jira,confluence,gitlab,github} ×
+//!    {upstream_5xx, resource_gone}`). This keeps the
+//!    taxonomy-completeness check honest even after a future rename.
+//!    DAY-95 extended the triplet to a quadruplet with GitHub.
 
 use connector_atlassian_common::{map_status as map_atlassian_status, Product};
+use connector_github::map_github_status;
 use connector_gitlab::map_gitlab_status;
 use dayseam_core::{error_codes, DayseamError};
 use reqwest::StatusCode;
@@ -53,6 +55,8 @@ fn expected_code(service: &str, status: StatusCode) -> &'static str {
         ("confluence", _) => error_codes::CONFLUENCE_UPSTREAM_5XX,
         ("gitlab", StatusCode::GONE) => error_codes::GITLAB_RESOURCE_GONE,
         ("gitlab", _) => error_codes::GITLAB_UPSTREAM_5XX,
+        ("github", StatusCode::GONE) => error_codes::GITHUB_RESOURCE_GONE,
+        ("github", _) => error_codes::GITHUB_UPSTREAM_5XX,
         (svc, s) => unreachable!("unexpected service/status pair: {svc}/{s}"),
     }
 }
@@ -66,13 +70,14 @@ fn map_for(service: &str, status: StatusCode) -> DayseamError {
         "jira" => map_atlassian_status(Product::Jira, status, "simulated").into(),
         "confluence" => map_atlassian_status(Product::Confluence, status, "simulated").into(),
         "gitlab" => map_gitlab_status(status, "simulated").into(),
+        "github" => map_github_status(status, "simulated").into(),
         other => unreachable!("unexpected service {other}"),
     }
 }
 
 #[test]
 fn server_error_mapping_is_symmetric_across_connectors() {
-    for service in ["jira", "confluence", "gitlab"] {
+    for service in ["jira", "confluence", "gitlab", "github"] {
         for status in SERVER_ERROR_STATUSES {
             let err = map_for(service, *status);
             let expected = expected_code(service, *status);
@@ -95,7 +100,7 @@ fn server_error_mapping_is_symmetric_across_connectors() {
 
 #[test]
 fn resource_gone_mapping_is_symmetric_across_connectors() {
-    for service in ["jira", "confluence", "gitlab"] {
+    for service in ["jira", "confluence", "gitlab", "github"] {
         let err = map_for(service, StatusCode::GONE);
         let expected = expected_code(service, StatusCode::GONE);
         assert_eq!(
@@ -114,7 +119,7 @@ fn resource_gone_mapping_is_symmetric_across_connectors() {
 }
 
 #[test]
-fn all_six_derived_codes_are_registered() {
+fn all_eight_derived_codes_are_registered() {
     let expected = [
         error_codes::JIRA_UPSTREAM_5XX,
         error_codes::JIRA_RESOURCE_GONE,
@@ -122,6 +127,8 @@ fn all_six_derived_codes_are_registered() {
         error_codes::CONFLUENCE_RESOURCE_GONE,
         error_codes::GITLAB_UPSTREAM_5XX,
         error_codes::GITLAB_RESOURCE_GONE,
+        error_codes::GITHUB_UPSTREAM_5XX,
+        error_codes::GITHUB_RESOURCE_GONE,
     ];
     for code in expected {
         assert!(

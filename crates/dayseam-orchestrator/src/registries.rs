@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use chrono::FixedOffset;
 use connector_confluence::{ConfluenceMux, ConfluenceSourceCfg};
+use connector_github::{GithubMux, GithubSourceCfg};
 use connector_gitlab::{GitlabMux, GitlabSourceCfg};
 use connector_jira::{JiraMux, JiraSourceCfg};
 use connector_local_git::LocalGitConnector;
@@ -165,6 +166,14 @@ pub struct DefaultRegistryConfig {
     /// CQL walker, and DAY-82 wires the Add-Source dialog to
     /// populate this.
     pub confluence_sources: Vec<ConfluenceSourceCfg>,
+    /// Configured GitHub sources (one entry per `SourceConfig::GitHub`
+    /// row). The [`GithubMux`] registered for [`SourceKind::GitHub`]
+    /// dispatches per `source_id` to the right `api_base_url` at sync
+    /// time. Empty in every deployment today (the DAY-95 scaffold
+    /// registers the kind but its `sync` returns `Unsupported` until
+    /// DAY-96 lands the events-endpoint + search walker); DAY-99
+    /// wires the Add-Source dialog to populate this.
+    pub github_sources: Vec<GithubSourceCfg>,
 }
 
 /// Build the pair of registries used in production. Tests that need
@@ -201,6 +210,16 @@ pub fn default_registries(cfg: DefaultRegistryConfig) -> (ConnectorRegistry, Sin
     connectors.insert(
         SourceKind::Confluence,
         Arc::new(ConfluenceMux::new(cfg.local_tz, cfg.confluence_sources)),
+    );
+    // DAY-95: "register-empty, upsert-later" contract for GitHub
+    // matches every other mux-backed connector above. The mux carries
+    // `local_tz` so DAY-96's walker can compute the correct UTC window
+    // for a local day; `sync` in this release returns
+    // `DayseamError::Unsupported` for every request variant until
+    // DAY-96 flips the `Day` arm onto the real walker.
+    connectors.insert(
+        SourceKind::GitHub,
+        Arc::new(GithubMux::new(cfg.local_tz, cfg.github_sources)),
     );
 
     let mut sinks = SinkRegistry::new();
@@ -247,11 +266,13 @@ mod tests {
             gitlab_sources: Vec::new(),
             jira_sources: Vec::new(),
             confluence_sources: Vec::new(),
+            github_sources: Vec::new(),
         };
         let (connectors, sinks) = default_registries(cfg);
-        // DAY-83 Task 11.1 — hydration smoke: the shipping connector
-        // set is **exactly** {LocalGit, GitLab, Jira, Confluence}.
-        // Asserting the full kind set (rather than individual
+        // DAY-95 extension of DAY-83 Task 11.1 — hydration smoke. The
+        // shipping connector set is now **exactly**
+        // {LocalGit, GitLab, Jira, Confluence, GitHub}. Asserting
+        // the full kind set (rather than individual
         // `.get(kind).is_some()` probes) catches both directions of
         // regression: a kind that silently drops out (→ orchestrator
         // fan-out skips it), and a spurious extra kind that gets
@@ -269,8 +290,9 @@ mod tests {
                 SourceKind::GitLab,
                 SourceKind::Jira,
                 SourceKind::Confluence,
+                SourceKind::GitHub,
             ]),
-            "default_registries must hydrate exactly the four shipping connector kinds",
+            "default_registries must hydrate exactly the five shipping connector kinds",
         );
         let sink_kinds: HashSet<SinkKind> = sinks.kinds().into_iter().collect();
         assert_eq!(
@@ -308,6 +330,19 @@ mod tests {
             .get(SourceKind::Confluence)
             .expect("Confluence kind registered");
         assert_eq!(confluence.kind(), SourceKind::Confluence);
+        // DAY-95: parallel invariant for the GitHub mux. The scaffold
+        // registers the kind with an empty mux so the DAY-99
+        // Add-Source dialog can slot in a fresh GitHub source without
+        // re-registering; double-checking the registered handle
+        // self-reports the right kind guards against a copy-paste
+        // regression that would silently route GitHub fan-out to the
+        // GitLab or Jira mux (all three happen to be typed
+        // `Arc<dyn SourceConnector>` so the compiler cannot catch
+        // that mix-up on its own).
+        let github = connectors
+            .get(SourceKind::GitHub)
+            .expect("GitHub kind registered");
+        assert_eq!(github.kind(), SourceKind::GitHub);
         assert!(sinks.get(SinkKind::MarkdownFile).is_some());
     }
 
@@ -336,26 +371,21 @@ mod tests {
     /// invariant (2).
     #[test]
     fn registry_kind_round_trips_for_every_registered_connector() {
-        // `SourceKind::GitHub` is deliberately *not* in `ALL_KINDS`:
-        // DAY-93 lands the type in core, but the `connector-github`
-        // crate and its `default_registries` arm land in DAY-95. Once
-        // DAY-95 ships a registered GitHub connector, the author of
-        // that PR adds `SourceKind::GitHub` to `ALL_KINDS` — the
-        // coverage assertion below then enforces round-trip the same
-        // way it does for the other four kinds.
+        // DAY-95 closes the one-release GitHub lag: the variant is in
+        // `ALL_KINDS` now that `connector-github` ships a registered
+        // mux via `default_registries`.
         const ALL_KINDS: &[SourceKind] = &[
             SourceKind::LocalGit,
             SourceKind::GitLab,
             SourceKind::Jira,
             SourceKind::Confluence,
+            SourceKind::GitHub,
         ];
         // Compiler-checked exhaustiveness: if `SourceKind` grows a
         // variant, this match fails to compile and forces the author
         // to extend `ALL_KINDS` above — which in turn fails the
         // coverage assertion below until `default_registries` is
-        // extended too. The explicit `GitHub` arm preserves the
-        // compile-time check while the `ALL_KINDS` gap above documents
-        // the intentional one-release lag.
+        // extended too.
         fn _exhaustive_source_kind_check(k: SourceKind) {
             match k {
                 SourceKind::LocalGit
@@ -375,6 +405,7 @@ mod tests {
             gitlab_sources: Vec::new(),
             jira_sources: Vec::new(),
             confluence_sources: Vec::new(),
+            github_sources: Vec::new(),
         };
         let (connectors, _) = default_registries(cfg);
 

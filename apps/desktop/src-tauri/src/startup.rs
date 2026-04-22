@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use chrono::Offset;
 use connector_confluence::{ConfluenceConfig, ConfluenceSourceCfg};
+use connector_github::{GithubConfig, GithubSourceCfg};
 use connector_gitlab::GitlabSourceCfg;
 use connector_jira::{JiraConfig, JiraSourceCfg};
 use dayseam_core::{
@@ -359,6 +360,7 @@ async fn resolve_registry_config(pool: &SqlitePool) -> Result<DefaultRegistryCon
     let mut gitlab_sources: Vec<GitlabSourceCfg> = Vec::new();
     let mut jira_sources: Vec<JiraSourceCfg> = Vec::new();
     let mut confluence_sources: Vec<ConfluenceSourceCfg> = Vec::new();
+    let mut github_sources: Vec<GithubSourceCfg> = Vec::new();
     for source in sources {
         match (&source.kind, &source.config) {
             (
@@ -435,6 +437,27 @@ async fn resolve_registry_config(pool: &SqlitePool) -> Result<DefaultRegistryCon
                     ),
                 }
             }
+            // DAY-95: hydrate the GitHub mux at boot the same way the
+            // Atlassian muxes above do. Malformed `api_base_url` rows
+            // (e.g. hand-edited in the SQLite file) are logged and
+            // skipped rather than crashing boot; the UI surfaces the
+            // source as "Unchecked" until the user fixes it — the
+            // DOG-v0.2-02 post-mortem that put this pattern in place
+            // applies verbatim to GitHub.
+            (SourceKind::GitHub, SourceConfig::GitHub { api_base_url }) => {
+                match GithubConfig::from_raw(api_base_url) {
+                    Ok(config) => github_sources.push(GithubSourceCfg {
+                        source_id: source.id,
+                        config,
+                    }),
+                    Err(err) => tracing::warn!(
+                        source_id = %source.id,
+                        api_base_url = %api_base_url,
+                        error = %err,
+                        "skipping GitHub source with unparseable api_base_url at startup",
+                    ),
+                }
+            }
             // Kind/config mismatch is a core-level invariant violation
             // (serde round-trip prevents it); skip defensively rather
             // than panic at startup.
@@ -450,6 +473,7 @@ async fn resolve_registry_config(pool: &SqlitePool) -> Result<DefaultRegistryCon
         gitlab_sources,
         jira_sources,
         confluence_sources,
+        github_sources,
     })
 }
 

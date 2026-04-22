@@ -397,23 +397,52 @@ fn build_source_auth(
                 secret_ref.keychain_account.clone(),
             )))
         }
-        // DAY-93. The GitHub variant lands in core-types; the
-        // `PatAuth::github(..)` constructor and the full IPC arm
-        // land in DAY-94 / DAY-95. Until then, no `sources_add`
-        // path can produce a `SourceKind::GitHub` row (the Add-
-        // Source dialog gains the GitHub journey in DAY-99), so
-        // this arm is defensive — a hand-crafted caller that
-        // forged a GitHub source into the database gets a clear
-        // "not implemented yet" rather than a non-exhaustive
-        // match panic.
-        SourceKind::GitHub => Err(DayseamError::Internal {
-            code: "ipc.github.not_implemented".to_string(),
-            message: format!(
-                "GitHub source auth is declared in core-types but not yet wired through IPC \
-                 (source {} has kind GitHub — v0.4 DAY-94 / DAY-95 land the connector)",
-                source.id
-            ),
-        }),
+        // DAY-95 wires the GitHub PAT through the same keychain +
+        // `PatAuth::github` path GitLab uses. DAY-99 extends the
+        // Add-Source dialog so the user can actually *produce* a
+        // `SourceKind::GitHub` row; until then this arm only runs on
+        // a hand-crafted DB row or a direct `sources_add` IPC call
+        // for the GitHub kind. We still wire it now so the scaffold
+        // works end-to-end — a GitHub source reaches
+        // `GithubConnector::healthcheck` / `::sync` with the right
+        // auth attached, matching every other kind's contract.
+        SourceKind::GitHub => {
+            let secret_ref = source
+                .secret_ref
+                .clone()
+                .ok_or_else(|| DayseamError::Auth {
+                    code: error_codes::GITHUB_AUTH_INVALID_CREDENTIALS.to_string(),
+                    message: format!(
+                        "no PAT on file for GitHub source {} — reconnect to add one",
+                        source.id
+                    ),
+                    retryable: false,
+                    action_hint: Some("reconnect".to_string()),
+                })?;
+            let key = secret_store_key(&secret_ref);
+            let pat_secret = state
+                .secrets
+                .get(&key)
+                .map_err(|e| DayseamError::Internal {
+                    code: "ipc.github.keychain_read_failed".to_string(),
+                    message: format!("keychain read for {key} failed: {e}"),
+                })?
+                .ok_or_else(|| DayseamError::Auth {
+                    code: error_codes::GITHUB_AUTH_INVALID_CREDENTIALS.to_string(),
+                    message: format!(
+                        "keychain slot {key} is empty for source {} — reconnect to restore the PAT",
+                        source.id
+                    ),
+                    retryable: false,
+                    action_hint: Some("reconnect".to_string()),
+                })?;
+            let token = pat_secret.expose_secret();
+            Ok(Arc::new(PatAuth::github(
+                token.as_str(),
+                secret_ref.keychain_service.clone(),
+                secret_ref.keychain_account.clone(),
+            )))
+        }
     }
 }
 

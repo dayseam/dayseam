@@ -8,6 +8,45 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **DAY-95: `connector-github` scaffold + `SourceConnector` +
+  `validate_auth` + `LinkHeaderPaginator` + `errors::map_status`.**
+  New crate `connector-github` lands with the minimal surface needed
+  for DAY-96's walker to be a thin loop: `GithubConnector` implements
+  `SourceConnector` (`kind() == SourceKind::GitHub`; `healthcheck`
+  probes `GET /user` with `Authorization: Bearer …`, `Accept:
+  application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`;
+  `sync` returns `DayseamError::Unsupported` +
+  `CONNECTOR_UNSUPPORTED_SYNC_REQUEST` for `Day` / `Range` / `Since`
+  until the walker ships). `auth::validate_auth` classifies 401 →
+  `github.auth.invalid_credentials`, 403 →
+  `github.auth.missing_scope`, 404 → `github.resource_not_found`
+  (with the documented "forgot `/api/v3` on your GHE URL" hint in
+  the error message), and transport errors → reused
+  `gitlab.url.{dns,tls}` codes (UI copy is host-agnostic; minting
+  `github.url.*` twins would bloat the registry without changing
+  behaviour). `pagination::next_link` + `parse_next_from_link_header`
+  parse GitHub's RFC 8288 `Link` header, tolerating bare-token
+  `rel=next`, multi-token `rel="next prev"`, reordered entries,
+  malformed URLs (silent-failure-avoidance: stops pagination rather
+  than crashing the walk), and absent / whitespace-only headers.
+  `errors::map_status` extends the DAY-89 5xx / 410 symmetry to a
+  quadruplet: `crates/dayseam-core/tests/error_codes.rs` now asserts
+  `{gitlab,jira,confluence,github} × {upstream_5xx, resource_gone}`
+  are all registered in `error_codes::ALL`; the orchestrator-level
+  `server_error_symmetry` test gains a `github` arm so a future
+  mapping drift fails the same way for every family. `GithubMux`
+  plugs into `DefaultRegistryConfig::github_sources`; desktop
+  startup hydrates `GithubConfig` from persisted
+  `SourceConfig::GitHub { api_base_url }` rows. `build_source_auth`
+  loses its DAY-93 `ipc.github.not_implemented` placeholder and now
+  returns `PatAuth::github` — a boundary enabler for end-to-end
+  testing, not a user-visible feature (Add-Source dialog still
+  lands in DAY-99). Tests:
+  `crates/connectors/connector-github/tests/{scaffold,auth,pagination}.rs`
+  pin the registration, authentication, header-shape, and pagination
+  seams against a wiremock server; 33 in-crate unit tests cover
+  config parsing, error taxonomy, user-info decoding, identity
+  seeding, and Link-header edge cases.
 - **DAY-94: `PatAuth::github` constructor + connectors-SDK DTO design
   note.** New `PatAuth::github(token, keychain_service, keychain_account)`
   constructor (delegates to `PatAuth::bearer` — GitHub's classic and
