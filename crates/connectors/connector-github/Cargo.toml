@@ -1,0 +1,31 @@
+[package]
+name = "connector-github"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "GitHub source connector for Dayseam: PAT-authenticated REST API walk via Link-header pagination, per-day sync, identity match by numeric user id."
+
+[dependencies]
+connectors-sdk = { path = "../../connectors-sdk" }
+dayseam-core = { path = "../../dayseam-core" }
+dayseam-events = { path = "../../dayseam-events" }
+
+async-trait = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }
+uuid = { workspace = true }
+url = "2"
+# `rustls-tls` keeps us off the host's OpenSSL; `json` enables the
+# built-in deserialiser we use when parsing `/user` responses.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+wiremock = "0.6"
