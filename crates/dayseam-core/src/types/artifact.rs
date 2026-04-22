@@ -109,6 +109,21 @@ pub enum ArtifactKind {
     /// collapsed rapid-save evidence) that survives across edit
     /// events. Added in DAY-73.
     ConfluencePage,
+    /// A single GitHub pull request, rolled up across a single
+    /// day's opened / merged / closed / reviewed / commented events
+    /// so `#42` renders as one bullet under `## Merge requests`
+    /// rather than five. Paired with [`ArtifactPayload::MergeRequest`]
+    /// carrying `MergeRequestProvider::GitHub`. The v0.4 GitHub
+    /// rollup (DAY-96) is the first producer; no v0.3 code emits
+    /// this variant.
+    GitHubPullRequest,
+    /// A single GitHub issue, rolled up across a single day's
+    /// opened / closed / commented / assigned events. Kept
+    /// distinct from [`Self::GitHubPullRequest`] because GitHub's
+    /// report-layer rules differ (PRs annotate Jira transitions,
+    /// issues don't). The v0.4 GitHub rollup (DAY-96) is the
+    /// first producer. Added in DAY-93.
+    GitHubIssue,
 }
 
 /// Short string used as the `artifacts.kind` column value and as the
@@ -119,7 +134,32 @@ pub(crate) const fn artifact_kind_token(kind: ArtifactKind) -> &'static str {
         ArtifactKind::CommitSet => "CommitSet",
         ArtifactKind::JiraIssue => "JiraIssue",
         ArtifactKind::ConfluencePage => "ConfluencePage",
+        ArtifactKind::GitHubPullRequest => "GitHubPullRequest",
+        ArtifactKind::GitHubIssue => "GitHubIssue",
     }
+}
+
+/// Which forge a [`ArtifactPayload::MergeRequest`] came from. An
+/// enum rather than a string so the report-render layer can match
+/// exhaustively on the provider (a future `github.com → enterprise`
+/// distinction or a third forge lands as an enum variant, not a
+/// magic-string bug).
+///
+/// v0.4 lands two variants so the fifth connector and the v0.3
+/// GitLab rollup both land under the same `## Merge requests`
+/// section. Added in DAY-93.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum MergeRequestProvider {
+    /// GitLab merge request. v0.3's GitLab walker previously
+    /// folded MRs into the commit suffix under `## Commits`; the
+    /// v0.4 promotion migrates them to first-class bullets under
+    /// `## Merge requests` with no schema change (the `Artifact`
+    /// row shape was already reserved).
+    GitLab,
+    /// GitHub pull request. The v0.4 GitHub connector's first
+    /// producer.
+    GitHub,
 }
 
 /// The variant-specific payload, externally tagged so the on-disk JSON
@@ -175,6 +215,45 @@ pub enum ArtifactPayload {
         /// The space key (e.g. `"ENG"`) for grouping by space in the
         /// report.
         space_key: String,
+        date: NaiveDate,
+        event_ids: Vec<Uuid>,
+    },
+    /// One merge request — a GitLab MR or a GitHub PR — aggregated
+    /// across a single day's lifecycle events (opened / reviewed /
+    /// merged / closed / review-commented). The v0.4 GitLab
+    /// rollup (DAY-97) and GitHub rollup (DAY-96) both produce
+    /// this variant so the report engine's `## Merge requests`
+    /// section renders them uniformly; `provider` tells the
+    /// renderer which URL template to use (`gitlab://…/merge_requests/NN`
+    /// vs `github://…/pull/NN`) and which verb family
+    /// (`MrOpened` vs `GitHubPullRequestOpened`) the rolled-up
+    /// events belong to.
+    ///
+    /// `number` is the upstream-assigned numeric id (GitLab's
+    /// `iid`, GitHub's `.number`). `project_key` is the
+    /// `group/project` or `owner/repo` path — stable across
+    /// renames at the upstream, used as the grouping key for the
+    /// `Artifact`'s `external_id` alongside `number`.
+    ///
+    /// Added in DAY-93. No production code emits this variant
+    /// until DAY-96/97; the shape is landed here so the walker
+    /// and rollup PRs don't have to amend core types mid-stream.
+    MergeRequest {
+        provider: MergeRequestProvider,
+        /// Upstream-assigned numeric id (`iid` in GitLab,
+        /// `number` in GitHub). Kept typed rather than stringly
+        /// so the renderer can't accidentally string-compare
+        /// `"10"` and `"9"`.
+        number: i64,
+        /// `owner/repo` (GitHub) or `group/project` (GitLab) —
+        /// the full path segment the forge's URL template
+        /// joins onto its base URL.
+        project_key: String,
+        title: String,
+        /// Fully-qualified URL of the MR / PR on the upstream
+        /// forge; pre-computed at rollup time so the renderer
+        /// doesn't repeat per-provider URL construction.
+        url: String,
         date: NaiveDate,
         event_ids: Vec<Uuid>,
     },

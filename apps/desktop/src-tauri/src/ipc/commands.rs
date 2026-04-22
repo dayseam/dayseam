@@ -397,6 +397,23 @@ fn build_source_auth(
                 secret_ref.keychain_account.clone(),
             )))
         }
+        // DAY-93. The GitHub variant lands in core-types; the
+        // `PatAuth::github(..)` constructor and the full IPC arm
+        // land in DAY-94 / DAY-95. Until then, no `sources_add`
+        // path can produce a `SourceKind::GitHub` row (the Add-
+        // Source dialog gains the GitHub journey in DAY-99), so
+        // this arm is defensive — a hand-crafted caller that
+        // forged a GitHub source into the database gets a clear
+        // "not implemented yet" rather than a non-exhaustive
+        // match panic.
+        SourceKind::GitHub => Err(DayseamError::Internal {
+            code: "ipc.github.not_implemented".to_string(),
+            message: format!(
+                "GitHub source auth is declared in core-types but not yet wired through IPC \
+                 (source {} has kind GitHub — v0.4 DAY-94 / DAY-95 land the connector)",
+                source.id
+            ),
+        }),
     }
 }
 

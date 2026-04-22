@@ -106,6 +106,7 @@ fn event_is_self(event: &ActivityEvent, identities: &[&SourceIdentity]) -> bool 
             SourceIdentityKind::GitLabUserId
             | SourceIdentityKind::GitLabUsername
             | SourceIdentityKind::GitHubLogin
+            | SourceIdentityKind::GitHubUserId
             | SourceIdentityKind::AtlassianAccountId => {
                 event.actor.external_id.as_deref() == Some(id.external_actor_id.as_str())
             }
@@ -276,6 +277,15 @@ fn render_group(
             }
             Ok(out)
         }
+        // DAY-93. `MergeRequest` artefacts are dormant in v0.3 — no
+        // walker or rollup emits one yet. The v0.4 GitHub rollup
+        // (DAY-96) and GitLab MR promotion (DAY-97) replace this
+        // arm with real PR-aware rendering (`**owner/repo#42** —
+        // <title>`). Returning zero bullets preserves the
+        // "unreachable in practice, safe if ever reached" contract
+        // without panicking in a report that happens to carry a
+        // forged MR artifact in a test fixture.
+        ArtifactPayload::MergeRequest { .. } => Ok(Vec::new()),
     }
 }
 

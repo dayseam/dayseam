@@ -50,6 +50,11 @@ pub enum SourceKind {
     LocalGit,
     Jira,
     Confluence,
+    /// GitHub account — the v0.4 fifth connector. One PAT
+    /// authenticates one GitHub account; unlike the Atlassian case
+    /// there's no shared-credential-across-products situation to
+    /// model, because GitHub is single-product. Added in DAY-93.
+    GitHub,
 }
 
 /// Per-kind configuration. The enum is externally tagged so the on-disk
@@ -120,6 +125,27 @@ pub enum SourceConfig {
         #[serde_default_audit(repair = "confluence_email")]
         email: String,
     },
+    /// GitHub account.
+    ///
+    /// `api_base_url` is the REST API root the connector joins
+    /// endpoints onto — `https://api.github.com` for github.com
+    /// tenants (the common case) and `https://<host>/api/v3` for
+    /// GitHub Enterprise Server. Storing it per-source (rather than
+    /// inferring github.com) is what lets a single laptop connect
+    /// to both a personal github.com account and a work Enterprise
+    /// instance simultaneously without ambiguity.
+    ///
+    /// The PAT itself lives behind the source's `secret_ref` and
+    /// never touches this row; the IPC auth builder reads the token
+    /// out of the keychain and wraps it in
+    /// `connectors_sdk::PatAuth::github(..)` at request time.
+    ///
+    /// Added in DAY-93 (v0.4 GitHub connector core-types). The
+    /// connector scaffold in DAY-95 consumes this variant; no
+    /// production code emits it yet.
+    GitHub {
+        api_base_url: String,
+    },
 }
 
 impl SourceConfig {
@@ -133,6 +159,7 @@ impl SourceConfig {
             SourceConfig::LocalGit { .. } => SourceKind::LocalGit,
             SourceConfig::Jira { .. } => SourceKind::Jira,
             SourceConfig::Confluence { .. } => SourceKind::Confluence,
+            SourceConfig::GitHub { .. } => SourceKind::GitHub,
         }
     }
 }

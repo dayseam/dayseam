@@ -128,6 +128,69 @@ pub const CONFLUENCE_UPSTREAM_5XX: &str = "confluence.upstream_5xx";
 /// full rationale.
 pub const CONFLUENCE_RESOURCE_GONE: &str = "confluence.resource_gone";
 
+// -------- GitHub connector -------------------------------------------------
+//
+// Added in DAY-93 (v0.4). Mirrors the GitLab family one-to-one —
+// GitHub's REST surface maps to the same failure modes (bad PAT,
+// missing token scope, 404 for deleted / private repos, 410 for
+// truly deleted records, 429 rate-limited, 5xx transient, unknown
+// response shape) and the UI error-card copy reuses the GitLab
+// playbooks. The parallel codes are deliberate — the cross-
+// connector symmetry property test in
+// `crates/connectors/tests/server_error_symmetry.rs` (DAY-89)
+// extends to GitHub in DAY-96 with no new test shape, only a new
+// row in the symmetry table.
+
+/// 401 from any GitHub endpoint — the PAT was refused (revoked,
+/// rotated, or mistyped). Surfaced as `DayseamError::Auth` so the
+/// UI renders a Reconnect prompt; mirrors
+/// [`GITLAB_AUTH_INVALID_TOKEN`] and
+/// [`ATLASSIAN_AUTH_INVALID_CREDENTIALS`].
+pub const GITHUB_AUTH_INVALID_CREDENTIALS: &str = "github.auth.invalid_credentials";
+
+/// 403 from a GitHub endpoint whose body indicates the PAT is
+/// valid but missing a required scope (`repo`, `read:user`, or
+/// `read:org` depending on the request). Distinct from a rate-
+/// limit 403 (`X-RateLimit-Remaining: 0`), which routes to
+/// [`GITHUB_RATE_LIMITED`]. Surfaced as `DayseamError::Auth`.
+pub const GITHUB_AUTH_MISSING_SCOPE: &str = "github.auth.missing_scope";
+
+/// 404 from any GitHub endpoint — the repo / PR / issue has been
+/// deleted, was never public to this PAT, or the owner renamed
+/// the login and the cached URL no longer resolves. Surfaced as
+/// `DayseamError::Network` so the UI offers "check URL / reconnect";
+/// mirrors [`GITLAB_RESOURCE_NOT_FOUND`].
+pub const GITHUB_RESOURCE_NOT_FOUND: &str = "github.resource_not_found";
+
+/// 429 from any GitHub endpoint, **or** a 403 with
+/// `X-RateLimit-Remaining: 0` / the secondary-rate-limit body
+/// shape. The SDK's retry honours `Retry-After` and the
+/// `X-RateLimit-Reset` header; this code fires only when the
+/// retry budget is exhausted. Mirrors [`GITLAB_RATE_LIMITED`] /
+/// [`JIRA_WALK_RATE_LIMITED`].
+pub const GITHUB_RATE_LIMITED: &str = "github.rate_limited";
+
+/// 5xx from any GitHub endpoint after the SDK's retry budget is
+/// exhausted. Surfaced as `DayseamError::Network` (transient),
+/// not `UpstreamChanged`; symmetric with the GitLab / Jira /
+/// Confluence triplet (DAY-89 CONS-v0.2-06), now a quadruplet.
+pub const GITHUB_UPSTREAM_5XX: &str = "github.upstream_5xx";
+
+/// A GitHub response carried an unknown `type` / `action` /
+/// `event` shape the walker can't route. Emitted as
+/// `DayseamError::UpstreamChanged` so the orchestrator degrades
+/// the single event without killing the run; mirrors
+/// [`GITLAB_UPSTREAM_SHAPE_CHANGED`].
+pub const GITHUB_UPSTREAM_SHAPE_CHANGED: &str = "github.upstream_shape_changed";
+
+/// 410 Gone from any GitHub endpoint — the PR / issue / repo has
+/// been hard-deleted; retries will never succeed. Surfaced as
+/// `DayseamError::Network`; mirrors [`GITLAB_RESOURCE_GONE`] /
+/// [`JIRA_RESOURCE_GONE`] / [`CONFLUENCE_RESOURCE_GONE`] so the
+/// DAY-89 server-error-symmetry property test extends without
+/// shape change.
+pub const GITHUB_RESOURCE_GONE: &str = "github.resource_gone";
+
 // -------- Local-git connector ----------------------------------------------
 
 pub const LOCAL_GIT_REPO_LOCKED: &str = "local_git.repo_locked";
@@ -380,6 +443,13 @@ pub const ALL: &[&str] = &[
     CONFLUENCE_WALK_RATE_LIMITED,
     CONFLUENCE_UPSTREAM_5XX,
     CONFLUENCE_RESOURCE_GONE,
+    GITHUB_AUTH_INVALID_CREDENTIALS,
+    GITHUB_AUTH_MISSING_SCOPE,
+    GITHUB_RESOURCE_NOT_FOUND,
+    GITHUB_RATE_LIMITED,
+    GITHUB_UPSTREAM_5XX,
+    GITHUB_UPSTREAM_SHAPE_CHANGED,
+    GITHUB_RESOURCE_GONE,
     LOCAL_GIT_REPO_LOCKED,
     LOCAL_GIT_REPO_UNREADABLE,
     LOCAL_GIT_REPO_CORRUPT,

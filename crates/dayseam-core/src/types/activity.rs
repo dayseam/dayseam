@@ -22,6 +22,14 @@
 //!   Jira's own CRUD + workflow verbs.
 //! - **Confluence**: `ConfluencePageCreated` / `ConfluencePageEdited` /
 //!   `ConfluenceComment` — Confluence's own page-lifecycle verbs.
+//! - **GitHub**: `GitHubPullRequest{Opened,Merged,Closed,Reviewed,Commented}`
+//!   / `GitHubIssue{Opened,Closed,Commented,Assigned}` — GitHub's own
+//!   PR / issue lifecycle verbs. Parallels the GitLab `Mr*` family
+//!   one-to-one except for naming (GitHub's "pull request" vs
+//!   GitLab's "merge request"); the renaming matters because the
+//!   v0.4 first-class `ArtifactPayload::MergeRequest` variant
+//!   unifies them at the report-render layer while keeping the
+//!   upstream-verb fidelity at the event-emit layer.
 //!
 //! A new variant that breaks the pattern (e.g. `ConfluencePageAuthored`)
 //! should be rejected at review; the connector-specific verb family is
@@ -138,6 +146,48 @@ pub enum ActivityKind {
     /// Confluence comment (inline or footer) authored by the user.
     /// `body` is the ADF-to-plain-text rendering.
     ConfluenceComment,
+    /// GitHub pull request opened by the user. Emitted when the
+    /// `/users/{login}/events` stream surfaces a
+    /// `PullRequestEvent { action: "opened" }`. Added in DAY-93
+    /// (v0.4); the walker in DAY-96 is the first producer.
+    GitHubPullRequestOpened,
+    /// GitHub pull request merged. Emitted when the user's
+    /// `PullRequestEvent { action: "closed", payload.pull_request.merged: true }`
+    /// lands. Distinct from `GitHubPullRequestClosed` because
+    /// "shipped" and "abandoned" read very differently in an EOD
+    /// narrative.
+    GitHubPullRequestMerged,
+    /// GitHub pull request closed without merging. Paired with
+    /// `GitHubPullRequestMerged` — together they cover the
+    /// `closed` action space.
+    GitHubPullRequestClosed,
+    /// GitHub pull request review submitted by the user —
+    /// `PullRequestReviewEvent { action: "submitted" }`. The
+    /// `metadata` carries the review `state` (`"approved"` /
+    /// `"changes_requested"` / `"commented"`); rapid-review collapse
+    /// within `RAPID_REVIEW_WINDOW_SECONDS` folds multiple reviews
+    /// on the same PR into one event in DAY-96 rollup.
+    GitHubPullRequestReviewed,
+    /// GitHub PR review-thread comment authored by the user —
+    /// `IssueCommentEvent` on an issue carrying a `pull_request`
+    /// link, or `PullRequestReviewCommentEvent`. Distinct from
+    /// `GitHubIssueCommented` because a PR review comment renders
+    /// under `## Merge requests` while an issue comment renders
+    /// under `## Issues`.
+    GitHubPullRequestCommented,
+    /// GitHub issue opened by the user — `IssuesEvent { action: "opened" }`.
+    GitHubIssueOpened,
+    /// GitHub issue closed by the user — `IssuesEvent { action: "closed" }`.
+    GitHubIssueClosed,
+    /// GitHub issue comment authored by the user on a pure issue
+    /// (not a PR's issue-thread comment, which maps to
+    /// `GitHubPullRequestCommented`).
+    GitHubIssueCommented,
+    /// GitHub issue assigned to the user — `IssuesEvent { action: "assigned" }`
+    /// where `assignee.login == self.login`. Symmetric with
+    /// `JiraIssueAssigned`: being handed a ticket is a discrete
+    /// calendar event worth surfacing regardless of state change.
+    GitHubIssueAssigned,
 }
 
 impl ActivityKind {
@@ -167,6 +217,15 @@ impl ActivityKind {
             ActivityKind::ConfluencePageCreated,
             ActivityKind::ConfluencePageEdited,
             ActivityKind::ConfluenceComment,
+            ActivityKind::GitHubPullRequestOpened,
+            ActivityKind::GitHubPullRequestMerged,
+            ActivityKind::GitHubPullRequestClosed,
+            ActivityKind::GitHubPullRequestReviewed,
+            ActivityKind::GitHubPullRequestCommented,
+            ActivityKind::GitHubIssueOpened,
+            ActivityKind::GitHubIssueClosed,
+            ActivityKind::GitHubIssueCommented,
+            ActivityKind::GitHubIssueAssigned,
         ]
     }
 }
@@ -250,6 +309,35 @@ pub enum EntityKind {
     ConfluencePage,
     /// A Confluence comment on a page.
     ConfluenceComment,
+    /// A GitHub repository — `owner/name` form; the unit GitHub
+    /// commits / PR-linked push events bucket by. Parallels
+    /// [`Self::Repo`] for local-git + GitLab; kept separate so
+    /// evidence-popover URL templates don't have to carry a
+    /// "which provider is this repo from?" side-channel.
+    /// Added in DAY-93.
+    GitHubRepo,
+    /// A GitHub pull request — `owner/repo#number` form. Added
+    /// in DAY-93; promoted to first-class at the render layer via
+    /// [`super::artifact::ArtifactPayload::MergeRequest`] in DAY-98.
+    GitHubPullRequest,
+    /// A GitHub issue — `owner/repo#number` form. Distinct from
+    /// [`Self::GitHubPullRequest`] even though both are numbered
+    /// in the same per-repo sequence, because report layout and
+    /// enrichment rules differ (PRs annotate Jira transitions;
+    /// issues do not).
+    GitHubIssue,
+    /// A cross-source "account / tenant / workspace" container —
+    /// the GitHub account, the GitLab group, the Atlassian cloud
+    /// instance, the Slack workspace. The v0.3 capstone
+    /// (DAY-89) called this variant out as deferred-by-design
+    /// pending a concrete call site; v0.4's GitHub connector is
+    /// that call site. Each [`crate::SourceIdentity`] whose
+    /// external id names an account / tenant carries an
+    /// `EntityRef { kind: Workspace, external_id: <tenant>, label: Some(<display>) }`
+    /// so the report engine can surface "I did work across N
+    /// workspaces today" without re-parsing per-connector id
+    /// formats. Added in DAY-93.
+    Workspace,
     /// A kind string this binary doesn't enumerate — either a row
     /// written by a newer Dayseam version or a legacy convention a
     /// past connector emitted. Preserved verbatim so re-serialising
@@ -272,6 +360,10 @@ impl EntityKind {
             EntityKind::ConfluenceSpace => "confluence_space",
             EntityKind::ConfluencePage => "confluence_page",
             EntityKind::ConfluenceComment => "confluence_comment",
+            EntityKind::GitHubRepo => "github_repo",
+            EntityKind::GitHubPullRequest => "github_pull_request",
+            EntityKind::GitHubIssue => "github_issue",
+            EntityKind::Workspace => "workspace",
             EntityKind::Other(s) => s.as_str(),
         }
     }
@@ -297,6 +389,10 @@ impl EntityKind {
             "confluence_space" => EntityKind::ConfluenceSpace,
             "confluence_page" => EntityKind::ConfluencePage,
             "confluence_comment" => EntityKind::ConfluenceComment,
+            "github_repo" => EntityKind::GitHubRepo,
+            "github_pull_request" => EntityKind::GitHubPullRequest,
+            "github_issue" => EntityKind::GitHubIssue,
+            "workspace" => EntityKind::Workspace,
             other => EntityKind::Other(other.to_string()),
         }
     }
@@ -407,7 +503,7 @@ mod tests {
         let kinds = ActivityKind::all();
         assert_eq!(
             kinds.len(),
-            17,
+            26,
             "ActivityKind::all() must list every declared variant exactly once"
         );
         let mut set = std::collections::HashSet::new();
@@ -435,6 +531,10 @@ mod tests {
             (EntityKind::ConfluenceSpace, "confluence_space"),
             (EntityKind::ConfluencePage, "confluence_page"),
             (EntityKind::ConfluenceComment, "confluence_comment"),
+            (EntityKind::GitHubRepo, "github_repo"),
+            (EntityKind::GitHubPullRequest, "github_pull_request"),
+            (EntityKind::GitHubIssue, "github_issue"),
+            (EntityKind::Workspace, "workspace"),
         ];
         for (variant, expected) in cases {
             let json = serde_json::to_string(&variant).expect("serialize");

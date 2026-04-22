@@ -8,6 +8,23 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ### Added
 
+- **DAY-93: `dayseam-core` GitHub types landed.** `SourceKind::GitHub`
+  + `SourceConfig::GitHub { api_base_url }`,
+  `SourceIdentityKind::GitHubUserId`, nine `ActivityKind::GitHub*`
+  variants, four new `EntityKind`s (`GitHubRepo`, `GitHubPullRequest`,
+  `GitHubIssue`, `Workspace`), `ArtifactKind::GitHubPullRequest` /
+  `GitHubIssue`, the first-class `ArtifactPayload::MergeRequest` variant
+  with its `MergeRequestProvider` discriminant (`GitLab` | `GitHub`),
+  and seven `GITHUB_*` error codes. Every downstream crate that matches
+  on these enums (`dayseam-db`, `dayseam-report`, `dayseam-orchestrator`,
+  `apps/desktop/src-tauri`, `connector-gitlab`, `connector-local-git`)
+  picks up the new variants as dormant placeholders — the GitHub
+  connector itself lands in DAY-95 and the `MergeRequest` renderer
+  wiring lands in DAY-98, so today the variants compile cleanly but
+  produce no user-visible output. No DB migration: `sources.kind` is a
+  plain `TEXT` column, so the new string value is added directly (the
+  DAY-92 plan's draft of migration `0006_github_sources.sql` was
+  dropped — see the plan doc's Task 2 status note).
 - **DAY-92: v0.4 plan drafted** (`docs/plan/2026-04-22-v0.4-github-connector.md`).
   Headline track is the fifth connector (`connector-github`) plus the v0.3
   seam promotions that naturally land alongside it (first-class

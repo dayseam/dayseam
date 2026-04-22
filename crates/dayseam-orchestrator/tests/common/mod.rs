@@ -85,6 +85,9 @@ pub async fn seed_source(
                 workspace_url: "https://mock.atlassian.net".to_string(),
                 email: "vedanth@mock.atlassian.net".to_string(),
             },
+            SourceKind::GitHub => SourceConfig::GitHub {
+                api_base_url: "https://api.github.com".to_string(),
+            },
         },
         secret_ref: None,
         created_at: Utc::now(),

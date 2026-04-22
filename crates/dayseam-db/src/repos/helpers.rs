@@ -34,6 +34,7 @@ pub(crate) fn source_kind_to_db(k: &SourceKind) -> &'static str {
         SourceKind::LocalGit => "LocalGit",
         SourceKind::Jira => "Jira",
         SourceKind::Confluence => "Confluence",
+        SourceKind::GitHub => "GitHub",
     }
 }
 
@@ -43,6 +44,7 @@ pub(crate) fn source_kind_from_db(s: &str) -> Result<SourceKind, DbError> {
         "LocalGit" => Ok(SourceKind::LocalGit),
         "Jira" => Ok(SourceKind::Jira),
         "Confluence" => Ok(SourceKind::Confluence),
+        "GitHub" => Ok(SourceKind::GitHub),
         other => Err(DbError::InvalidData {
             column: "sources.kind".into(),
             message: format!("unknown SourceKind `{other}`"),
@@ -69,6 +71,15 @@ pub(crate) fn activity_kind_to_db(k: &ActivityKind) -> &'static str {
         ActivityKind::ConfluencePageCreated => "ConfluencePageCreated",
         ActivityKind::ConfluencePageEdited => "ConfluencePageEdited",
         ActivityKind::ConfluenceComment => "ConfluenceComment",
+        ActivityKind::GitHubPullRequestOpened => "GitHubPullRequestOpened",
+        ActivityKind::GitHubPullRequestMerged => "GitHubPullRequestMerged",
+        ActivityKind::GitHubPullRequestClosed => "GitHubPullRequestClosed",
+        ActivityKind::GitHubPullRequestReviewed => "GitHubPullRequestReviewed",
+        ActivityKind::GitHubPullRequestCommented => "GitHubPullRequestCommented",
+        ActivityKind::GitHubIssueOpened => "GitHubIssueOpened",
+        ActivityKind::GitHubIssueClosed => "GitHubIssueClosed",
+        ActivityKind::GitHubIssueCommented => "GitHubIssueCommented",
+        ActivityKind::GitHubIssueAssigned => "GitHubIssueAssigned",
     }
 }
 
@@ -91,6 +102,15 @@ pub(crate) fn activity_kind_from_db(s: &str) -> Result<ActivityKind, DbError> {
         "ConfluencePageCreated" => ActivityKind::ConfluencePageCreated,
         "ConfluencePageEdited" => ActivityKind::ConfluencePageEdited,
         "ConfluenceComment" => ActivityKind::ConfluenceComment,
+        "GitHubPullRequestOpened" => ActivityKind::GitHubPullRequestOpened,
+        "GitHubPullRequestMerged" => ActivityKind::GitHubPullRequestMerged,
+        "GitHubPullRequestClosed" => ActivityKind::GitHubPullRequestClosed,
+        "GitHubPullRequestReviewed" => ActivityKind::GitHubPullRequestReviewed,
+        "GitHubPullRequestCommented" => ActivityKind::GitHubPullRequestCommented,
+        "GitHubIssueOpened" => ActivityKind::GitHubIssueOpened,
+        "GitHubIssueClosed" => ActivityKind::GitHubIssueClosed,
+        "GitHubIssueCommented" => ActivityKind::GitHubIssueCommented,
+        "GitHubIssueAssigned" => ActivityKind::GitHubIssueAssigned,
         other => {
             return Err(DbError::InvalidData {
                 column: "activity_events.kind".into(),
@@ -146,6 +166,8 @@ pub(crate) fn artifact_kind_to_db(k: &ArtifactKind) -> &'static str {
         ArtifactKind::CommitSet => "CommitSet",
         ArtifactKind::JiraIssue => "JiraIssue",
         ArtifactKind::ConfluencePage => "ConfluencePage",
+        ArtifactKind::GitHubPullRequest => "GitHubPullRequest",
+        ArtifactKind::GitHubIssue => "GitHubIssue",
     }
 }
 
@@ -154,6 +176,8 @@ pub(crate) fn artifact_kind_from_db(s: &str) -> Result<ArtifactKind, DbError> {
         "CommitSet" => Ok(ArtifactKind::CommitSet),
         "JiraIssue" => Ok(ArtifactKind::JiraIssue),
         "ConfluencePage" => Ok(ArtifactKind::ConfluencePage),
+        "GitHubPullRequest" => Ok(ArtifactKind::GitHubPullRequest),
+        "GitHubIssue" => Ok(ArtifactKind::GitHubIssue),
         other => Err(DbError::InvalidData {
             column: "artifacts.kind".into(),
             message: format!("unknown ArtifactKind `{other}`"),
@@ -205,6 +229,7 @@ pub(crate) fn source_identity_kind_to_db(k: &SourceIdentityKind) -> &'static str
         SourceIdentityKind::GitLabUserId => "GitLabUserId",
         SourceIdentityKind::GitLabUsername => "GitLabUsername",
         SourceIdentityKind::GitHubLogin => "GitHubLogin",
+        SourceIdentityKind::GitHubUserId => "GitHubUserId",
         SourceIdentityKind::AtlassianAccountId => "AtlassianAccountId",
     }
 }
@@ -215,6 +240,7 @@ pub(crate) fn source_identity_kind_from_db(s: &str) -> Result<SourceIdentityKind
         "GitLabUserId" => Ok(SourceIdentityKind::GitLabUserId),
         "GitLabUsername" => Ok(SourceIdentityKind::GitLabUsername),
         "GitHubLogin" => Ok(SourceIdentityKind::GitHubLogin),
+        "GitHubUserId" => Ok(SourceIdentityKind::GitHubUserId),
         "AtlassianAccountId" => Ok(SourceIdentityKind::AtlassianAccountId),
         other => Err(DbError::InvalidData {
             column: "source_identities.kind".into(),
