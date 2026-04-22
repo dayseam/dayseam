@@ -24,6 +24,13 @@ expression: ALL
 - confluence.walk.rate_limited
 - confluence.upstream_5xx
 - confluence.resource_gone
+- github.auth.invalid_credentials
+- github.auth.missing_scope
+- github.resource_not_found
+- github.rate_limited
+- github.upstream_5xx
+- github.upstream_shape_changed
+- github.resource_gone
 - local_git.repo_locked
 - local_git.repo_unreadable
 - local_git.repo_corrupt

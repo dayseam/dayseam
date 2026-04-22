@@ -307,8 +307,10 @@ async fn sync_emits_one_commit_set_per_repo_per_day() {
                 assert_eq!(event_ids.len(), commit_shas.len());
                 assert!(!event_ids.is_empty());
             }
-            ArtifactPayload::JiraIssue { .. } | ArtifactPayload::ConfluencePage { .. } => {
-                unreachable!("local-git connector never produces Atlassian artefacts")
+            ArtifactPayload::JiraIssue { .. }
+            | ArtifactPayload::ConfluencePage { .. }
+            | ArtifactPayload::MergeRequest { .. } => {
+                unreachable!("local-git connector never produces non-CommitSet artefacts")
             }
         }
     }

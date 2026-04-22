@@ -102,7 +102,8 @@ fn artifact_matches_date(artifact: &Artifact, target: NaiveDate) -> bool {
     match &artifact.payload {
         ArtifactPayload::CommitSet { date, .. }
         | ArtifactPayload::JiraIssue { date, .. }
-        | ArtifactPayload::ConfluencePage { date, .. } => *date == target,
+        | ArtifactPayload::ConfluencePage { date, .. }
+        | ArtifactPayload::MergeRequest { date, .. } => *date == target,
     }
 }
 

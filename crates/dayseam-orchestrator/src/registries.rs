@@ -336,6 +336,13 @@ mod tests {
     /// invariant (2).
     #[test]
     fn registry_kind_round_trips_for_every_registered_connector() {
+        // `SourceKind::GitHub` is deliberately *not* in `ALL_KINDS`:
+        // DAY-93 lands the type in core, but the `connector-github`
+        // crate and its `default_registries` arm land in DAY-95. Once
+        // DAY-95 ships a registered GitHub connector, the author of
+        // that PR adds `SourceKind::GitHub` to `ALL_KINDS` — the
+        // coverage assertion below then enforces round-trip the same
+        // way it does for the other four kinds.
         const ALL_KINDS: &[SourceKind] = &[
             SourceKind::LocalGit,
             SourceKind::GitLab,
@@ -346,13 +353,16 @@ mod tests {
         // variant, this match fails to compile and forces the author
         // to extend `ALL_KINDS` above — which in turn fails the
         // coverage assertion below until `default_registries` is
-        // extended too.
+        // extended too. The explicit `GitHub` arm preserves the
+        // compile-time check while the `ALL_KINDS` gap above documents
+        // the intentional one-release lag.
         fn _exhaustive_source_kind_check(k: SourceKind) {
             match k {
                 SourceKind::LocalGit
                 | SourceKind::GitLab
                 | SourceKind::Jira
-                | SourceKind::Confluence => {}
+                | SourceKind::Confluence
+                | SourceKind::GitHub => {}
             }
         }
 

@@ -59,6 +59,17 @@ pub(crate) enum ReportSection {
     /// commits that rolled into an MR still render here with the
     /// verbose-mode `(rolled into !42)` suffix.
     Commits,
+    /// Merge requests (GitLab) and pull requests (GitHub) — the
+    /// unified `## Merge requests` section the v0.4 first-class
+    /// [`ArtifactPayload::MergeRequest`] variant feeds. Declared
+    /// immediately after [`Self::Commits`] so the ordering reads
+    /// "what I shipped (commits → MRs) → what I triaged (Jira)
+    /// → what I wrote (Confluence) → stray activity". Added in
+    /// DAY-93 as a dormant variant — no v0.3 walker emits MR
+    /// artifacts, so the section stays empty until the GitHub
+    /// rollup (DAY-96) and the GitLab promotion (DAY-97) light
+    /// it up.
+    MergeRequests,
     /// Jira issue activity — transitions, comments, assignments —
     /// fed by [`ArtifactPayload::JiraIssue`]. One bullet per event
     /// (not per issue) so a day that transitioned the same issue
@@ -102,6 +113,7 @@ impl ReportSection {
             ArtifactPayload::CommitSet { .. } => Self::Commits,
             ArtifactPayload::JiraIssue { .. } => Self::JiraIssues,
             ArtifactPayload::ConfluencePage { .. } => Self::ConfluencePages,
+            ArtifactPayload::MergeRequest { .. } => Self::MergeRequests,
         }
     }
 
@@ -143,6 +155,7 @@ impl ReportSection {
     pub(crate) fn id(self) -> &'static str {
         match self {
             Self::Commits => "commits",
+            Self::MergeRequests => "merge_requests",
             Self::JiraIssues => "jira_issues",
             Self::ConfluencePages => "confluence_pages",
             Self::Other => "other",
@@ -157,6 +170,7 @@ impl ReportSection {
     pub(crate) fn title(self) -> &'static str {
         match self {
             Self::Commits => "Commits",
+            Self::MergeRequests => "Merge requests",
             Self::JiraIssues => "Jira issues",
             Self::ConfluencePages => "Confluence pages",
             Self::Other => "Other",
@@ -246,6 +260,7 @@ mod tests {
                     ArtifactPayload::CommitSet { .. } => ArtifactKind::CommitSet,
                     ArtifactPayload::JiraIssue { .. } => ArtifactKind::JiraIssue,
                     ArtifactPayload::ConfluencePage { .. } => ArtifactKind::ConfluencePage,
+                    ArtifactPayload::MergeRequest { .. } => ArtifactKind::GitHubPullRequest,
                 },
                 external_id: "x".into(),
                 payload,

@@ -108,8 +108,22 @@ pub enum SourceIdentityKind {
     GitLabUserId,
     /// GitLab username — the `@handle` form, used in comment mentions.
     GitLabUsername,
-    /// GitHub login — the `@handle` form.
+    /// GitHub login — the `@handle` form, used in comment mentions
+    /// and commit co-author trailers. Mutable upstream (a user can
+    /// rename their login), so the walker's self-filter keys on
+    /// [`Self::GitHubUserId`] instead; this variant exists because
+    /// the login is still what surfaces in the report bullet's
+    /// human-readable copy.
     GitHubLogin,
+    /// GitHub numeric user id from `GET /user` (`.id`). Stable
+    /// across login renames and the authoritative match key for
+    /// the self-filter in the walker. Mirrors [`Self::GitLabUserId`]
+    /// at the role level — the pair
+    /// ([`Self::GitHubUserId`], [`Self::GitHubLogin`]) is the
+    /// GitHub analogue of the
+    /// ([`Self::GitLabUserId`], [`Self::GitLabUsername`]) pair.
+    /// Added in DAY-93 (v0.4 GitHub connector core-types).
+    GitHubUserId,
     /// Atlassian Cloud `accountId` — the workspace-scoped opaque id
     /// returned by `GET /rest/api/3/myself`. Deliberately one variant
     /// for both Jira and Confluence: Atlassian Cloud issues one

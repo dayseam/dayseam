@@ -147,8 +147,17 @@ fn kind_token(kind: ActivityKind) -> &'static str {
         | ActivityKind::JiraIssueCreated
         | ActivityKind::ConfluencePageCreated
         | ActivityKind::ConfluencePageEdited
-        | ActivityKind::ConfluenceComment => unreachable!(
-            "GitLab normaliser saw Atlassian ActivityKind {kind:?}: kind production is local to map_kind",
+        | ActivityKind::ConfluenceComment
+        | ActivityKind::GitHubPullRequestOpened
+        | ActivityKind::GitHubPullRequestMerged
+        | ActivityKind::GitHubPullRequestClosed
+        | ActivityKind::GitHubPullRequestReviewed
+        | ActivityKind::GitHubPullRequestCommented
+        | ActivityKind::GitHubIssueOpened
+        | ActivityKind::GitHubIssueClosed
+        | ActivityKind::GitHubIssueCommented
+        | ActivityKind::GitHubIssueAssigned => unreachable!(
+            "GitLab normaliser saw non-GitLab ActivityKind {kind:?}: kind production is local to map_kind",
         ),
     }
 }
@@ -192,8 +201,17 @@ fn event_external_id(event: &GitlabEvent, kind: ActivityKind) -> String {
         | ActivityKind::JiraIssueCreated
         | ActivityKind::ConfluencePageCreated
         | ActivityKind::ConfluencePageEdited
-        | ActivityKind::ConfluenceComment => unreachable!(
-            "GitLab normaliser saw Atlassian ActivityKind {kind:?} in event_external_id",
+        | ActivityKind::ConfluenceComment
+        | ActivityKind::GitHubPullRequestOpened
+        | ActivityKind::GitHubPullRequestMerged
+        | ActivityKind::GitHubPullRequestClosed
+        | ActivityKind::GitHubPullRequestReviewed
+        | ActivityKind::GitHubPullRequestCommented
+        | ActivityKind::GitHubIssueOpened
+        | ActivityKind::GitHubIssueClosed
+        | ActivityKind::GitHubIssueCommented
+        | ActivityKind::GitHubIssueAssigned => unreachable!(
+            "GitLab normaliser saw non-GitLab ActivityKind {kind:?} in event_external_id",
         ),
     }
 }
@@ -243,8 +261,17 @@ fn title_and_body(event: &GitlabEvent, kind: ActivityKind) -> (String, Option<St
         | ActivityKind::JiraIssueCreated
         | ActivityKind::ConfluencePageCreated
         | ActivityKind::ConfluencePageEdited
-        | ActivityKind::ConfluenceComment => {
-            unreachable!("GitLab normaliser saw Atlassian ActivityKind {kind:?} in title_and_body",)
+        | ActivityKind::ConfluenceComment
+        | ActivityKind::GitHubPullRequestOpened
+        | ActivityKind::GitHubPullRequestMerged
+        | ActivityKind::GitHubPullRequestClosed
+        | ActivityKind::GitHubPullRequestReviewed
+        | ActivityKind::GitHubPullRequestCommented
+        | ActivityKind::GitHubIssueOpened
+        | ActivityKind::GitHubIssueClosed
+        | ActivityKind::GitHubIssueCommented
+        | ActivityKind::GitHubIssueAssigned => {
+            unreachable!("GitLab normaliser saw non-GitLab ActivityKind {kind:?} in title_and_body",)
         }
     };
     let body = event

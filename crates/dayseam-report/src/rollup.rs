@@ -93,7 +93,8 @@ pub(crate) fn roll_up(
         let claimed_ids: Vec<Uuid> = match &artifact.payload {
             ArtifactPayload::CommitSet { event_ids, .. }
             | ArtifactPayload::JiraIssue { event_ids, .. }
-            | ArtifactPayload::ConfluencePage { event_ids, .. } => event_ids.clone(),
+            | ArtifactPayload::ConfluencePage { event_ids, .. }
+            | ArtifactPayload::MergeRequest { event_ids, .. } => event_ids.clone(),
         };
 
         let mut claimed_events: Vec<ActivityEvent> = claimed_ids
@@ -322,7 +323,9 @@ fn commit_set_key(group: &RolledUpArtifact) -> Option<(PathBuf, NaiveDate)> {
         ArtifactPayload::CommitSet {
             repo_path, date, ..
         } => Some((repo_path.clone(), *date)),
-        ArtifactPayload::JiraIssue { .. } | ArtifactPayload::ConfluencePage { .. } => None,
+        ArtifactPayload::JiraIssue { .. }
+        | ArtifactPayload::ConfluencePage { .. }
+        | ArtifactPayload::MergeRequest { .. } => None,
     }
 }
 
@@ -349,6 +352,8 @@ const fn kind_token(kind: ArtifactKind) -> &'static str {
         ArtifactKind::CommitSet => "CommitSet",
         ArtifactKind::JiraIssue => "JiraIssue",
         ArtifactKind::ConfluencePage => "ConfluencePage",
+        ArtifactKind::GitHubPullRequest => "GitHubPullRequest",
+        ArtifactKind::GitHubIssue => "GitHubIssue",
     }
 }
 
@@ -368,6 +373,16 @@ pub(crate) fn group_kind_for_payload(payload: &ArtifactPayload) -> GroupKind {
         ArtifactPayload::CommitSet { .. } => GroupKind::Repo,
         ArtifactPayload::JiraIssue { .. } => GroupKind::Project,
         ArtifactPayload::ConfluencePage { .. } => GroupKind::Space,
+        // DAY-93. Dormant: no v0.3 walker emits `MergeRequest`
+        // artefacts. The v0.4 GitHub rollup (DAY-96) and GitLab MR
+        // promotion (DAY-97) will either replace this arm with a
+        // dedicated `GroupKind::MergeRequest` or reuse `Repo`
+        // depending on how the prefix template settles out. For now
+        // `Repo` is the least-wrong default — an MR belongs to a
+        // repo in the same way a commit does — but no code path
+        // observes this value in v0.3 so the choice is defensive
+        // only.
+        ArtifactPayload::MergeRequest { .. } => GroupKind::Repo,
     }
 }
 
@@ -470,7 +485,9 @@ mod tests {
                 ArtifactPayload::CommitSet { repo_path, .. } => {
                     repo_path.to_string_lossy().to_string()
                 }
-                ArtifactPayload::JiraIssue { .. } | ArtifactPayload::ConfluencePage { .. } => {
+                ArtifactPayload::JiraIssue { .. }
+                | ArtifactPayload::ConfluencePage { .. }
+                | ArtifactPayload::MergeRequest { .. } => {
                     unreachable!("this test only produces CommitSet artefacts")
                 }
             })
