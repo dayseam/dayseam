@@ -9,6 +9,18 @@ use crate::error::{DbError, DbResult};
 
 use super::helpers::parse_rfc3339;
 
+/// Upper bound on `keep_paths.len()` for the batched `DELETE …
+/// NOT IN (?, ?, …)` path inside `reconcile_for_source`. SQLite's
+/// default `SQLITE_MAX_VARIABLE_NUMBER` is `999` on `3.31` and
+/// earlier, and `32766` on `3.32+`. We cap at `900` — safely below
+/// the `999` floor with margin for the extra `source_id` bind —
+/// so the batched path is correct on any SQLite `sqlx` might
+/// vendor. This ceiling is comfortably above the walker's
+/// `max_roots = 512` repo cap (F-2 fallout from DAY-103), so the
+/// cold-path fallback below only fires if a future caller raises
+/// that cap.
+const BATCHED_DELETE_MAX: usize = 900;
+
 #[derive(Clone)]
 pub struct LocalRepoRepo {
     pool: SqlitePool,
@@ -168,20 +180,72 @@ impl LocalRepoRepo {
         // 3) Delete any existing row whose path is no longer in
         //    `keep`. Scoped to this `source_id` so deleting from one
         //    LocalGit source cannot touch rows owned by another.
-        let stale: Vec<String> = current.difference(&keep_paths).cloned().collect();
-        for path in &stale {
-            sqlx::query("DELETE FROM local_repos WHERE source_id = ? AND path = ?")
+        //
+        //    F-7 (DAY-105, #112). The first shipping shape ran one
+        //    `DELETE` statement per stale path inside the
+        //    transaction — `N` round-trips for a source that dropped
+        //    from `N` approved repos to zero. We now collapse the
+        //    stale set into a single batched `DELETE … NOT IN (?, ?,
+        //    …)` call, with two carve-outs:
+        //
+        //    - An empty `keep_paths` (the "drop this source's rows"
+        //      case) skips the `NOT IN` clause entirely, because
+        //      `NOT IN ()` is a SQLite syntax error and the caller's
+        //      intent is "all rows gone" anyway.
+        //    - If `keep_paths.len()` exceeds [`BATCHED_DELETE_MAX`],
+        //      we fall back to per-row deletes so we never trip
+        //      `SQLITE_MAX_VARIABLE_NUMBER` on older SQLite builds.
+        //      The walker's `max_roots = 512` cap keeps this cold
+        //      under current callers, but the fallback is a safety
+        //      net for future cap increases.
+        //
+        //    The fast path short-circuits entirely when `current ⊆
+        //    keep_paths` (no stale rows), so a steady-state rescan
+        //    costs exactly one `SELECT` + `N` upserts, the DELETE is
+        //    skipped altogether.
+        let deleted: usize = if current.is_subset(&keep_paths) {
+            0
+        } else if keep_paths.is_empty() {
+            let res = sqlx::query("DELETE FROM local_repos WHERE source_id = ?")
                 .bind(source_id.to_string())
-                .bind(path)
                 .execute(&mut *tx)
                 .await
                 .map_err(|e| DbError::classify_sqlx(e, "local_repos.reconcile.delete"))?;
-        }
+            res.rows_affected() as usize
+        } else if keep_paths.len() <= BATCHED_DELETE_MAX {
+            let placeholders = std::iter::repeat_n('?', keep_paths.len())
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "DELETE FROM local_repos WHERE source_id = ? AND path NOT IN ({placeholders})"
+            );
+            let mut q = sqlx::query(&sql).bind(source_id.to_string());
+            for p in &keep_paths {
+                q = q.bind(p);
+            }
+            let res = q
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| DbError::classify_sqlx(e, "local_repos.reconcile.delete"))?;
+            res.rows_affected() as usize
+        } else {
+            let stale: Vec<&String> = current.difference(&keep_paths).collect();
+            for path in &stale {
+                sqlx::query("DELETE FROM local_repos WHERE source_id = ? AND path = ?")
+                    .bind(source_id.to_string())
+                    .bind(*path)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| DbError::classify_sqlx(e, "local_repos.reconcile.delete"))?;
+            }
+            stale.len()
+        };
 
         tx.commit()
             .await
             .map_err(|e| DbError::classify_sqlx(e, "local_repos.reconcile.commit"))?;
-        Ok(stale.len())
+        Ok(deleted)
     }
 }
 

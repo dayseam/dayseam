@@ -6,6 +6,36 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **DAY-105: batched reconcile-delete for `local_repos`
+  (F-7 / [#112](https://github.com/vedanthvdev/dayseam/issues/112)).**
+  [`LocalRepoRepo::reconcile_for_source`](crates/dayseam-db/src/repos/local_repos.rs)
+  used to issue one `DELETE FROM local_repos WHERE source_id = ? AND
+  path = ?` statement per stale path inside its transaction — `N`
+  round-trips for a source dropping from `N` repos to zero. The
+  stale-set delete is now a single batched `DELETE … WHERE source_id
+  = ? AND path NOT IN (?, ?, …)` call, with two carve-outs: an empty
+  `keep_paths` drops the `NOT IN` clause entirely (SQLite rejects
+  `NOT IN ()` and the caller's intent is "all rows gone"), and if
+  `keep_paths.len()` exceeds a `900`-entry safety cap the per-row
+  loop still fires — comfortably above the walker's `max_roots =
+  512` ceiling (F-2 from DAY-103) and under the `SQLITE_MAX_VARIABLE_NUMBER
+  = 999` floor on every SQLite build `sqlx` might vendor. A
+  steady-state rescan (`current ⊆ keep_paths`) short-circuits the
+  delete entirely, so the common case costs exactly one `SELECT` +
+  `N` upserts + zero deletes. Perf-only change — all four existing
+  reconcile tests in
+  [`crates/dayseam-db/tests/repos.rs`](crates/dayseam-db/tests/repos.rs)
+  stay green byte-for-byte, plus two new tests pin the no-stale
+  short-circuit (`local_repos_reconcile_no_stale_is_a_no_op_and_returns_zero`)
+  and the batched multi-stale path
+  (`local_repos_reconcile_prunes_many_stale_rows_in_one_batch`, five
+  stale rows collapsed into one DELETE). The
+  [DOGFOOD-v0.4-03](docs/dogfood/v0.4-dogfood-notes.md) invariant
+  survives: `is_private` is still protected from rescan-driven
+  silent un-redaction, re-asserted by the no-stale test.
+
 ### Added
 
 - **DAY-104: per-source subheadings in the rendered report

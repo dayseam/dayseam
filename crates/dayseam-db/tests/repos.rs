@@ -540,6 +540,99 @@ async fn local_repos_reconcile_prunes_stale_rows_and_keeps_private_flag() {
     );
 }
 
+/// F-7 (DAY-105). A steady-state rescan — where the walker returns
+/// exactly the same approved repos already tracked — must return `0`
+/// and must not emit a `DELETE` statement. The batched
+/// `reconcile_for_source` path short-circuits on `current ⊆
+/// keep_paths`, and this test pins that behaviour at the observable
+/// layer: no row mutates, no paths disappear, `Ok(0)` flows back.
+#[tokio::test]
+async fn local_repos_reconcile_no_stale_is_a_no_op_and_returns_zero() {
+    let (pool, _dir) = test_pool().await;
+    let sources = SourceRepo::new(pool.clone());
+    let local = LocalRepoRepo::new(pool.clone());
+    let src = fixture_local_source();
+    sources.insert(&src).await.unwrap();
+
+    let a = LocalRepo {
+        path: PathBuf::from("/Users/v/Code/a"),
+        label: "a".into(),
+        is_private: true,
+        discovered_at: fixed_now(),
+    };
+    let b = LocalRepo {
+        path: PathBuf::from("/Users/v/Code/b"),
+        label: "b".into(),
+        is_private: false,
+        discovered_at: fixed_now(),
+    };
+    local.upsert(&src.id, &a).await.unwrap();
+    local.upsert(&src.id, &b).await.unwrap();
+    local.set_is_private(&a.path, true).await.unwrap();
+
+    let kept = [a.clone(), b.clone()];
+    let removed = local.reconcile_for_source(&src.id, &kept).await.unwrap();
+    assert_eq!(
+        removed, 0,
+        "identical rescan must report zero stale rows (not just preserve them)"
+    );
+
+    let remaining = local.list_for_source(&src.id).await.unwrap();
+    assert_eq!(remaining.len(), 2);
+    // is_private on `a` still survives the no-op path — this is the
+    // DOGFOOD-v0.4-03 invariant, re-asserted here because the
+    // batched path is new code and the no-stale short-circuit skips
+    // the DELETE but still runs the upserts.
+    let a_after = remaining.iter().find(|r| r.path == a.path).unwrap();
+    assert!(a_after.is_private);
+}
+
+/// F-7 (DAY-105). Pin the batched `DELETE … NOT IN (…)` on a wider
+/// stale set than the existing one-row test — multiple stale paths
+/// exercise the placeholder-building branch specifically, since the
+/// fast path builds a single SQL statement with `N` placeholders
+/// and binds `N + 1` parameters (one `source_id` plus each `keep`
+/// path). A per-row-loop regression would still pass the
+/// single-stale test; this one doesn't.
+#[tokio::test]
+async fn local_repos_reconcile_prunes_many_stale_rows_in_one_batch() {
+    let (pool, _dir) = test_pool().await;
+    let sources = SourceRepo::new(pool.clone());
+    let local = LocalRepoRepo::new(pool.clone());
+    let src = fixture_local_source();
+    sources.insert(&src).await.unwrap();
+
+    // Seed six repos (one kept, five stale).
+    let kept = LocalRepo {
+        path: PathBuf::from("/Users/v/Code/kept"),
+        label: "kept".into(),
+        is_private: false,
+        discovered_at: fixed_now(),
+    };
+    local.upsert(&src.id, &kept).await.unwrap();
+    for i in 0..5 {
+        let stale = LocalRepo {
+            path: PathBuf::from(format!("/Users/v/Code/stale-{i}")),
+            label: format!("stale-{i}"),
+            is_private: false,
+            discovered_at: fixed_now(),
+        };
+        local.upsert(&src.id, &stale).await.unwrap();
+    }
+
+    let removed = local
+        .reconcile_for_source(&src.id, std::slice::from_ref(&kept))
+        .await
+        .unwrap();
+    assert_eq!(
+        removed, 5,
+        "batched DELETE must report the full stale count"
+    );
+    let remaining = local.list_for_source(&src.id).await.unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].path, kept.path);
+}
+
 /// Reconciling with an empty `keep` set must clear every row for the
 /// source (but only for that source — other sources' rows are
 /// untouched).
