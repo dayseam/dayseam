@@ -540,7 +540,10 @@ fn search_hit_to_activity_event(
         EntityKind::GitHubIssue
     };
 
-    let mut entities = vec![
+    // Jira-key enrichment happens downstream in the shared
+    // `dayseam_report::extract_ticket_keys` pass — see DAY-112 +
+    // `docs/dogfood/2026-04-20-cross-source-enrichment-parity-audit.md`.
+    let entities = vec![
         EntityRef {
             kind: EntityKind::GitHubRepo,
             external_id: repo_full_name.to_string(),
@@ -552,16 +555,6 @@ fn search_hit_to_activity_event(
             label: Some(format!("#{}", hit.number)),
         },
     ];
-    for key in crate::normalise::ticket_keys(&hit.title)
-        .into_iter()
-        .take(crate::normalise::MAX_TICKET_KEYS_PER_EVENT)
-    {
-        entities.push(EntityRef {
-            kind: EntityKind::JiraIssue,
-            external_id: key.clone(),
-            label: Some(key),
-        });
-    }
 
     ActivityEvent {
         id,
