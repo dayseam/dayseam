@@ -11,6 +11,8 @@ import { SaveReportDialog } from "./features/report/SaveReportDialog";
 import { StreamingPreview } from "./features/report/StreamingPreview";
 import { SinksDialog } from "./features/sinks/SinksDialog";
 import { SourcesSidebar } from "./features/sources/SourcesSidebar";
+import { UpdaterBanner } from "./features/updater/UpdaterBanner";
+import { useUpdater } from "./features/updater/useUpdater";
 import { useReport } from "./ipc";
 import { dismissSplash } from "./splash";
 import { ThemeProvider } from "./theme";
@@ -37,6 +39,14 @@ export default function App() {
   // remounts when the user completes the final checklist step — only
   // the conditional subtree swaps.
   const setupChecklist = useSetupChecklist();
+
+  // One updater lifecycle per mounted shell. The hook fires a single
+  // `check()` on mount and holds the resulting `Update` resource
+  // until install-and-relaunch; `<UpdaterBanner />` renders the
+  // current slice of state. Mounted above both the onboarding and
+  // the main shells so a user who never gets past first-run still
+  // sees available upgrades.
+  const updater = useUpdater();
 
   const report = useReport();
 
@@ -102,6 +112,7 @@ export default function App() {
           className="flex h-dvh flex-col overflow-hidden bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100"
         >
           <TitleBar />
+          <UpdaterBanner state={updater} />
           <FirstRunEmptyState checklist={setupChecklist} />
         </div>
         <ToastHost />
@@ -122,6 +133,7 @@ export default function App() {
         className="flex h-dvh flex-col overflow-hidden bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100"
       >
         <TitleBar />
+        <UpdaterBanner state={updater} />
         <ActionRow
           status={report.status}
           progressMessage={progressMessage}

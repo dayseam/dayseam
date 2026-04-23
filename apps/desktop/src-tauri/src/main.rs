@@ -23,6 +23,20 @@ fn main() {
         // and confirm dialogs stay denied so the plugin surface can't
         // grow by accident.
         .plugin(tauri_plugin_dialog::init())
+        // DAY-108 in-app updater. The plugin verifies every download
+        // against `plugins.updater.pubkey` in `tauri.conf.json`
+        // before swapping the `.app` bundle; the matching
+        // `updater:allow-check` / `updater:allow-download-and-install`
+        // permissions live in `capabilities/updater.json` so the
+        // production surface can be audited in a single file.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // DAY-108. Paired with the updater: `install()` on macOS
+        // replaces the `.app` in place but does not relaunch the
+        // running process, so `useUpdater` calls `relaunch()` from
+        // `@tauri-apps/plugin-process` after install. Grants the
+        // single `process:allow-relaunch` permission; `exit` stays
+        // denied so a malicious page can't force-quit the app.
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let data_dir = startup::default_data_dir();
             let state = tauri::async_runtime::block_on(startup::build_app_state(&data_dir))

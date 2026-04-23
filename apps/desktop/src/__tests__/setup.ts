@@ -105,3 +105,25 @@ vi.mock("@tauri-apps/plugin-dialog", async () => {
     open: mod.mockDialogOpen,
   };
 });
+
+// `@tauri-apps/plugin-updater` and `@tauri-apps/plugin-process`
+// import-side-effect into the Tauri IPC bridge, same as dialog. In
+// tests we route through `mockUpdaterCheck` / `mockRelaunch` from
+// `tauri-mock.ts`, which default to "no update" / "restart is a
+// no-op" so existing `<App />`-level tests render without having
+// to know the updater exists; updater-focused tests drive them via
+// `queueUpdaterCheck(...)` and the `mockRelaunch` spy.
+vi.mock("@tauri-apps/plugin-updater", async () => {
+  const mod = await import("./tauri-mock");
+  return {
+    check: mod.mockUpdaterCheck,
+  };
+});
+
+vi.mock("@tauri-apps/plugin-process", async () => {
+  const mod = await import("./tauri-mock");
+  return {
+    relaunch: mod.mockRelaunch,
+    exit: vi.fn(async () => {}),
+  };
+});

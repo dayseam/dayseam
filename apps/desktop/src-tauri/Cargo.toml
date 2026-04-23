@@ -76,6 +76,24 @@ zeroize = { version = "1" }
 # pasting absolute paths. We pair this with `dialog:allow-open` in
 # `capabilities/default.json`; nothing else in the plugin is exposed.
 tauri-plugin-dialog = "2"
+# DAY-108. In-app auto-updater backed by GitHub Releases. The plugin
+# handles the Ed25519 signature verification on downloaded DMGs
+# against `plugins.updater.pubkey` in `tauri.conf.json`; its scoped
+# permissions live in `capabilities/updater.json` (separate from
+# `default.json` so the updater grant is an audit-friendly single
+# file). The matching frontend binding is
+# `@tauri-apps/plugin-updater`, invoked via `src/features/updater/
+# useUpdater.ts`. The release workflow pairs this with a
+# `tauri signer sign` step and a `latest.json` manifest generator so
+# every published DMG is auto-verifiable by an installed v0.6.0+.
+tauri-plugin-updater = "2"
+# DAY-108. Exposes `relaunch()` to the frontend so `useUpdater` can
+# restart the app after `update.install()` completes. `install()` on
+# macOS swaps the `.app` bundle in place but does not auto-relaunch
+# the current process; without this plugin the user would have to
+# quit and reopen Dayseam from the Dock before the new binary ran.
+# Paired with `process:allow-relaunch` in `capabilities/updater.json`.
+tauri-plugin-process = "2"
 
 [dev-dependencies]
 tempfile = "3"
