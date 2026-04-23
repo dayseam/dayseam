@@ -169,13 +169,104 @@ jobs:
       # be masked by a successful `tail -n 1` — the build error is
       # what surfaces the workflow failure, not a downstream "binary
       # not found" assertion three steps later.
+      #
+      # DAY-108: exporting `TAURI_SIGNING_PRIVATE_KEY` and its
+      # password triggers Tauri's bundler to (a) also emit
+      # `Dayseam.app.tar.gz` under the `macos/` bundle dir (because
+      # `bundle.targets` now includes `"updater"`), (b) sign it
+      # with minisign, and (c) write `Dayseam.app.tar.gz.sig`
+      # next to it. Both are consumed by the "Assemble updater
+      # manifest" step below. The secrets must be set on the repo
+      # before merging a PR that cuts a new release — the
+      # preflight guard below asserts they are present so a stale
+      # or missing key fails here, not silently in the generated
+      # `latest.json`.
+      - name: Preflight — assert updater signing secrets are set
+        if: steps.level.outputs.dry_run != 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret missing. The in-app updater cannot verify this release; refusing to publish. Set it from `tauri signer generate -w <password>` output." >&2
+            exit 1
+          fi
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD}" ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY_PASSWORD secret missing; the private key cannot be decrypted at build time. Refusing to publish." >&2
+            exit 1
+          fi
+          echo "==> Updater signing secrets present."
+
       - name: Build universal .dmg via build-dmg.sh
         id: build
         shell: bash
+        env:
+          # Wire Tauri's auto-signing. Empty strings on a dry-run
+          # produce an unsigned bundle; the assemble-manifest step
+          # below is itself gated on `dry_run != 'true'` so no
+          # `latest.json` is published for a dry-run either — both
+          # gates keep the path aligned.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           dmg="$(scripts/release/build-dmg.sh ${{ steps.bump.outputs.version }} | tail -n 1)"
           echo "dmg=$dmg" >>"$GITHUB_OUTPUT"
           echo "==> DMG artefact: $dmg"
+
+      # DAY-108: copy the signed updater tarball + signature to a
+      # versioned path alongside the DMG, and assemble the
+      # `latest.json` manifest that `plugins.updater.endpoints[0]`
+      # points at. Three artefacts are attached to every release:
+      #
+      #   - Dayseam-v$VERSION.dmg           (fresh-install bundle)
+      #   - Dayseam-v$VERSION.app.tar.gz    (updater binary)
+      #   - Dayseam-v$VERSION.app.tar.gz.sig (minisign signature)
+      #   - latest.json                     (updater manifest)
+      #
+      # `latest.json` must be the literal filename since that's
+      # what the plugin resolves via
+      # `https://github.com/…/releases/latest/download/latest.json`
+      # — renaming it to something version-stamped would break
+      # every installed client's update check silently.
+      - name: Assemble updater manifest (latest.json + signed tarball)
+        id: updater
+        if: steps.level.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+        run: |
+          target_dir="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
+          bundle_dir="${target_dir}/universal-apple-darwin/release/bundle/macos"
+          src_tar="$(ls -t "${bundle_dir}"/*.app.tar.gz 2>/dev/null | head -n 1 || true)"
+          src_sig="$(ls -t "${bundle_dir}"/*.app.tar.gz.sig 2>/dev/null | head -n 1 || true)"
+          if [[ -z "$src_tar" || ! -f "$src_tar" ]]; then
+            echo "::error::Tauri did not emit a .app.tar.gz at ${bundle_dir}. Confirm `bundle.targets` in tauri.conf.json includes 'updater'." >&2
+            exit 1
+          fi
+          if [[ -z "$src_sig" || ! -f "$src_sig" ]]; then
+            echo "::error::Tauri did not emit a .app.tar.gz.sig at ${bundle_dir}. Confirm TAURI_SIGNING_PRIVATE_KEY env was set during the build step." >&2
+            exit 1
+          fi
+          out_dir="${GITHUB_WORKSPACE}/dist/release"
+          mkdir -p "$out_dir"
+          out_tar="${out_dir}/Dayseam-v${VERSION}.app.tar.gz"
+          out_sig="${out_dir}/Dayseam-v${VERSION}.app.tar.gz.sig"
+          cp "$src_tar" "$out_tar"
+          cp "$src_sig" "$out_sig"
+          download_url="https://github.com/vedanthvdev/dayseam/releases/download/v${VERSION}/Dayseam-v${VERSION}.app.tar.gz"
+          out_json="${out_dir}/latest.json"
+          scripts/release/generate-latest-json.sh \
+            "$VERSION" \
+            "$download_url" \
+            "$out_sig" \
+            "$NOTES_FILE" \
+            >"$out_json"
+          echo "tar=$out_tar" >>"$GITHUB_OUTPUT"
+          echo "sig=$out_sig" >>"$GITHUB_OUTPUT"
+          echo "json=$out_json" >>"$GITHUB_OUTPUT"
+          echo "==> Updater manifest ready:"
+          cat "$out_json"
 
       # Universal-bundle assertion: the fused binary inside the .app
       # MUST carry both arm64 and x86_64 slices. `lipo -archs` emits
@@ -302,14 +393,18 @@ jobs:
       # status so even a dry-run leaves a downloadable DMG a
       # maintainer can install on a fresh Mac to verify the
       # Gatekeeper-bypass docs still match reality.
-      - name: Upload DMG as workflow artefact
+      - name: Upload DMG + updater artefacts
         uses: actions/upload-artifact@v4
         with:
           name: Dayseam-v${{ steps.bump.outputs.version }}
           path: |
             dist/release/Dayseam-v${{ steps.bump.outputs.version }}.dmg
             dist/release/Dayseam-v${{ steps.bump.outputs.version }}.dmg.sha256
+            dist/release/Dayseam-v${{ steps.bump.outputs.version }}.app.tar.gz
+            dist/release/Dayseam-v${{ steps.bump.outputs.version }}.app.tar.gz.sig
+            dist/release/latest.json
           retention-days: 30
+          if-no-files-found: ignore
 
       # Commit the version bump (if files changed) so the tagged SHA
       # carries the right `version` metadata. A pre-bumped tree (Task
@@ -352,14 +447,33 @@ jobs:
           VERSION: ${{ steps.bump.outputs.version }}
           DMG: ${{ steps.build.outputs.dmg }}
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+          UPDATER_TAR: ${{ steps.updater.outputs.tar }}
+          UPDATER_SIG: ${{ steps.updater.outputs.sig }}
+          UPDATER_JSON: ${{ steps.updater.outputs.json }}
         run: |
           if [[ ! -s "$NOTES_FILE" ]]; then
             echo "::error::Release notes file missing or empty at $NOTES_FILE (preflight drift)." >&2
             exit 1
           fi
+          # DAY-108: attach the updater artefacts so
+          # `/releases/latest/download/latest.json` resolves to
+          # this release's manifest once `--latest` takes effect.
+          # Missing any of the three would leave installed clients
+          # hitting a 404 on their next check; the assemble step
+          # above already guarded against the source files being
+          # absent.
+          for f in "$UPDATER_TAR" "$UPDATER_SIG" "$UPDATER_JSON"; do
+            if [[ ! -s "$f" ]]; then
+              echo "::error::Updater artefact missing or empty: $f" >&2
+              exit 1
+            fi
+          done
           gh release create "v${VERSION}" \
             "${DMG}" \
             "${DMG}.sha256" \
+            "${UPDATER_TAR}" \
+            "${UPDATER_SIG}" \
+            "${UPDATER_JSON}" \
             --title "Dayseam v${VERSION}" \
             --notes-file "$NOTES_FILE" \
             --latest

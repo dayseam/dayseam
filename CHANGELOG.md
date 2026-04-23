@@ -6,6 +6,45 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ## [Unreleased]
 
+## [0.6.0]
+
+### Added
+
+- **DAY-108: in-app auto-updater.**
+  Dayseam now checks GitHub Releases on launch and surfaces a
+  non-blocking banner when a newer version is available. Clicking
+  **Install and restart** downloads the signed `.app.tar.gz`,
+  verifies its Ed25519 signature against the pubkey embedded in
+  [`tauri.conf.json`](apps/desktop/src-tauri/tauri.conf.json),
+  swaps the `.app` in place, and relaunches into the new version
+  without the user having to open a browser or a new DMG. The
+  release pipeline now signs and publishes three matching assets
+  per release (`Dayseam-vX.Y.Z.app.tar.gz`,
+  `.app.tar.gz.sig`, `latest.json`) alongside the existing DMG.
+  A **Skip this version** button persists a per-version dismissal
+  to `localStorage` so a user who wants to stay on the current
+  build isn't re-prompted until the next release cuts.
+  **Known limitation:** the bundles remain ad-hoc signed, not
+  Apple Developer-ID signed. In rare cases macOS Gatekeeper may
+  re-prompt on the first relaunch after an auto-update; see
+  [`docs/updater/2026-04-20-macos-unsigned-updater-caveat.md`](docs/updater/2026-04-20-macos-unsigned-updater-caveat.md)
+  for the full trade-off and the DAY-115 smoke-test matrix.
+  Tracked for resolution in
+  [#59](https://github.com/vedanthvdev/dayseam/issues/59) (Apple
+  notarization) and
+  [#108](https://github.com/vedanthvdev/dayseam/issues/108).
+
+### Changed
+
+- Bundle targets now include the Tauri `updater` target, so every
+  `tauri build` run emits `Dayseam.app.tar.gz` + a minisign
+  signature in addition to the `.dmg`. This is invisible to
+  developers who use `pnpm tauri:dev`; it matters only in the
+  release workflow, which wires `TAURI_SIGNING_PRIVATE_KEY` from a
+  GitHub Actions secret to unlock the signing step.
+
+## [0.5.2]
+
 ### Added
 
 - **DAY-106: reject overlapping LocalGit scan roots at the IPC

@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "updater",
+  "description": "DAY-108 in-app updater grant. Kept as a separate capability file (rather than folded into `default.json`) so the updater surface can be audited in one glance and a future reviewer can remove it in a single-file revert if the dogfood signing key is ever rotated or the feature is pulled. The grant is deliberately minimal: `updater:allow-check` lets `useUpdater` poll `latest.json`, `updater:allow-download-and-install` runs the whole download+verify+swap atomically inside the plugin (we do NOT grant the split `allow-download` / `allow-install` pair — there is no frontend use-case for a paused mid-download state, and the narrower pair keeps the privileged surface smaller), and `process:allow-restart` relaunches the newly-installed binary. `updater:default` (which would grant all four updater commands) and `process:allow-exit` are intentionally absent — the webview never needs the split download path or a force-quit, and granting either would widen the attack surface for any XSS that slipped past the CSP.",
+  "windows": ["main"],
+  "permissions": [
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    "process:allow-restart"
+  ]
+}

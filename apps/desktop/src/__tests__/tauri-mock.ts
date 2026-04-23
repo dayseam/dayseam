@@ -162,12 +162,119 @@ export function resetDialogPlugin(): void {
   mockDialogOpen.mockClear();
 }
 
+// `@tauri-apps/plugin-updater` / `@tauri-apps/plugin-process` are
+// mocked in `setup.ts`; tests drive them via the queue and spy
+// exported here. The updater mock resolves to whatever the head of
+// `updateCheckQueue` returns (or `null` when empty, matching the
+// real plugin's "no update available" contract). The process mock
+// is a plain spy so tests can assert on `mockRelaunch` invocation
+// counts without having to thread it through a handler registry.
+//
+// `MockUpdate` mimics enough of the real `Update` resource for the
+// hook: a `version`, `currentVersion`, optional `body`, a
+// `downloadAndInstall(onEvent)` that fires a scripted sequence of
+// download events and resolves, and a `close()` that bumps the
+// internal counter so tests can assert cleanup.
+
+type DownloadEvent =
+  | { event: "Started"; data: { contentLength?: number } }
+  | { event: "Progress"; data: { chunkLength: number } }
+  | { event: "Finished" };
+
+export interface MockUpdateInit {
+  version: string;
+  currentVersion: string;
+  body?: string;
+  downloadEvents?: DownloadEvent[];
+  downloadError?: Error;
+}
+
+export class MockUpdate {
+  version: string;
+  currentVersion: string;
+  body?: string;
+  rawJson: Record<string, unknown> = {};
+  date?: string;
+  available = true;
+  rid = Math.floor(Math.random() * 1_000_000);
+  closeCalls = 0;
+  installCalls = 0;
+  private events: DownloadEvent[];
+  private downloadError?: Error;
+
+  constructor(init: MockUpdateInit) {
+    this.version = init.version;
+    this.currentVersion = init.currentVersion;
+    this.body = init.body;
+    this.events = init.downloadEvents ?? [
+      { event: "Started", data: { contentLength: 100 } },
+      { event: "Progress", data: { chunkLength: 50 } },
+      { event: "Progress", data: { chunkLength: 50 } },
+      { event: "Finished" },
+    ];
+    this.downloadError = init.downloadError;
+  }
+
+  async downloadAndInstall(
+    onEvent?: (event: DownloadEvent) => void,
+  ): Promise<void> {
+    this.installCalls += 1;
+    for (const event of this.events) {
+      onEvent?.(event);
+    }
+    if (this.downloadError) throw this.downloadError;
+  }
+
+  async download(): Promise<void> {
+    throw new Error("MockUpdate.download should never be called by useUpdater");
+  }
+
+  async install(): Promise<void> {
+    throw new Error("MockUpdate.install should never be called by useUpdater");
+  }
+
+  async close(): Promise<void> {
+    this.closeCalls += 1;
+  }
+}
+
+const updateCheckQueue: Array<MockUpdate | null | Error> = [];
+
+export const mockUpdaterCheck = vi.fn(async (): Promise<MockUpdate | null> => {
+  if (updateCheckQueue.length === 0) return null;
+  const next = updateCheckQueue.shift()!;
+  if (next instanceof Error) throw next;
+  return next;
+});
+
+/** Script the next `check()` responses. Pass a `MockUpdate` for
+ *  "update available", `null` for "up to date", or an `Error` for
+ *  "check failed". */
+export function queueUpdaterCheck(
+  ...responses: Array<MockUpdate | null | Error>
+): void {
+  updateCheckQueue.push(...responses);
+}
+
+export function resetUpdaterPlugin(): void {
+  updateCheckQueue.length = 0;
+  mockUpdaterCheck.mockClear();
+}
+
+export const mockRelaunch = vi.fn(async () => {});
+
+export function resetProcessPlugin(): void {
+  mockRelaunch.mockClear();
+}
+
 /** One-call reset used by `beforeEach` in tests. */
 export function resetTauriMocks(): void {
   resetInvokeHandlers();
   resetChannels();
   resetEventBus();
   resetDialogPlugin();
+  resetUpdaterPlugin();
+  resetProcessPlugin();
 }
 
 // ---------------------------------------------------------------------------
