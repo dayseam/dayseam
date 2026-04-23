@@ -16,11 +16,18 @@
 //! * **Self-filter lives in the walker, not the normaliser.** Every
 //!   arm in this module assumes the caller has already checked
 //!   `event.actor.id == self.id`; the normaliser trusts its input.
-//! * **Jira ticket-key enrichment** — we scan the PR / issue title
-//!   for `[A-Z][A-Z0-9]+-\d+` tokens and emit one
-//!   `EntityKind::JiraIssue` per hit. The report layer (DAY-97)
-//!   uses the tokens to cross-link a Jira transition with the
-//!   triggering PR.
+//! * **Jira ticket-key enrichment happens in the report layer, not
+//!   here.** DAY-112 dropped this connector's local ticket-key
+//!   scanner after an audit showed it drifted from the GitLab
+//!   connector: this side scanned titles only with a loose regex
+//!   (`[A-Z][A-Z0-9]+-\d+`, no body, 8-key cap, `label=Some(key)`),
+//!   while GitLab's path routed everything through
+//!   `dayseam_report::extract_ticket_keys` (title + body, strict
+//!   `[A-Z]{2,10}-\d+`, 3-key noise bail, `label=None`). See
+//!   `docs/dogfood/2026-04-20-cross-source-enrichment-parity-audit.md`.
+//!   Removing this connector's pre-pass lets the shared report-layer
+//!   extractor be the single source of truth across forges, closing
+//!   the drift.
 
 use chrono::Utc;
 use dayseam_core::{
@@ -30,11 +37,6 @@ use dayseam_core::{
 use crate::events::{
     GithubEvent, GithubEventPayload, GithubIssue, GithubPullRequest, GithubReview, GithubUserRef,
 };
-
-/// Max Jira-style ticket keys we'll emit per event. A PR title with
-/// thirty references is pathological; cap the enrichment so one
-/// run-away row can't dwarf the rest of the event's entities vec.
-pub const MAX_TICKET_KEYS_PER_EVENT: usize = 8;
 
 /// The result of normalising one event: `Some` when the event is of
 /// a kind the connector surfaces, `None` when we intentionally drop
@@ -200,7 +202,9 @@ fn compose_pr_event(
         external_id: external_id.clone(),
         label: Some(format!("#{}", pr.number)),
     });
-    extend_with_ticket_keys(&mut entities, &pr.title);
+    // Jira ticket-key enrichment is handled downstream by
+    // `dayseam_report::extract_ticket_keys` — see the module-level
+    // doc comment + DAY-112 parity audit.
 
     ActivityEvent {
         id,
@@ -257,7 +261,9 @@ fn compose_issue_event(
         external_id: external_id.clone(),
         label: Some(format!("#{}", issue.number)),
     });
-    extend_with_ticket_keys(&mut entities, &issue.title);
+    // Jira ticket-key enrichment is handled downstream by
+    // `dayseam_report::extract_ticket_keys` — see the module-level
+    // doc comment + DAY-112 parity audit.
 
     ActivityEvent {
         id,
@@ -291,102 +297,6 @@ fn base_entities(event: &GithubEvent) -> Vec<EntityRef> {
         external_id: event.repo.name.clone(),
         label: repo_label,
     }]
-}
-
-fn extend_with_ticket_keys(entities: &mut Vec<EntityRef>, title: &str) {
-    for key in ticket_keys(title)
-        .into_iter()
-        .take(MAX_TICKET_KEYS_PER_EVENT)
-    {
-        entities.push(EntityRef {
-            kind: EntityKind::JiraIssue,
-            external_id: key.clone(),
-            label: Some(key),
-        });
-    }
-}
-
-/// Extract Jira-style ticket keys from a PR / issue title.
-///
-/// A key matches the shape `[A-Z][A-Z0-9]+-\d+` surrounded by
-/// word-boundary characters — the same shape GitLab / Jira / GitHub
-/// all accept in cross-linking. Extraction is left-to-right and each
-/// unique key is emitted at most once.
-///
-/// We hand-roll the scan rather than pull in the `regex` crate —
-/// this is the only pattern the connector needs and `regex`'s
-/// compile-time footprint is heavyweight for a single anchored
-/// shape (no other connector in the workspace uses `regex` today).
-pub fn ticket_keys(title: &str) -> Vec<String> {
-    let mut seen = std::collections::BTreeSet::new();
-    let mut out: Vec<String> = Vec::new();
-
-    let bytes = title.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        // Anchor on an uppercase ASCII letter that starts at a
-        // non-word-character boundary (beginning of string or an
-        // ASCII non-word char before it).
-        let is_boundary = i == 0 || {
-            let prev = bytes[i - 1];
-            !is_ascii_word_char(prev)
-        };
-        if !is_boundary || !bytes[i].is_ascii_uppercase() {
-            i += 1;
-            continue;
-        }
-
-        // Consume the letters-or-digits prefix (must have at least
-        // two uppercase/digit chars total: `[A-Z][A-Z0-9]+`).
-        let prefix_start = i;
-        let mut j = i + 1;
-        while j < bytes.len() && (bytes[j].is_ascii_uppercase() || bytes[j].is_ascii_digit()) {
-            j += 1;
-        }
-        if j - prefix_start < 2 || j >= bytes.len() || bytes[j] != b'-' {
-            i = j.max(i + 1);
-            continue;
-        }
-
-        // Expect the hyphen then one-or-more digits.
-        let digits_start = j + 1;
-        let mut k = digits_start;
-        while k < bytes.len() && bytes[k].is_ascii_digit() {
-            k += 1;
-        }
-        if k == digits_start {
-            i = j + 1;
-            continue;
-        }
-
-        // Require a trailing non-word boundary so `ABC-12A` doesn't
-        // match `ABC-12`.
-        let trails_cleanly = k == bytes.len() || !is_ascii_word_char(bytes[k]);
-        if !trails_cleanly {
-            i = k;
-            continue;
-        }
-
-        // Also require the prefix to start with a letter: we've
-        // already checked `bytes[i]` is uppercase, but the `[A-Z][A-Z0-9]+`
-        // shape means the prefix can't be *all* digits. Reject
-        // ambiguous all-caps-digit prefixes like `Z9-1` only if the
-        // first non-anchor char is also a digit — the anchor already
-        // enforces a leading letter, so no extra work here.
-        let key = std::str::from_utf8(&bytes[prefix_start..k])
-            .expect("ASCII slice stays UTF-8")
-            .to_string();
-        if seen.insert(key.clone()) {
-            out.push(key);
-        }
-        i = k;
-    }
-
-    out
-}
-
-fn is_ascii_word_char(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
 }
 
 fn actor_from_event(event: &GithubEvent) -> Actor {
@@ -715,12 +625,16 @@ mod tests {
         assert!(normalise_event(source(), &ev).is_none());
     }
 
-    /// PR title carrying a Jira-style ticket key seeds an
-    /// `EntityKind::JiraIssue` — the enrichment hook DAY-97 reads
-    /// on the report side. Tokens are extracted in left-to-right
-    /// order, deduplicated.
+    /// DAY-112 parity fix: the GitHub connector deliberately does
+    /// NOT attach `EntityKind::JiraIssue` entities at normalise
+    /// time. Jira-key extraction is centralized in
+    /// `dayseam_report::extract_ticket_keys` (title + body, strict
+    /// `[A-Z]{2,10}-\d+`, 3-key noise bail, `label=None`) so the
+    /// behavior is identical across GitHub PRs and GitLab MRs. If
+    /// someone re-adds a local pre-pass on this side, this test
+    /// turns red.
     #[test]
-    fn pr_title_with_jira_ticket_key_enriches_entity_list() {
+    fn pr_title_with_jira_ticket_key_does_not_attach_entity_at_normalise_time() {
         let ev = base_event(
             "PullRequestEvent",
             pr_payload("opened", false, "CAR-5117: plumb charge reasons", 42),
@@ -729,23 +643,13 @@ mod tests {
         let jira = out
             .entities
             .iter()
-            .find(|e| e.kind == EntityKind::JiraIssue)
-            .expect("jira ticket key must seed JiraIssue entity");
-        assert_eq!(jira.external_id, "CAR-5117");
-    }
-
-    #[test]
-    fn ticket_keys_extracts_unique_tokens_in_order() {
-        let keys = ticket_keys("CAR-5117 bugfix; see also PROJ-12 and CAR-5117 again");
-        assert_eq!(keys, vec!["CAR-5117", "PROJ-12"]);
-    }
-
-    #[test]
-    fn ticket_keys_ignores_lowercase_or_kebab_branches() {
-        // A branch name like `feat-15` is not a ticket key; neither
-        // is `foo-bar-5`.
-        let keys = ticket_keys("feat-15 and foo-bar-5 but not real keys");
-        assert!(keys.is_empty());
+            .find(|e| e.kind == EntityKind::JiraIssue);
+        assert!(
+            jira.is_none(),
+            "connector normalise must not attach JiraIssue entity; \
+             that is the shared dayseam_report pipeline's responsibility \
+             (DAY-112 parity fix). Got: {jira:?}"
+        );
     }
 
     /// Normalisation is deterministic — same input, same
