@@ -28,10 +28,13 @@ on:
 
 # Deliberate minimal token posture: `contents: write` is the only
 # scope the release job needs (to push the `chore(release):` commit,
-# create the tag, and upload assets to the GitHub Release). The
-# Phase 3.5 codesign issue tracks adding `APPLE_*` environment
-# secrets scoped to a future `release` environment; they are
-# intentionally absent here because v0.1.0 ships unsigned.
+# create the tag, and upload assets to the GitHub Release). Apple
+# codesign + notarization secrets (the `APPLE_*` family) are read
+# from repo secrets directly at job time; they are strictly optional
+# — when any of them is unset the workflow auto-falls-back to
+# ad-hoc-signed unnotarized bundles. See
+# docs/release/CODESIGN.md for the contract, rotation steps, and
+# the "how to tell which mode a run used" playbook.
 permissions:
   contents: write
 
@@ -324,6 +327,137 @@ jobs:
           fi
           echo "==> Updater signing secrets present."
 
+      # DAY-124 / #59. Apple codesign mode is resolved up-front so every
+      # downstream step can gate on a single signal. The contract:
+      #
+      #   - `developer-id` is activated by the presence of the
+      #     `APPLE_CERTIFICATE` secret. When that secret is set, the
+      #     remaining `APPLE_*` secrets (CERTIFICATE_PASSWORD,
+      #     SIGNING_IDENTITY, ID, PASSWORD, TEAM_ID) become REQUIRED
+      #     and the preflight step below fails fast if any is
+      #     missing. A half-configured secret set is a worse state
+      #     than no secrets at all — Tauri would sign the bundle
+      #     but fail to notarize, surfacing a confusing mid-build
+      #     failure instead of a clear "rotate secret X" error.
+      #
+      #   - `ad-hoc` is the default and fallback. The workflow
+      #     continues to emit ad-hoc-signed, unnotarized bundles
+      #     (matching v0.6.2 onwards) and the `UNSIGNED-FIRST-RUN`
+      #     docs still apply to downloaders. This is what lets a
+      #     fork / contributor without Apple creds still exercise
+      #     the full release path end-to-end.
+      #
+      # `spctl --assess` at the end is only meaningful in
+      # developer-id mode; it's skipped in ad-hoc mode because
+      # Gatekeeper rejects ad-hoc sigs by design.
+      - name: Resolve Apple codesign mode
+        id: codesign
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        run: |
+          if [[ -n "${APPLE_CERTIFICATE:-}" ]]; then
+            echo "mode=developer-id" >>"$GITHUB_OUTPUT"
+            echo "==> Apple codesign mode: developer-id (full signing + notarization)"
+          else
+            echo "mode=ad-hoc" >>"$GITHUB_OUTPUT"
+            echo "==> Apple codesign mode: ad-hoc (APPLE_CERTIFICATE secret unset; fallback path)"
+          fi
+
+      # DAY-124: defense-in-depth against a half-configured secret
+      # set. If APPLE_CERTIFICATE is set but (say) APPLE_PASSWORD is
+      # not, Tauri would sign the .app happily, then fail
+      # notarization mid-build with a confusing `xcrun notarytool`
+      # error message 4 minutes into the universal build. Failing
+      # the whole run before we spend a single cargo-second on
+      # signing is cheaper and clearer. We also refuse the
+      # developer-id path on dry-runs — a dry-run should never
+      # decrypt production keychain material.
+      - name: Preflight — assert Apple codesign secrets are complete
+        if: steps.codesign.outputs.mode == 'developer-id' && steps.level.outputs.dry_run != 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=()
+          [[ -z "${APPLE_CERTIFICATE_PASSWORD:-}" ]] && missing+=("APPLE_CERTIFICATE_PASSWORD")
+          [[ -z "${APPLE_SIGNING_IDENTITY:-}" ]] && missing+=("APPLE_SIGNING_IDENTITY")
+          [[ -z "${APPLE_ID:-}" ]] && missing+=("APPLE_ID")
+          [[ -z "${APPLE_PASSWORD:-}" ]] && missing+=("APPLE_PASSWORD")
+          [[ -z "${APPLE_TEAM_ID:-}" ]] && missing+=("APPLE_TEAM_ID")
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::APPLE_CERTIFICATE is set (activating developer-id mode) but these companion secrets are missing: ${missing[*]}. Either set all six (see docs/release/CODESIGN.md) or unset APPLE_CERTIFICATE to fall back to ad-hoc mode." >&2
+            exit 1
+          fi
+          if [[ "${APPLE_SIGNING_IDENTITY}" != "Developer ID Application:"* ]]; then
+            echo "::error::APPLE_SIGNING_IDENTITY does not start with 'Developer ID Application:'. Got: '${APPLE_SIGNING_IDENTITY}'. Use the full certificate common name, e.g. 'Developer ID Application: Your Name (TEAMID123)'." >&2
+            exit 1
+          fi
+          if [[ ! "${APPLE_TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::APPLE_TEAM_ID '${APPLE_TEAM_ID}' is not a 10-character alphanumeric Team ID. Check your Apple Developer membership page." >&2
+            exit 1
+          fi
+          echo "==> All six Apple codesign secrets present and well-formed."
+
+      # DAY-124: fast-fail preflight of the .p12 payload BEFORE
+      # spending 4 minutes on the universal cargo build. Tauri's
+      # bundler will later import the cert into its own
+      # `tauri-build.keychain` (see
+      # crates/tauri-bundler/src/bundle/macos/sign.rs upstream) and
+      # a bad base64 payload or wrong .p12 password would fail deep
+      # inside `tauri build` with a log that doesn't name the
+      # offending secret. Decoding + validating here surfaces the
+      # exact bad secret in ~1 second. The decoded .p12 is
+      # immediately zeroed and unlinked — it's Tauri's job to hold
+      # the material during the real signing step, not ours.
+      #
+      # We intentionally do NOT pre-create a keychain: Tauri does
+      # that internally, and a duplicate identity across two
+      # keychains triggers the `codesign: ambiguous` error seen in
+      # tauri-apps/tauri#9760. The env vars flow straight through
+      # from secrets to `tauri build`, which is the documented
+      # contract (https://v2.tauri.app/distribute/sign/macos/).
+      - name: Preflight — validate .p12 certificate payload
+        if: steps.codesign.outputs.mode == 'developer-id' && steps.level.outputs.dry_run != 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P12_PATH="${RUNNER_TEMP}/apple-cert-probe.p12"
+          if ! echo "$APPLE_CERTIFICATE" | base64 --decode > "$P12_PATH" 2>/dev/null; then
+            echo "::error::APPLE_CERTIFICATE is not valid base64. Re-export the .p12 and encode with 'openssl base64 -A -in cert.p12'." >&2
+            exit 1
+          fi
+          if [[ ! -s "$P12_PATH" ]]; then
+            echo "::error::APPLE_CERTIFICATE decoded to zero bytes. The secret is empty or corrupt." >&2
+            exit 1
+          fi
+          # `openssl pkcs12 -noout -passin …` only parses the PKCS#12
+          # structure; it doesn't import anything. A wrong password
+          # exits non-zero with a distinctive `Mac verify error`
+          # message, so we can fail fast with a pointed error.
+          if ! openssl pkcs12 -noout -in "$P12_PATH" -passin "pass:${APPLE_CERTIFICATE_PASSWORD}" 2>/tmp/p12.err; then
+            if grep -q 'Mac verify' /tmp/p12.err; then
+              echo "::error::APPLE_CERTIFICATE_PASSWORD does not match the .p12 in APPLE_CERTIFICATE. Verify you used the same passphrase when exporting from Keychain Access." >&2
+            else
+              echo "::error::Failed to parse .p12 certificate. Contents of openssl stderr:" >&2
+              cat /tmp/p12.err >&2
+            fi
+            dd if=/dev/urandom of="$P12_PATH" bs=1024 count=1 conv=notrunc 2>/dev/null || true
+            rm -f "$P12_PATH" /tmp/p12.err
+            exit 1
+          fi
+          echo "==> .p12 certificate payload validates and decrypts with the provided password."
+          # Zero the decoded bytes before unlink — forensic-recovery
+          # hardening is cheap and appropriate for a Developer ID
+          # private key.
+          dd if=/dev/urandom of="$P12_PATH" bs=1024 count=1 conv=notrunc 2>/dev/null || true
+          rm -f "$P12_PATH" /tmp/p12.err
+
       - name: Build universal .dmg via build-dmg.sh
         id: build
         shell: bash
@@ -335,6 +469,37 @@ jobs:
           # gates keep the path aligned.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # DAY-124 / #59. Tauri 2's bundler reads these six env vars
+          # and auto-wires codesigning + notarization end-to-end:
+          #
+          #   - APPLE_SIGNING_IDENTITY overrides the `-` in
+          #     tauri.conf.json > bundle > macOS > signingIdentity
+          #     (env wins; the config value is the local-dev
+          #     fallback). When empty, Tauri respects the config
+          #     default and produces an ad-hoc-signed bundle.
+          #   - APPLE_CERTIFICATE / _PASSWORD are consumed by the
+          #     `security import` keychain flow ABOVE, not by the
+          #     Tauri CLI directly, but we still pass them here in
+          #     case a future Tauri version wires them differently.
+          #   - APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID activate
+          #     the notarytool submission + stapling path in
+          #     Tauri's bundler. With all three set, `tauri build`
+          #     runs `xcrun notarytool submit --wait` and staples
+          #     the resulting ticket before returning. Empty → no
+          #     notarization attempt.
+          #
+          # All six are pass-throughs from secrets: if unset they
+          # are empty strings and Tauri falls back to the ad-hoc
+          # path, which is the v0.6.6 behaviour we preserve as the
+          # graceful fallback. The Resolve Apple codesign mode step
+          # above is the single source of truth for which mode we
+          # are in; these values are just what Tauri consumes.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           dmg="$(scripts/release/build-dmg.sh ${{ steps.bump.outputs.version }} | tail -n 1)"
           echo "dmg=$dmg" >>"$GITHUB_OUTPUT"
@@ -483,6 +648,127 @@ jobs:
           fi
           if [[ "$bundle" != "$TARGET" ]]; then
             echo "::error::CFBundleVersion '$bundle' does not match release target '$TARGET'. The DMG would ship mis-stamped — refusing to tag and publish." >&2
+            exit 1
+          fi
+
+      # DAY-124 / #59. Signature-mode parity check: verify the
+      # built .app actually carries the signature shape the resolved
+      # codesign mode promised. In developer-id mode a bundle that
+      # came out with an ad-hoc signature (flags: `adhoc`) means the
+      # env-var override did not land — Tauri's default-signingIdentity
+      # precedence may have changed in a version upgrade, or a
+      # downstream step stripped the env before `tauri build` ran.
+      # Either way, we would otherwise happily upload an unnotarized
+      # DMG to a `--latest` GitHub Release and break every
+      # downloader's auto-updater trust chain. Failing here is the
+      # belt-and-braces that catches it before publish.
+      - name: Assert signature mode matches codesign policy
+        shell: bash
+        env:
+          MODE: ${{ steps.codesign.outputs.mode }}
+          EXPECTED_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          target_dir="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
+          app="${target_dir}/universal-apple-darwin/release/bundle/macos/Dayseam.app"
+          sig_info="$(codesign -dvv "$app" 2>&1 || true)"
+          echo "==> codesign -dvv output:"
+          echo "$sig_info"
+
+          if [[ "$MODE" == "developer-id" ]]; then
+            if echo "$sig_info" | grep -q 'flags=.*adhoc'; then
+              echo "::error::developer-id mode was active but the bundle shipped with an ad-hoc signature. Tauri did not honour APPLE_SIGNING_IDENTITY. Refusing to publish." >&2
+              exit 1
+            fi
+            if ! echo "$sig_info" | grep -q "Authority=Developer ID Application"; then
+              echo "::error::developer-id mode was active but codesign reports no 'Developer ID Application' authority in the chain. Cert import may have silently failed." >&2
+              exit 1
+            fi
+            echo "==> Developer ID signature verified on ${app}."
+          else
+            if ! echo "$sig_info" | grep -q 'flags=.*adhoc'; then
+              echo "::warning::ad-hoc mode was active but the bundle does NOT carry the adhoc flag. Unexpected — surfacing for review but not failing the build."
+            fi
+            echo "==> ad-hoc signature confirmed on ${app}."
+          fi
+
+      # DAY-124 / #59. Notarize + staple the enclosing .dmg.
+      #
+      # Tauri's bundler notarizes and staples the inner .app but
+      # does NOT submit the .dmg itself to the notary service. For
+      # a smooth download experience — no "Verifying Dayseam.dmg…"
+      # progress sheet on first open, no online ticket lookup that
+      # fails on airplane-mode Macs — the .dmg needs its own
+      # stapled ticket. We submit here (fast: Apple re-validates
+      # the already-notarized .app inside) and staple the returned
+      # ticket so `spctl --assess` against the DMG passes for every
+      # downloader regardless of network state.
+      - name: Notarize + staple the .dmg (developer-id mode)
+        if: steps.codesign.outputs.mode == 'developer-id'
+        shell: bash
+        env:
+          DMG: ${{ steps.build.outputs.dmg }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          echo "==> Submitting $DMG to Apple notary service"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          echo "==> Stapling notarization ticket to $DMG"
+          xcrun stapler staple "$DMG"
+          echo "==> Validating stapled ticket"
+          xcrun stapler validate "$DMG"
+
+      # DAY-124 / #59. Gatekeeper verdict assertion. `spctl --assess`
+      # returns the exact pass/fail a downloader's Mac gives when
+      # they double-click the .dmg. `accepted` is the verdict we
+      # ship; any other outcome (e.g. `rejected`, `source=Unnotarized
+      # Developer ID`) means this is a regression vs v0.1.1's
+      # "double-click just works" promise and we refuse to publish.
+      #
+      # This gate is only meaningful when Apple has issued a
+      # notarization ticket, which requires:
+      #   - A real Developer ID signature (not ad-hoc)
+      #   - A successful `xcrun notarytool submit --wait` response
+      #   - A stapled ticket (`xcrun stapler staple`)
+      #
+      # Tauri's bundler handles signing+notarization+stapling of the
+      # inner .app automatically when the APPLE_ID / APPLE_PASSWORD /
+      # APPLE_TEAM_ID env vars are set; the Notarize + staple the
+      # .dmg step above does the same for the enclosing .dmg. A
+      # dry-run in developer-id mode still produces a signed +
+      # notarized build if the secrets are available, but is gated
+      # below to skip the master-push / tag / publish steps — useful
+      # for shaking out cert/notary issues without shipping.
+      - name: Assert Gatekeeper accepts the signed .dmg (developer-id mode)
+        if: steps.codesign.outputs.mode == 'developer-id'
+        shell: bash
+        env:
+          DMG: ${{ steps.build.outputs.dmg }}
+        run: |
+          set +e
+          echo "==> spctl assess on $DMG"
+          # `--context context:primary-signature` asks about the DMG
+          # signature itself (vs. the enclosed .app). `--type open`
+          # is what the Finder's "Open" path runs. --verbose gives
+          # a human-readable "source" line we echo for future
+          # debugging. We intentionally drop `-e` around this block
+          # because `spctl` exits non-zero on rejection and we want
+          # to surface its own output rather than an empty fail.
+          spctl_output="$(spctl --assess --type open --context context:primary-signature --verbose "$DMG" 2>&1)"
+          spctl_rc=$?
+          echo "$spctl_output"
+          echo "==> spctl exit code: $spctl_rc"
+          set -e
+          if echo "$spctl_output" | grep -qi 'accepted'; then
+            echo "==> Gatekeeper verdict: accepted. Double-click install will not prompt."
+          else
+            echo "::error::Gatekeeper rejected the signed .dmg. Ticket missing or signature invalid. Investigate the notarytool submission log in the build step above." >&2
             exit 1
           fi
 
@@ -640,3 +926,17 @@ jobs:
             --title "Dayseam v${VERSION}" \
             --notes-file "$NOTES_FILE" \
             --latest
+
+      # DAY-124 / #59. Tauri's bundler creates a `tauri-build.keychain`
+      # inside its own temp dir for the signing step; we do not create
+      # any keychain ourselves (see tauri-apps/tauri#9760 for why a
+      # duplicate import would break the build). The ephemeral runner
+      # image is discarded at job end, so Tauri's keychain has no
+      # further lifetime. This step is a belt-and-braces best-effort
+      # cleanup in case a Tauri version change starts leaking one and
+      # we haven't noticed yet — `|| true` on every command keeps the
+      # step green when there's nothing to clean.
+      - name: Best-effort keychain cleanup
+        if: always() && steps.codesign.outputs.mode == 'developer-id'
+        run: |
+          security delete-keychain tauri-build.keychain 2>/dev/null || true

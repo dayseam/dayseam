@@ -103,27 +103,43 @@ if [[ -z "$SRC_DMG" || ! -f "$SRC_DMG" ]]; then
   exit 1
 fi
 
-# DAY-119: verify Tauri's config-driven ad-hoc signature + hardened-
-# runtime entitlements actually made it onto the shipped .app. v0.6.1
-# shipped unsigned, which is what produced the "Keychain wants to
-# allow Dayseam" cascade reported against the fresh install. v0.6.2
-# adds `signingIdentity: "-"` + `entitlements.plist` in
-# `tauri.conf.json`, and the Tauri bundler runs `codesign -s -
-# --entitlements …` on the .app as part of its build step. We assert
-# that here so a future Tauri upgrade that drops or renames either
-# config key fails the CI release instead of silently shipping
-# another unsigned binary. A fully stable (bundle-id-based)
-# designated requirement that survives rebuilds still requires a
-# Developer ID identity — see the Phase 3.5 codesign issue — and is
-# tracked as follow-up; for v0.6.2 the ad-hoc cdhash-based DR is
-# enough to make macOS stop treating every launch as a brand new
-# unknown binary, which is the root cause of the v0.6.1 prompt
-# cascade.
+# DAY-119 / DAY-124. Verify Tauri's signature + hardened-runtime
+# entitlements actually made it onto the shipped .app. Two modes
+# are supported; both run through the same `codesign --verify` +
+# entitlements-embedded assertions below, and both depend on
+# tauri.conf.json's `macOS.entitlements` path landing correctly:
+#
+#   - ad-hoc (local dev, forks, runners without APPLE_* secrets).
+#     tauri.conf.json's `signingIdentity: "-"` tells the bundler
+#     to run `codesign -s -`, which produces a cdhash-based
+#     designated requirement. macOS stops treating every launch
+#     as a brand new unknown binary (root cause of the v0.6.1
+#     prompt cascade) but Gatekeeper still rejects the bundle,
+#     hence the `UNSIGNED-FIRST-RUN.md` docs.
+#
+#   - developer-id (release.yml with APPLE_CERTIFICATE secret
+#     set). `APPLE_SIGNING_IDENTITY` env var overrides the
+#     config's "-" and Tauri signs with the real Developer ID
+#     Application cert + hardened runtime + timestamp.
+#     APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID trigger Tauri's
+#     notarytool submission + stapling inside the same build
+#     step. Gatekeeper accepts the result; no first-launch
+#     workaround needed.
+#
+# The assertions below are signature-mode agnostic: both ad-hoc
+# and Developer ID signatures pass `codesign --verify --deep
+# --strict`, and both embed the same entitlements.plist contents.
+# The release.yml "signature mode parity" step downstream is what
+# asserts the signature *shape* matches the resolved mode.
 if [[ ! -d "$APP_PATH" ]]; then
   echo "build-dmg.sh: Tauri bundler did not produce a .app at ${APP_PATH}" >&2
   exit 1
 fi
-echo "==> Verifying Tauri applied ad-hoc signature + entitlements to ${APP_PATH}"
+if [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+  echo "==> Verifying Developer ID signature on ${APP_PATH} (identity: ${APPLE_SIGNING_IDENTITY})"
+else
+  echo "==> Verifying ad-hoc signature on ${APP_PATH}"
+fi
 if ! codesign --verify --deep --strict "$APP_PATH"; then
   echo "build-dmg.sh: codesign --verify failed on ${APP_PATH}. Check tauri.conf.json 'macOS.signingIdentity' and 'macOS.entitlements'." >&2
   exit 1
