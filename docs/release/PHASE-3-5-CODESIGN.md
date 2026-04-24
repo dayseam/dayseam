@@ -1,6 +1,45 @@
 # Phase 3.5 / v0.1.1 — Real Developer ID codesign + notarytool
 
-**Status:** open, tracked as a Phase 3.5 follow-up to
+**Status:** implemented in DAY-124 (v0.6.7). The infrastructure this
+doc specified is now live in
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml)
+and the live runbook (secret names, rotation, troubleshooting) has
+moved to [`docs/release/CODESIGN.md`](./CODESIGN.md). The release
+workflow auto-activates Developer ID signing + notarization when the
+`APPLE_*` secrets are set on the repo, and gracefully falls back to
+the ad-hoc path documented in
+[`UNSIGNED-FIRST-RUN.md`](./UNSIGNED-FIRST-RUN.md) when they are
+not. The next release run with all six secrets present will be the
+first signed-and-notarized Dayseam build.
+
+This doc is retained as a historical pointer so links from earlier
+release notes, plan docs, and the Phase 3 review still resolve to a
+live page. New readers should skip to
+[`CODESIGN.md`](./CODESIGN.md).
+
+## Original spec (historical)
+
+The below is the spec as of v0.6.6; DAY-124 implemented it with two
+deliberate changes from the draft:
+
+1. **Tauri's env-var contract replaces the manual `codesign` +
+   `notarytool` calls.** Tauri 2's bundler reads
+   `APPLE_SIGNING_IDENTITY` / `APPLE_CERTIFICATE` / `APPLE_ID` /
+   `APPLE_PASSWORD` / `APPLE_TEAM_ID` and runs all three of
+   codesign, `xcrun notarytool submit --wait`, and `xcrun stapler
+   staple` from inside `tauri build`. The release workflow
+   therefore no longer needs the explicit codesign / notarize /
+   staple steps this spec drafted — the single `Build universal
+   .dmg` step does all of it when the env is configured.
+2. **Ad-hoc fallback is automatic.** This spec assumed a binary
+   switchover (v0.1.0 unsigned → v0.1.1 signed). The implementation
+   instead resolves mode dynamically from `APPLE_CERTIFICATE`
+   presence, so forks and contributors without Apple creds keep
+   getting working ad-hoc releases from the same workflow.
+
+---
+
+**Status (original):** open, tracked as a Phase 3.5 follow-up to
 [`docs/plan/2026-04-20-v0.1-phase-3-gitlab-release.md`](../plan/2026-04-20-v0.1-phase-3-gitlab-release.md).
 This doc is the living spec the follow-up PR will execute and
 eventually supersede; it is referenced from the v0.1.0 release notes

@@ -6,6 +6,81 @@ All notable changes to Dayseam are documented in this file. The format follows
 
 ## [Unreleased]
 
+## [0.6.7]
+
+### Added
+
+- **DAY-124 / [#59](https://github.com/vedanthvdev/dayseam/issues/59):
+  macOS Developer ID codesign + notarization infrastructure, live
+  but opt-in.** The release workflow now auto-detects which signing
+  mode to use from a single signal (presence of the
+  `APPLE_CERTIFICATE` repo secret) and resolves to one of two
+  paths: `developer-id` (full signing + hardened runtime +
+  `xcrun notarytool submit --wait` + `stapler staple`, handled
+  end-to-end by Tauri 2's bundler when the six `APPLE_*` env vars
+  are set per <https://v2.tauri.app/distribute/sign/macos/>) or
+  `ad-hoc` (fallback, identical to v0.6.6's output). Mode is
+  resolved in a new `Resolve Apple codesign mode` step that every
+  downstream step gates on, so adding or removing the six secrets
+  is the ONLY action required to flip the workflow — no code or
+  workflow edit needed. The six secrets the `developer-id` path
+  expects are `APPLE_CERTIFICATE` (base64 `.p12`),
+  `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` (full
+  `Developer ID Application: Your Name (TEAMID)` string),
+  `APPLE_ID`, `APPLE_PASSWORD` (app-specific, from
+  <https://appleid.apple.com>), and `APPLE_TEAM_ID`; the
+  `Preflight — assert Apple codesign secrets are complete` step
+  fails the run fast (before any cargo time is spent) if
+  `APPLE_CERTIFICATE` is set but any of the other five is
+  missing or malformed, and the `Preflight — validate .p12
+  certificate payload` step decrypts the `.p12` with
+  `openssl pkcs12` as a pre-build sanity check so a bad base64
+  or wrong password fails in ~1 second with a pointed error
+  instead of ~4 minutes into a universal cargo build with a
+  cryptic Tauri log. Two post-build assertions protect against
+  silent regressions: `Assert signature mode matches codesign
+  policy` runs `codesign -dvv` on the built `.app` and fails if
+  `developer-id` mode was active but the bundle shipped with an
+  ad-hoc signature (which would mean Tauri's
+  `APPLE_SIGNING_IDENTITY` env override stopped working across a
+  future Tauri upgrade), and `Assert Gatekeeper accepts the
+  signed .dmg` runs `spctl --assess --type open
+  --context context:primary-signature` on the produced DMG to
+  confirm Apple's own verdict matches the "double-click just
+  works" promise before the GitHub Release is published.
+  Deliberately NOT in scope for this change: pre-creating a
+  keychain via `security create-keychain` / `security import`
+  (which was in the original
+  [`PHASE-3-5-CODESIGN.md`](docs/release/PHASE-3-5-CODESIGN.md)
+  spec but was dropped after evidence from
+  [tauri-apps/tauri#9760](https://github.com/tauri-apps/tauri/issues/9760)
+  showed that Tauri 2's bundler already does its own keychain
+  management in an internal `tauri-build.keychain` when
+  `APPLE_CERTIFICATE` + `APPLE_CERTIFICATE_PASSWORD` are passed
+  as env vars, and a duplicate identity in a second keychain
+  triggers `codesign: ambiguous` errors that are expensive to
+  debug). The live runbook
+  ([`docs/release/CODESIGN.md`](docs/release/CODESIGN.md))
+  documents every secret's origin, cert/password rotation flow,
+  post-release verification commands
+  (`codesign -dvv`, `spctl --assess`, `xcrun stapler validate`),
+  and five concrete failure modes mapped to their fixes. The
+  historical spec
+  ([`docs/release/PHASE-3-5-CODESIGN.md`](docs/release/PHASE-3-5-CODESIGN.md))
+  is retained as a pointer so existing links from the Phase 3
+  plan, the Phase 3 review, and the v0.1.0 release notes still
+  resolve to a live page, with a status banner that routes new
+  readers to the runbook.
+
+### Changed
+
+- `scripts/release/build-dmg.sh` logs which signing mode is
+  active (developer-id vs ad-hoc) and reports the resolved
+  signing identity in the developer-id case. The mode-agnostic
+  `codesign --verify --deep --strict` and entitlements-embedded
+  assertions stay unchanged — both signature shapes satisfy both
+  gates, so this is purely an operator-readability change.
+
 ## [0.6.6]
 
 ### Added
