@@ -47,6 +47,244 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Added
+
+- **DAY-166: Public marketing site at `apps/website/` — Astro +
+  Tailwind + one React island.** Closes-progress
+  [#141](https://github.com/dayseam/dayseam/issues/141) (WEB-1
+  from the holistic review; the issue stays open because download,
+  privacy, and docs sub-pages are follow-up PRs). The site ships
+  as a single route (`/`) composed of five sections: a
+  scroll-driven sci-fi hero, a three-step "how it works", the
+  connector grid (five shipping + five on-deck), a trust strip,
+  and a download CTA that resolves to `releases/latest` rather
+  than a pinned version so the site never advertises a stale
+  build. Zero telemetry, zero backend, zero analytics library —
+  the "no account, no telemetry" claim in the trust strip would
+  otherwise be a lie the first time the marketing site loaded
+  Google Analytics.
+
+  The hero is a three-act scroll animation (connector logos rain
+  down at 80px with coloured drop-shadow glows → collapse into a
+  Doppler-boosted amber black hole with a warm halo, spinning
+  accretion disk, elliptical Einstein ring, and lensed equatorial
+  beam → a reconstruction of the actual Dayseam desktop window
+  assembles itself piece by piece: Mac chrome, title bar, sources
+  sidebar, action row, kind-grouped bullet sections mirroring the
+  app's `StreamingPreview`, and a donut summary of the day by
+  source kind) powered by Framer Motion's
+  `useScroll`/`useTransform` inside a single `client:only="react"`
+  island; everything else renders to static HTML. A full
+  `HeroStatic` branch replaces the animation for users who have
+  `prefers-reduced-motion: reduce` set — a three-panel static
+  telling of the same story, not a "slower animation", because
+  the setting is a vestibular-safety signal, not a performance
+  hint. In the animated variant, every decorative layer
+  (starfield, icon rain, black hole, light burst) is individually
+  `aria-hidden`, but the report-reveal subtree is *not* — so a
+  screen-reader user lands on the `ReportMock`'s
+  `aria-label="Example Dayseam desktop window"` plus its bullet
+  copy and hears the actual pitch, not just the narrative
+  captions. The marketing-site `ReportMock` also keys its kind
+  emoji off the same PascalCase `SourceKind` values the desktop
+  app uses (`GitHub`, `LocalGit`, …), and renders the `Local git`
+  label with the same lowercase "g" the app itself ships, so a
+  `grep SourceKind` in the repo surfaces both the app's
+  `SOURCE_KIND_EMOJI` and the website's mock in one pass.
+
+  Brand tokens (charcoal + the five Convergence strand hues +
+  seam cream) are pulled from `tailwind.config.mjs` and mirror the
+  canonical `assets/brand/dayseam-mark.svg`; the mark itself is
+  inlined as the favicon and nav logo. The connector grid has two
+  populations in `src/data/connectors.ts` — `SHIPPING` (the five
+  connectors that ship today) and `COMING_SOON` (Slack, Teams,
+  Linear, Word, Excel, on-deck with a "soon" ribbon) — and moving
+  a connector between them is the only change required when a new
+  source kind lands. Every connector tile renders in that
+  service's real brand colour (GitHub white, GitLab `#FC6D26`,
+  Jira `#0052CC`, and so on — with two on-charcoal-visibility
+  substitutions noted in `connectors.ts`) so a visitor clocks
+  "that's GitHub, that's GitLab" in the half-second each icon is
+  on-screen during the hero. The Convergence logo-rhyme lives on
+  in the report-mock donut chart's five-segment breakdown, the
+  trust-strip labels, and the narrative copy accents — none of
+  which depend on the per-connector accent. CI now runs a full
+  `astro build` under the `frontend` job on every PR so Vite /
+  Rollup regressions fail fast rather than at deploy time.
+
+  Post-polish pass adds an `IntroHero` landing card (the product
+  name "Dayseam" + a one-line pitch + a "Scroll to see how"
+  prompt) that sits over the pinned viewport at scroll 0 and
+  fades out by scroll ≈ 0.14, so a visitor no longer lands on a
+  visually empty frame while act 1's first icon is still winding
+  up; the standalone "Scroll" affordance was folded into the same
+  card so the landing state is one element, not two. Act 3's
+  "birth from the black hole" beat was rechoreographed so the
+  window genuinely emerges from the singularity and expands
+  *before* anything fills it: the Reveal's outer container now
+  scales from 0.04 → 1 over scroll [0.62, 0.74] (earlier drafts
+  ran 0.96 → 1, which was a settle motion you barely noticed),
+  the light burst was pulled earlier to peak at scroll 0.68 —
+  mid-expansion, so the window appears to materialise *out of*
+  the flash — and every internal element (title bar, sidebar,
+  action row, commits, pull requests, donut chart) now has its
+  reveal band shifted past 0.74, which is the explicit user ask:
+  the frame reaches full size, then the app boots up inside it,
+  instead of the two motions running in parallel. The act-3
+  narrative caption moved from `bottom-24/sm:bottom-32` to
+  `bottom-6/sm:bottom-8` and shrank from `text-2xl/sm:text-3xl`
+  to `text-xl/sm:text-2xl`, with its fade-in shifted from
+  0.72→0.85 to 0.78→0.9 — the caption now sits at the viewport
+  edge and arrives once the report's frame has materialised, not
+  on top of the donut chart mid-reveal.
+
+  Mobile responsiveness was tightened: `ReportMock`'s 160px
+  `Sources` sidebar is now `hidden sm:block` (decorative on
+  phones, where the bullet copy is the payoff and the sidebar
+  would squeeze the main column to ~110px on a 320-375px
+  viewport), `DonutSummary` stacks donut-above-list below `sm`
+  instead of forcing a side-by-side chart+legend layout into a
+  ~130px column, the Action Row's "all sources" context tag is
+  `hidden sm:inline` so the Generate button never gets pushed off
+  the right edge, and Astro's dev toolbar is now disabled
+  globally via `devToolbar.enabled: false` so stakeholder-facing
+  dev-build previews look identical to production. The hero's
+  `BlackHole` and `FallingIcon` layers self-adapt via `vw`/`vh`
+  units plus `overflow-hidden` on the sticky wrapper — the sphere
+  fills the frame on phone widths, which reads as more dramatic
+  than a dutifully-scaled 80% rendition would.
+
+  Copy-pass: swept every user-visible string on the marketing
+  site for em-dashes, trailing full stops, and prose hyphens so
+  the site reads in the user's preferred voice (no dashes, no
+  trailing periods). Covers the IntroHero tagline, all three
+  narrative captions, the `HeroStatic` fallback, every connector
+  pitch in `src/data/connectors.ts`, `ReportMock`'s subtitle +
+  bullet copy + action-row date pill (switched from ISO
+  `2026-04-24` to slash-separated `2026/04/24`), the `HowItWorks`
+  / `ConnectorGrid` / `DownloadCTA` / `TrustStrip` body copy,
+  nav/footer strings, and the `<title>` + `og:description` meta
+  in `Base.astro`. `Local-first` on the trust strip is now
+  `Local first` (the local-first software community writes it
+  both ways, so dropping the hyphen is a style choice, not a
+  meaning change). Technical identifiers that reference real
+  external systems stay hyphenated (`DAY-164`,
+  `spike/report-motion`, `platform!2411`) because altering them
+  would break the implicit contract that those strings are
+  round-trippable to Jira / the monorepo; the mock template id
+  `dev_eod_v1`, which is pure decoration, moved to underscores.
+
+  Alignment + spacing pass (Playwright-driven, four viewports
+  1440 / 1280 / 768 / 375): the previous `HeroStatic` embedded
+  the full `ReportMock` inside its third step card, which forced
+  grid `items-stretch` to stretch cards 1 and 2 to ~1100px to
+  match step 3's height — the two short paragraphs ended up
+  rattling around in cavernous boxes that broke every other
+  spacing relationship in the section. The `ReportMock` is now a
+  separate `mt-16 max-w-3xl` featured visual *below* the three
+  step cards, so the cards stay equal-height (the report is a
+  marquee, not a list item). The static section's `pt-16 pb-24`
+  asymmetry was normalised to `py-20` so it matches `HowItWorks`
+  and `ConnectorGrid`. Card paddings are now uniformly `p-6`
+  (was `p-5` on the connector tiles, `p-6` on `HowItWorks`); card
+  pitch margin is uniformly `mt-2` (was `mt-1.5`); both connector
+  eyebrows now use `mt-14` (was `mt-12` for "Shipping today" and
+  `mt-14` for "On deck" — minor but visible discrepancy in the
+  rhythm). Connector grid gap is `gap-5` (was `gap-4`) so phone
+  stacks have one breathing-unit between cards, and the `Want a
+  source that isn't here yet?` footer dropped from `mt-10` to
+  `mt-12` to balance the now-larger between-grid spacing. The
+  trust strip moved from `py-12` to `py-16` because it sits
+  between a `py-20` connector grid and a `py-24` download CTA;
+  `py-12` read as cramped at desktop widths. The download CTA's
+  primary/secondary button row got `mt-10` and `gap-4` (was
+  `mt-8` / `gap-3`) so the download CTA gets the air it deserves
+  as the single conversion surface on the page.
+
+  The inline `BrandMark.astro` used in the nav and in the
+  `HowItWorks` heading no longer renders the `#17171A`
+  rounded-square tile that the packaged favicon carries. On a
+  dark-only site where every call site sits on charcoal, that
+  tile reads as a redundant outline around the mark rather than
+  as app-icon chrome; `rounded-md` / `rounded-xl` on the call
+  sites (which only existed to clip the tile's corners) went with
+  it. The public favicon at `apps/website/public/dayseam-mark.svg`
+  keeps its tile because browser tabs, bookmark bars, and PWA
+  launchers place the icon on arbitrary backgrounds where the
+  tile is what keeps the mark legible.
+
+  Narrative caption alignment bug fixed: the three hero captions
+  sit inside a single `bottom-6/sm:bottom-8` container, but
+  captions 2 and 3 were `absolute inset-x-0` with no vertical
+  offset. When an absolutely-positioned element has no top/bottom
+  offsets, CSS falls back to its "static position" — i.e., where
+  it would have rendered in normal flow — so caption 2 stacked
+  below caption 1 and caption 3 stacked below caption 2. Only
+  caption 1 hit the intended y-position at the viewport edge;
+  captions 2 and 3 rendered progressively lower, which is what
+  put the act-3 line a full caption-height below the act-1 line.
+  Added `top-0` to the two `absolute` captions so all three share
+  one exact position and the act transitions cross-fade in place
+  via the opacity transforms, which is what the motion
+  choreography was built around. Verified via
+  `getBoundingClientRect` — all three captions now report
+  `top: 836` at a 1440×900 viewport (previously caption 1 was at
+  836 and 2/3 were 32px + 64px lower).
+
+  Review-response pass addresses the code-reviewer subagent's
+  findings on this branch. The headline fix is an SSR safety net
+  for the hero: because `Hero` is mounted with
+  `client:only="react"`, the page shipped no server-rendered
+  `<h1>` and no pitch copy, which broke the document outline (h2
+  as the first heading, a WCAG 2.4.6 regression) and left
+  no-JS/failed-JS visitors on a blank hero frame. `index.astro`
+  now ships a `<noscript>` block with the `HeroStatic` h1 + pitch
+  + a "skip to how it works" anchor, so the static HTML carries a
+  valid document outline and a complete pitch even if the React
+  bundle never executes; browsers with scripting enabled strip
+  the `<noscript>` contents so the animated hero remains the only
+  thing a normal visitor sees. Sticky-nav anchor navigation now
+  clears the nav header: `html { scroll-padding-top: 5rem }` in
+  `global.css` keeps the target heading visible instead of tucked
+  behind the 60px nav when the user jumps to `#connectors`,
+  `#trust`, or `#download`. Every external link on the site
+  (`SiteNav`, `SiteFooter`, `DownloadCTA`, `ConnectorGrid`'s
+  "Open a connector request") now opens in a new tab with
+  `target="_blank" rel="noopener noreferrer"` — the earlier
+  `rel="noopener"` without `target="_blank"` was a no-op,
+  advertising a safety header the browser never consulted because
+  the links opened in the same tab. `BrandMark.astro` gained a
+  `withTile: boolean` prop (default `false`) so the site default
+  stays tile-less but a future caller that needs the packaged
+  favicon's charcoal rounded-square chrome (social share cards,
+  og:image renders, press kit downloads) can opt in without
+  duplicating the geometry. Hero caption wrap-width was
+  stabilised across the 780-850px viewport band by moving `px-6`
+  off the container and onto each caption: previously caption 1
+  (in flow) respected the container's `px-6` while captions 2
+  and 3 (`absolute inset-x-0`) stretched 48px wider, which could
+  flip them onto different wrap breaks than caption 1 and make
+  the crossfade feel wobbly; now all three captions share
+  identical effective text widths. A Playwright smoke test at
+  `apps/website/tests/caption-alignment.spec.mjs` guards the
+  caption-alignment invariant across desktop / tablet-wrap-edge /
+  mobile viewports — `top` values must collapse within 2px
+  (subpixel rounding tolerance) and `left` values must match —
+  so either variant of the regression (the "top-0 missing" bug
+  or the "px-6 on the container" drift) is caught before merge.
+  `FallingIcon`'s inline `useTransform(x, v => \`${v}vw\`)` and
+  `useTransform(y, v => \`${v}vh\`)` calls were hoisted out of
+  the `style={{…}}` literal to named `xVw` / `yVh` motion values
+  so each scroll tick stops reallocating a fresh transformer /
+  listener per render. The starfield in `HeroAnimated` picked up
+  a docstring explaining why the positions are deterministic
+  (the 37 / 53 / 7 multipliers are coprime with 100, so walking
+  `i` from 0..59 hits 60 distinct residues; changing the count
+  means picking new coprimes or two stars overlap) so the next
+  engineer to touch the field knows not to swap in `Math.random`
+  and re-break the SSR/hydration contract the rest of the hero
+  upholds.
+
 ### Changed
 
 - **DAY-165: Refresh public docs to match the shipped product state.**
