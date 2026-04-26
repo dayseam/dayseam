@@ -73,4 +73,13 @@ expression: ALL
 - oauth.descriptor_mismatch
 - oauth.refresh_rejected
 - oauth.scope_downgraded
+- oauth.login.timeout
+- oauth.login.state_mismatch
+- oauth.login.loopback_bind_failed
+- oauth.login.user_cancelled
+- oauth.login.browser_open_failed
+- oauth.login.session_not_found
+- oauth.login.authorization_error
+- oauth.login.provider_unknown
+- oauth.login.not_configured
 - db.schema.migration_failed

@@ -564,6 +564,84 @@ pub const OAUTH_REFRESH_REJECTED: &str = "oauth.refresh_rejected";
 /// and the orchestrator can bind against the same string.
 pub const OAUTH_SCOPE_DOWNGRADED: &str = "oauth.scope_downgraded";
 
+// -------- OAuth 2.0 login (PKCE + loopback redirect) -----------------------
+//
+// Added in DAY-201 PR #2 alongside the Tauri-shell `oauth_begin_login`
+// command. These codes describe failures of the *login* ceremony —
+// the browser round-trip that mints the first `TokenPair` — and are
+// distinct from the above refresh/exchange codes, which apply once
+// the user has already consented at least once. The login flow lives
+// in `apps/desktop/src-tauri/src/ipc/oauth.rs`; its unit tests bind
+// against the same constants so a rename here breaks them.
+
+/// The authorization callback did not arrive on the loopback listener
+/// before the overall login timeout elapsed (default five minutes in
+/// DAY-201 PR #2). Common causes: the user walked away mid-consent,
+/// the IdP is slow, or an extension in the user's default browser is
+/// rewriting redirect URIs and the callback never hits `127.0.0.1`.
+/// Surfaced as [`DayseamError::Auth`] with a "try again" action hint
+/// rather than a transient-network retry, because retrying requires
+/// a fresh PKCE pair.
+pub const OAUTH_LOGIN_TIMEOUT: &str = "oauth.login.timeout";
+
+/// The `state` parameter on the authorization callback did not match
+/// the opaque value we embedded in the outgoing authorization URL.
+/// In practice this means either (a) a stale tab from a prior login
+/// attempt raced the current one, or (b) a CSRF attempt. Either way
+/// the callback is discarded and the session is marked failed so the
+/// UI can prompt a fresh login rather than silently accept a code
+/// that wasn't bound to this flow.
+pub const OAUTH_LOGIN_STATE_MISMATCH: &str = "oauth.login.state_mismatch";
+
+/// The loopback listener failed to bind a `127.0.0.1` port — usually
+/// because a corporate firewall or endpoint-security agent blocks
+/// inbound localhost listeners from non-allowlisted processes.
+/// Surfaced as [`DayseamError::Internal`] since it's a local-machine
+/// configuration failure, not an auth or network one.
+pub const OAUTH_LOGIN_LOOPBACK_BIND_FAILED: &str = "oauth.login.loopback_bind_failed";
+
+/// The user cancelled the login from the Dayseam UI (e.g. clicked
+/// "Cancel" in the connecting modal), or the IdP's consent page
+/// returned an explicit `error=access_denied`. Both paths collapse to
+/// one code because the remediation — "start over" — is identical.
+pub const OAUTH_LOGIN_USER_CANCELLED: &str = "oauth.login.user_cancelled";
+
+/// `opener::open(authorization_url)` (or its platform equivalent)
+/// returned an error — most commonly on a headless CI worker or a
+/// Linux session without a default browser registered. Surfaced so
+/// the UI can tell the user "we could not open your browser; copy
+/// this URL manually" instead of silently stalling on the listener.
+pub const OAUTH_LOGIN_BROWSER_OPEN_FAILED: &str = "oauth.login.browser_open_failed";
+
+/// A `oauth_session_status` / `oauth_cancel_login` call carried a
+/// session id the in-memory registry has no record of. The session
+/// either completed already (and was reaped) or never existed.
+/// Surfaced as [`DayseamError::InvalidConfig`] so the UI drops any
+/// stale references and falls back to offering a fresh login.
+pub const OAUTH_LOGIN_SESSION_NOT_FOUND: &str = "oauth.login.session_not_found";
+
+/// The IdP's authorization callback carried `error=<…>` rather than
+/// a `code`. Captures every OAuth 2.0 error response that isn't a
+/// clean user-cancel (`access_denied`, `invalid_request`,
+/// `server_error`, `temporarily_unavailable`, …) so the UI can show
+/// the exact `error`/`error_description` pair rather than a generic
+/// failure toast.
+pub const OAUTH_LOGIN_AUTHORIZATION_ERROR: &str = "oauth.login.authorization_error";
+
+/// `oauth_begin_login` was called with a `provider_id` that no
+/// entry in the SDK's provider registry recognises. Defensive guard
+/// against a typo'd invocation from a bespoke caller; the frontend's
+/// dropdown only ever passes known-good ids.
+pub const OAUTH_LOGIN_PROVIDER_UNKNOWN: &str = "oauth.login.provider_unknown";
+
+/// `oauth_begin_login` was called for a provider whose `client_id`
+/// is still the unregistered placeholder — the ship-with-placeholder
+/// path documented in `docs/setup/azure-app-registration.md`. The
+/// IPC refuses to open a browser window that would only ever hit an
+/// IdP error page; the UI points the user at the registration
+/// checklist instead.
+pub const OAUTH_LOGIN_NOT_CONFIGURED: &str = "oauth.login.not_configured";
+
 // -------- Database ---------------------------------------------------------
 
 /// `sqlx::migrate!` failed to apply a pending migration. Always fatal
@@ -646,6 +724,15 @@ pub const ALL: &[&str] = &[
     OAUTH_DESCRIPTOR_MISMATCH,
     OAUTH_REFRESH_REJECTED,
     OAUTH_SCOPE_DOWNGRADED,
+    OAUTH_LOGIN_TIMEOUT,
+    OAUTH_LOGIN_STATE_MISMATCH,
+    OAUTH_LOGIN_LOOPBACK_BIND_FAILED,
+    OAUTH_LOGIN_USER_CANCELLED,
+    OAUTH_LOGIN_BROWSER_OPEN_FAILED,
+    OAUTH_LOGIN_SESSION_NOT_FOUND,
+    OAUTH_LOGIN_AUTHORIZATION_ERROR,
+    OAUTH_LOGIN_PROVIDER_UNKNOWN,
+    OAUTH_LOGIN_NOT_CONFIGURED,
     DB_SCHEMA_MIGRATION_FAILED,
 ];
 

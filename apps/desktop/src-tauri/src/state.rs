@@ -24,6 +24,8 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::oauth_session::OAuthSessionRegistry;
+
 /// Per-run bookkeeping used by the IPC layer: the cancellation token
 /// that aborts the run and the reaper task that waits for every
 /// forwarder + producer to finish before deregistering the run.
@@ -162,6 +164,15 @@ pub struct AppState {
     /// `#[tauri::command]` dispatch path and therefore has no
     /// ergonomic way to borrow `AppState`).
     pub keep_running_when_window_closed: Arc<AtomicBool>,
+    /// DAY-201 PR #2: registry of currently-tracked OAuth login
+    /// sessions. Created fresh on boot (the registry is intentionally
+    /// non-persistent — a restart drops every in-flight browser tab
+    /// and the user starts a new login from scratch). Cheap to clone
+    /// because the inner mutex-backed `HashMap` sits behind an
+    /// `Arc`; each of the three OAuth IPC commands pulls the
+    /// registry off `AppState` directly without cloning the `AppState`
+    /// itself. See [`crate::oauth_session`] for the lifecycle.
+    pub oauth_sessions: OAuthSessionRegistry,
 }
 
 impl AppState {
@@ -191,6 +202,7 @@ impl AppState {
             http,
             scheduler_skip: crate::ipc::scheduler::SchedulerSkipSet::new(),
             keep_running_when_window_closed: Arc::new(AtomicBool::new(true)),
+            oauth_sessions: OAuthSessionRegistry::new(),
         }
     }
 

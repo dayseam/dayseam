@@ -6,6 +6,7 @@ pub mod activity;
 pub mod artifact;
 pub mod events;
 pub mod identity;
+pub mod oauth;
 pub mod repo;
 pub mod report;
 pub mod run;

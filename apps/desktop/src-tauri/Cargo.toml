@@ -94,6 +94,22 @@ connector-github = { path = "../../../crates/connectors/connector-github" }
 # orchestrator and connectors stay pure.
 opener = "0.7"
 url = "2"
+# DAY-201 PR #2. `generate_pkce_pair` in `connectors-sdk` takes a
+# caller-supplied `RngCore`; the Tauri-side OAuth login driver passes
+# `rand::thread_rng()` so the PKCE verifier bytes come from the OS
+# CSPRNG. Kept at a direct dep (not transitive) so the import is
+# visible in this crate's Cargo tree and the version stays pinned at
+# the same major as the rest of the workspace's rng-using crates.
+rand = "0.8"
+# DAY-201 PR #2. The OAuth loopback driver stores a cloned
+# `reqwest::Client` handle it borrows from `AppState::http` so the
+# PKCE token-exchange hop reuses the same connection pool, user-agent,
+# and TLS stack the rest of the app uses. The crate is already in
+# the workspace graph transitively via `connectors-sdk`; listing it
+# as a direct dep keeps the type reference honest in this crate's
+# Cargo tree. Feature flags mirror `connectors-sdk`'s so there is no
+# accidental second reqwest copy with a different TLS backend.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 serde = { workspace = true }
 # `IpcSecretString` zeroes PAT bytes on drop so a dropped dialog (or a
 # command that returns an error) cannot leave the PAT living in the
@@ -208,4 +224,15 @@ default = []
 [[test]]
 name = "reconnect_rebind"
 path = "tests/reconnect_rebind.rs"
+required-features = ["test-helpers"]
+
+# DAY-201 PR #2. `oauth.rs` exercises the full PKCE loopback flow
+# against a wiremock token endpoint. It uses the same
+# `test-helpers`-gated `AppState::with_http_for_test` hook
+# `reconnect_rebind.rs` relies on — feature-gating the file keeps
+# `cargo test -p dayseam-desktop` fast while `cargo test
+# --workspace --all-features` picks it up in CI.
+[[test]]
+name = "oauth"
+path = "tests/oauth.rs"
 required-features = ["test-helpers"]

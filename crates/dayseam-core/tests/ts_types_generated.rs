@@ -18,12 +18,13 @@ use dayseam_core::{
     error_codes, ActivityEvent, ActivityKind, Actor, Artifact, ArtifactId, ArtifactKind,
     ArtifactPayload, AtlassianValidationResult, DayseamError, EntityRef, Evidence,
     GithubValidationResult, GitlabValidationResult, Identity, Link, LocalRepo, LogEntry, LogEvent,
-    LogLevel, PerSourceState, Person, Privacy, ProgressEvent, ProgressPhase, RawRef,
-    RenderedBullet, RenderedSection, ReportCompletedEvent, ReportDraft, RunId, RunStatus,
-    ScheduleConfig, SecretRef, Settings, SettingsPatch, Sink, SinkCapabilities, SinkConfig,
-    SinkKind, Source, SourceConfig, SourceHealth, SourceIdentity, SourceIdentityKind, SourceKind,
-    SourcePatch, SourceRunState, SyncRun, SyncRunCancelReason, SyncRunStatus, SyncRunTrigger,
-    ThemePreference, ToastEvent, ToastSeverity, WriteReceipt,
+    LogLevel, OAuthSessionId, OAuthSessionStatus, OAuthSessionView, PerSourceState, Person,
+    Privacy, ProgressEvent, ProgressPhase, RawRef, RenderedBullet, RenderedSection,
+    ReportCompletedEvent, ReportDraft, RunId, RunStatus, ScheduleConfig, SecretRef, Settings,
+    SettingsPatch, Sink, SinkCapabilities, SinkConfig, SinkKind, Source, SourceConfig,
+    SourceHealth, SourceIdentity, SourceIdentityKind, SourceKind, SourcePatch, SourceRunState,
+    SyncRun, SyncRunCancelReason, SyncRunStatus, SyncRunTrigger, ThemePreference, ToastEvent,
+    ToastSeverity, WriteReceipt,
 };
 use ts_rs::{Config, TS};
 
@@ -101,6 +102,10 @@ fn export_all(out_dir: &Path) {
     ThemePreference::export_all(&cfg).expect("export ThemePreference");
 
     ScheduleConfig::export_all(&cfg).expect("export ScheduleConfig");
+
+    OAuthSessionId::export_all(&cfg).expect("export OAuthSessionId");
+    OAuthSessionStatus::export_all(&cfg).expect("export OAuthSessionStatus");
+    OAuthSessionView::export_all(&cfg).expect("export OAuthSessionView");
 
     DayseamError::export_all(&cfg).expect("export DayseamError");
 

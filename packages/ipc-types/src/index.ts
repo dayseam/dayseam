@@ -82,6 +82,10 @@ export type { ThemePreference } from "./generated/ThemePreference";
 export type { ScheduleConfig } from "./generated/ScheduleConfig";
 export type { SchedulerTriggerKind } from "./generated/SchedulerTriggerKind";
 
+export type { OAuthSessionId } from "./generated/OAuthSessionId";
+export type { OAuthSessionStatus } from "./generated/OAuthSessionStatus";
+export type { OAuthSessionView } from "./generated/OAuthSessionView";
+
 export type { DayseamError } from "./generated/DayseamError";
 
 export type { JsonValue } from "./generated/serde_json/JsonValue";
@@ -132,6 +136,8 @@ import type { AtlassianValidationResult as AtlassianValidationResultT } from "./
 import type { GithubValidationResult as GithubValidationResultT } from "./generated/GithubValidationResult";
 import type { SecretRef as SecretRefT } from "./generated/SecretRef";
 import type { ScheduleConfig as ScheduleConfigT } from "./generated/ScheduleConfig";
+import type { OAuthSessionId as OAuthSessionIdT } from "./generated/OAuthSessionId";
+import type { OAuthSessionView as OAuthSessionViewT } from "./generated/OAuthSessionView";
 
 /** Opaque handle used at the TS boundary for Tauri's `Channel<T>`. */
 export interface TauriChannel<T> {
@@ -418,6 +424,38 @@ export interface Commands {
     args: { dates: string[] };
     result: null;
   };
+  /** DAY-201 PR #2. Kick off a PKCE loopback login for the given
+   *  provider (only `"microsoft-outlook"` ships today). Returns an
+   *  [`OAuthSessionView`] with status `Pending`; the caller polls
+   *  `oauth_session_status` or subscribes to the
+   *  `oauth://session-updated` event to observe state transitions.
+   *  The returned session id carries the sensitive tokens — the
+   *  tokens themselves never cross the IPC boundary. A follow-up
+   *  command in DAY-203 lifts the pair out of the in-memory registry
+   *  and persists it to the keychain as a `sources` row. */
+  oauth_begin_login: {
+    args: { providerId: string };
+    result: OAuthSessionViewT;
+  };
+  /** DAY-201 PR #2. Cancel a login that is still in flight. Returns
+   *  the updated view when the session existed (status flipped to
+   *  `Cancelled`) or `null` when the caller held a stale id. The
+   *  background driver observes the cancellation and exits without
+   *  hitting the token endpoint. */
+  oauth_cancel_login: {
+    args: { sessionId: OAuthSessionIdT };
+    result: OAuthSessionViewT | null;
+  };
+  /** DAY-201 PR #2. Poll the current status of a login session.
+   *  Returns `null` when the session id is unknown — the UI's cue
+   *  to stop polling. Event-driven consumers prefer the
+   *  `oauth://session-updated` event, which fires on every status
+   *  transition; polling is the fallback when a window cannot bind
+   *  a listener cheaply. */
+  oauth_session_status: {
+    args: { sessionId: OAuthSessionIdT };
+    result: OAuthSessionViewT | null;
+  };
   /** Dev-only. Compiled out of release builds via `cfg(feature = "dev-commands")`. */
   dev_emit_toast: {
     args: { event: ToastEvent };
@@ -479,6 +517,9 @@ export const PROD_COMMANDS: readonly CommandName[] = [
   "scheduler_set_config",
   "scheduler_run_catch_up",
   "scheduler_skip_catch_up",
+  "oauth_begin_login",
+  "oauth_cancel_login",
+  "oauth_session_status",
 ] as const;
 
 /** Dev-only command identifiers. Gated behind the Rust
