@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-04-26
+
 ### Added
 
 - **DAY-170: Desktop app visual-identity + catch-up pass.** One
