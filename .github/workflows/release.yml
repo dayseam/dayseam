@@ -550,6 +550,22 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # DAY-204 follow-up. `option_env!("DAYSEAM_MS_CLIENT_ID")` in
+          # `apps/desktop/src-tauri/src/oauth_config.rs` runs at
+          # compile time, so the Azure app-registration id only lands
+          # in the shipped binary if it is in the environment when
+          # `cargo tauri build` compiles the Tauri shell. Exporting it
+          # here threads it through `build-dmg.sh` → `pnpm tauri
+          # build` → `cargo build`. If the secret is unset (forks, a
+          # dev who ran workflow_dispatch before adding it), the
+          # binary ships with `option_env!` returning `None` and the
+          # Add Outlook Source dialog surfaces
+          # `oauth.login.not_configured` pointing at
+          # `docs/setup/azure-app-registration.md` — the same
+          # failure mode a developer sees locally without the shell
+          # export, so the behaviour stays symmetric across
+          # local-dev / fork / production paths.
+          DAYSEAM_MS_CLIENT_ID: ${{ secrets.DAYSEAM_MS_CLIENT_ID }}
         run: |
           dmg="$(scripts/release/build-dmg.sh ${{ steps.bump.outputs.version }} | tail -n 1)"
           echo "dmg=$dmg" >>"$GITHUB_OUTPUT"
