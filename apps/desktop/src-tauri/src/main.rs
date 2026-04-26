@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use dayseam_db::LogRepo;
-use dayseam_desktop::ipc::{atlassian, broadcast_forwarder, commands, github, scheduler};
+use dayseam_desktop::ipc::{atlassian, broadcast_forwarder, commands, github, oauth, scheduler};
 use dayseam_desktop::state::AppState;
 use dayseam_desktop::{scheduler_task, startup, tracing_init};
 use tauri::menu::{AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -343,6 +343,9 @@ fn main() {
         scheduler::scheduler_set_config,
         scheduler::scheduler_run_catch_up,
         scheduler::scheduler_skip_catch_up,
+        oauth::oauth_begin_login,
+        oauth::oauth_cancel_login,
+        oauth::oauth_session_status,
         commands::dev_emit_toast,
         commands::dev_start_demo_run,
     ]);
@@ -384,6 +387,9 @@ fn main() {
         scheduler::scheduler_set_config,
         scheduler::scheduler_run_catch_up,
         scheduler::scheduler_skip_catch_up,
+        oauth::oauth_begin_login,
+        oauth::oauth_cancel_login,
+        oauth::oauth_session_status,
     ]);
 
     // DAY-149: switch from the one-shot `.run(context)` convenience

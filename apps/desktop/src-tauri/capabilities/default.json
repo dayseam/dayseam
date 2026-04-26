@@ -40,6 +40,9 @@
     "allow-scheduler-set-config",
     "allow-scheduler-run-catch-up",
     "allow-scheduler-skip-catch-up",
+    "allow-oauth-begin-login",
+    "allow-oauth-cancel-login",
+    "allow-oauth-session-status",
     "dialog:allow-open"
   ]
 }

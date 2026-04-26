@@ -22,6 +22,7 @@ pub use types::{
         ToastSeverity,
     },
     identity::{Identity, Person, SourceIdentity, SourceIdentityKind},
+    oauth::{OAuthSessionId, OAuthSessionStatus, OAuthSessionView},
     repo::LocalRepo,
     report::{
         Evidence, LogEntry, LogLevel, RenderedBullet, RenderedSection, ReportDraft, RunStatus,

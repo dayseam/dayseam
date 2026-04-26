@@ -109,6 +109,9 @@ fn main() {
         "scheduler_set_config",
         "scheduler_run_catch_up",
         "scheduler_skip_catch_up",
+        "oauth_begin_login",
+        "oauth_cancel_login",
+        "oauth_session_status",
     ];
     const DEV_COMMANDS: &[&str] = &[
         "settings_get",
@@ -146,6 +149,9 @@ fn main() {
         "scheduler_set_config",
         "scheduler_run_catch_up",
         "scheduler_skip_catch_up",
+        "oauth_begin_login",
+        "oauth_cancel_login",
+        "oauth_session_status",
         "dev_emit_toast",
         "dev_start_demo_run",
     ];

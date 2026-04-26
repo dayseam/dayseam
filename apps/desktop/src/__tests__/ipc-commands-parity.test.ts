@@ -85,6 +85,9 @@ const commandSurface: Record<keyof Commands, true> = {
   scheduler_set_config: true,
   scheduler_run_catch_up: true,
   scheduler_skip_catch_up: true,
+  oauth_begin_login: true,
+  oauth_cancel_login: true,
+  oauth_session_status: true,
   dev_emit_toast: true,
   dev_start_demo_run: true,
 };

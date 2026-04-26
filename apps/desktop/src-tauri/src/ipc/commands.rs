@@ -103,6 +103,9 @@ pub const PROD_COMMANDS: &[&str] = &[
     "scheduler_set_config",
     "scheduler_run_catch_up",
     "scheduler_skip_catch_up",
+    "oauth_begin_login",
+    "oauth_cancel_login",
+    "oauth_session_status",
 ];
 
 /// Dev-only Tauri command identifiers. Compiled in only when the

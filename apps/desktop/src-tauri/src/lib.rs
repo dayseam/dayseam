@@ -5,9 +5,12 @@
 //! IPC plumbing without booting an actual Tauri runtime.
 
 pub mod ipc;
+pub mod oauth_config;
+pub mod oauth_session;
 pub mod scheduler_task;
 pub mod startup;
 pub mod state;
 pub mod tracing_init;
 
+pub use oauth_session::{OAuthSession, OAuthSessionRegistry};
 pub use state::{AppState, RunHandle, RunRegistry};
