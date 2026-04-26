@@ -172,6 +172,7 @@ pub(crate) fn artifact_kind_to_db(k: &ArtifactKind) -> &'static str {
         ArtifactKind::ConfluencePage => "ConfluencePage",
         ArtifactKind::GitHubPullRequest => "GitHubPullRequest",
         ArtifactKind::GitHubIssue => "GitHubIssue",
+        ArtifactKind::OutlookMeeting => "OutlookMeeting",
     }
 }
 
@@ -182,6 +183,7 @@ pub(crate) fn artifact_kind_from_db(s: &str) -> Result<ArtifactKind, DbError> {
         "ConfluencePage" => Ok(ArtifactKind::ConfluencePage),
         "GitHubPullRequest" => Ok(ArtifactKind::GitHubPullRequest),
         "GitHubIssue" => Ok(ArtifactKind::GitHubIssue),
+        "OutlookMeeting" => Ok(ArtifactKind::OutlookMeeting),
         other => Err(DbError::InvalidData {
             column: "artifacts.kind".into(),
             message: format!("unknown ArtifactKind `{other}`"),

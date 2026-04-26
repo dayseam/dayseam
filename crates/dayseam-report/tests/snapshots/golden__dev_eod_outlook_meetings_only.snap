@@ -1,0 +1,40 @@
+---
+source: crates/dayseam-report/tests/golden.rs
+assertion_line: 824
+expression: draft
+---
+id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+date: 2026-04-18
+template_id: dayseam.dev_eod
+template_version: 2026-04-24
+sections:
+  - id: meetings
+    title: Meetings
+    bullets:
+      - id: b_6499586fc0928b83
+        text: "**09:00–09:15** · Daily standup"
+        source_kind: Outlook
+      - id: b_cf64fc08a85902b3
+        text: "**14:00–15:15** · Design review — auth flow"
+        source_kind: Outlook
+      - id: b_6f862e32276ea469
+        text: "Total time in meetings: 1h 30m / 8h (18%)"
+        source_kind: ~
+evidence:
+  - bullet_id: b_6499586fc0928b83
+    event_ids:
+      - 79b88359-e7b0-573f-b098-496ff161f756
+    reason: 1 Outlook meeting
+  - bullet_id: b_cf64fc08a85902b3
+    event_ids:
+      - a42e1c03-ef0a-50cb-9417-513aa636c832
+    reason: 1 Outlook meeting
+per_source_state:
+  28000000-0000-0000-0000-000000000000:
+    status: Succeeded
+    started_at: "2026-04-18T23:00:00Z"
+    finished_at: "2026-04-18T23:00:00Z"
+    fetched_count: 2
+    error: ~
+verbose_mode: false
+generated_at: "2026-04-18T23:00:00Z"

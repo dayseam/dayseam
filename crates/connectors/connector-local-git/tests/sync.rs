@@ -309,7 +309,8 @@ async fn sync_emits_one_commit_set_per_repo_per_day() {
             }
             ArtifactPayload::JiraIssue { .. }
             | ArtifactPayload::ConfluencePage { .. }
-            | ArtifactPayload::MergeRequest { .. } => {
+            | ArtifactPayload::MergeRequest { .. }
+            | ArtifactPayload::Meeting { .. } => {
                 unreachable!("local-git connector never produces non-CommitSet artefacts")
             }
         }

@@ -27,7 +27,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Local, Offset, Utc};
 use connectors_sdk::{ConnCtx, SyncRequest, SyncResult};
 use dayseam_core::{
     error_codes, ActivityEvent, Artifact, DayseamError, PerSourceState, Person, ProgressPhase,
@@ -478,6 +478,7 @@ async fn run_background(
         source_kinds,
         verbose_mode: request.verbose_mode,
         generated_at,
+        render_offset: render_offset_for_local_zone(),
     };
 
     let draft = match dayseam_report::render(input) {
@@ -926,3 +927,19 @@ async fn terminate_failed(
 /// `dayseam-report` directly just to pass the id into
 /// [`GenerateRequest`].
 pub const DEV_EOD_TEMPLATE_ID_REEXPORT: &str = DEV_EOD_TEMPLATE_ID;
+
+/// Resolve the current local-timezone offset once per report run.
+///
+/// DAY-204. The report engine is pure, so it cannot call
+/// `chrono::Local::now()` itself. The orchestrator captures the
+/// offset here and threads it through [`ReportInput::render_offset`]
+/// so the Outlook `## Meetings` section can render
+/// `HH:MM–HH:MM` in the user's local wall time while the engine
+/// stays deterministic under test.
+///
+/// Defaults to UTC if the host's timezone cannot be resolved —
+/// misrendered meeting times are preferable to a failed report,
+/// and the fallback is deterministic enough to debug.
+fn render_offset_for_local_zone() -> FixedOffset {
+    Local::now().offset().fix()
+}

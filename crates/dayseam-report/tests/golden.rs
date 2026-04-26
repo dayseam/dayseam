@@ -728,6 +728,277 @@ fn dev_eod_mixed_commits_jira_confluence() {
     insta::assert_yaml_snapshot!("dev_eod_mixed_commits_jira_confluence", draft);
 }
 
+/// DAY-204: a day with only Outlook meetings renders a single
+/// `## Meetings` section, one bullet per meeting in wall-clock
+/// order, followed by a `"Total time in meetings: …"` summary
+/// bullet. The golden pins:
+///
+/// 1. **Section** — exactly one section, id `"meetings"`, title
+///    `"Meetings"`. Meetings-only days must not produce stray
+///    empty sections.
+/// 2. **Bullet format** — `"**HH:MM–HH:MM** · <title>"`. Times
+///    render in UTC because [`fixture_input`] defaults
+///    `render_offset` to UTC for cross-host stability.
+/// 3. **Summary** — trailing bullet `"Total time in meetings:
+///    1h 30m / 8h (18%)"`. The 8h denominator is hardcoded in
+///    the engine (the v0.9 release ships without a configurable
+///    working-day length); the percentage is integer-truncated
+///    (`90 * 100 / 480 = 18`, not `18.75` rounded to 19), which
+///    keeps the arithmetic reproducible across architectures
+///    without dragging `f64` formatting into the hot path.
+#[test]
+fn dev_eod_outlook_meetings_only() {
+    let src = source_id(40);
+    let mut input = fixture_input();
+    input.source_identities = vec![self_outlook_identity(src, "aad-self-oid")];
+
+    let standup = outlook_meeting_event(
+        src,
+        "evt-standup",
+        "aad-self-oid",
+        9,
+        0,
+        9,
+        15,
+        "Daily standup",
+    );
+    let design = outlook_meeting_event(
+        src,
+        "evt-design",
+        "aad-self-oid",
+        14,
+        0,
+        15,
+        15,
+        "Design review — auth flow",
+    );
+
+    let art_standup = outlook_meeting_artifact(src, &standup);
+    let art_design = outlook_meeting_artifact(src, &design);
+    input.events = vec![standup, design];
+    input.artifacts = vec![art_standup, art_design];
+    input.per_source_state.insert(src, succeeded_state(2));
+    input.source_kinds.insert(src, SourceKind::Outlook);
+
+    let draft = dayseam_report::render(input).expect("render must succeed");
+
+    assert_eq!(
+        draft.sections.len(),
+        1,
+        "meetings-only day renders exactly one section, got: {:?}",
+        draft
+            .sections
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect::<Vec<_>>()
+    );
+    let meetings = &draft.sections[0];
+    assert_eq!(meetings.id, "meetings");
+    assert_eq!(meetings.title, "Meetings");
+
+    // 2 meeting bullets + 1 summary bullet.
+    assert_eq!(
+        meetings.bullets.len(),
+        3,
+        "2 meetings + 1 summary bullet, got: {:?}",
+        meetings
+            .bullets
+            .iter()
+            .map(|b| b.text.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        meetings.bullets[0].text.contains("09:00–09:15")
+            && meetings.bullets[0].text.contains("Daily standup"),
+        "first bullet: {}",
+        meetings.bullets[0].text
+    );
+    assert!(
+        meetings.bullets[1].text.contains("14:00–15:15")
+            && meetings.bullets[1].text.contains("Design review"),
+        "second bullet: {}",
+        meetings.bullets[1].text
+    );
+    let summary = meetings.bullets.last().unwrap();
+    assert!(
+        summary.text.contains("Total time in meetings"),
+        "summary bullet missing: {}",
+        summary.text
+    );
+    assert!(
+        summary.text.contains("1h 30m"),
+        "summary duration wrong (expected 1h 30m): {}",
+        summary.text
+    );
+
+    insta::assert_yaml_snapshot!("dev_eod_outlook_meetings_only", draft);
+}
+
+/// DAY-204: a mixed day (commits + Jira + Outlook meetings) must
+/// emit all three sections in the canonical order: Commits →
+/// Meetings → Jira issues. The Meetings section lives between
+/// "what I shipped" (Commits / MergeRequests) and "what I
+/// triaged" (Jira) — the reading flow DAY-204 locked in
+/// `sections::ReportSection::ALL`. Bullets don't bleed across
+/// section boundaries even though the Jira transition fires
+/// earlier in wall-clock time (hour 10) than the afternoon
+/// design review (hour 14).
+#[test]
+fn dev_eod_outlook_mixed_commits_jira_meetings() {
+    let git_src = source_id(41);
+    let jira_src = source_id(42);
+    let outlook_src = source_id(43);
+
+    let mut input = fixture_input();
+    input.source_identities = vec![
+        self_git_identity(git_src, "self@example.com"),
+        self_atlassian_identity(jira_src, "acct-self"),
+        self_outlook_identity(outlook_src, "aad-self-oid"),
+    ];
+
+    let commit = commit_event(
+        git_src,
+        "sha1aaaa",
+        "/work/dayseam",
+        "self@example.com",
+        8,
+        "feat: render meeting bullets",
+        Privacy::Normal,
+    );
+    let commit_artifact = commit_set_artifact(git_src, "/work/dayseam", &[&commit]);
+
+    let standup = outlook_meeting_event(
+        outlook_src,
+        "evt-standup",
+        "aad-self-oid",
+        9,
+        0,
+        9,
+        15,
+        "Daily standup",
+    );
+    let design = outlook_meeting_event(
+        outlook_src,
+        "evt-design",
+        "aad-self-oid",
+        14,
+        0,
+        15,
+        0,
+        "Design review",
+    );
+    let art_standup = outlook_meeting_artifact(outlook_src, &standup);
+    let art_design = outlook_meeting_artifact(outlook_src, &design);
+
+    let jira = jira_transition_event(
+        jira_src,
+        "CAR-5117",
+        "CAR",
+        "Carbon Team",
+        "acct-self",
+        10,
+        "CAR-5117: In Review → Done",
+    );
+
+    input.events = vec![commit, standup, design, jira];
+    input.artifacts = vec![commit_artifact, art_standup, art_design];
+    input.per_source_state.insert(git_src, succeeded_state(1));
+    input.source_kinds.insert(git_src, SourceKind::LocalGit);
+    input.source_kinds.insert(jira_src, SourceKind::Jira);
+    input.source_kinds.insert(outlook_src, SourceKind::Outlook);
+
+    let draft = dayseam_report::render(input).expect("render must succeed");
+
+    // Structural invariants pinned explicitly so the failure
+    // message is clear even if the golden diff isn't.
+    let ids: Vec<&str> = draft.sections.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        vec!["commits", "meetings", "jira_issues"],
+        "canonical order: Commits → Meetings → Jira issues",
+    );
+
+    let meetings_section = draft
+        .sections
+        .iter()
+        .find(|s| s.id == "meetings")
+        .expect("meetings section present");
+    let has_summary = meetings_section
+        .bullets
+        .iter()
+        .any(|b| b.text.contains("Total time in meetings"));
+    assert!(
+        has_summary,
+        "mixed day still renders the Total time summary bullet"
+    );
+
+    // No Jira / commit bullet has leaked into the Meetings section
+    // (this is the v0.9 analogue of the DAY-86 section-bleed
+    // regression the mixed-commits-jira-confluence test guards).
+    for bullet in &meetings_section.bullets {
+        assert!(
+            !bullet.text.contains("CAR-5117") && !bullet.text.contains("render meeting bullets"),
+            "non-meeting bullet leaked into Meetings: {}",
+            bullet.text
+        );
+    }
+
+    insta::assert_yaml_snapshot!("dev_eod_outlook_mixed", draft);
+}
+
+/// DAY-204: a day with zero Outlook meetings must NOT render a
+/// `## Meetings` heading. The pure-engine invariant — "empty
+/// buckets drop out before they become sections" — already
+/// covers this, and the section loop in `build_sections` only
+/// appends the summary bullet when the bucket is non-empty. This
+/// test pins the behaviour so a future change that e.g.
+/// pre-allocates the summary bullet (so the bucket is never
+/// empty) surfaces as a visible regression.
+#[test]
+fn dev_eod_outlook_empty_meetings_day_has_no_meetings_heading() {
+    let src = source_id(44);
+    let mut input = fixture_input();
+    input.source_identities = vec![self_git_identity(src, "self@example.com")];
+
+    let commit = commit_event(
+        src,
+        "sha1aaaa",
+        "/work/dayseam",
+        "self@example.com",
+        9,
+        "feat: keep shipping",
+        Privacy::Normal,
+    );
+    let artifact = commit_set_artifact(src, "/work/dayseam", &[&commit]);
+    input.events = vec![commit];
+    input.artifacts = vec![artifact];
+    input.per_source_state.insert(src, succeeded_state(1));
+    input.source_kinds.insert(src, SourceKind::LocalGit);
+
+    let draft = dayseam_report::render(input).expect("render must succeed");
+    assert!(
+        draft.sections.iter().all(|s| s.id != "meetings"),
+        "no meetings ⇒ no `## Meetings` heading, got sections: {:?}",
+        draft
+            .sections
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect::<Vec<_>>()
+    );
+    // And no stray "Total time in meetings" bullet under any
+    // other section.
+    for section in &draft.sections {
+        for bullet in &section.bullets {
+            assert!(
+                !bullet.text.contains("Total time in meetings"),
+                "stray meetings-summary bullet under section `{}`: {}",
+                section.id,
+                bullet.text
+            );
+        }
+    }
+}
+
 /// Sanity: `generated_at` threads through untouched. If the engine
 /// ever starts calling `Utc::now()` this test catches it — drift
 /// here is a leaked side-effect, not a template change.

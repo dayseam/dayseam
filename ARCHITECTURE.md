@@ -798,6 +798,112 @@ different rate-limit semantics. We model them as
 separate connector crates that may share a helper module. They are not
 one connector with two auth modes.
 
+### 8.4 Shipped connectors
+
+Concrete shapes of every connector currently under
+`crates/connectors/`. Cross-reference for readers trying to understand
+"what *does* this connector do today" without spelunking through each
+crate's `lib.rs`. The roadmap-level framing lives in §15; this
+subsection is the *as-shipped* shape.
+
+**`connector-local-git`** (v0.1, GA). Walks multiple local repository
+roots and emits `CommitAuthored` events. Identity filter is email-based
+(`SourceIdentityKind::GitEmail`). Offline; no auth strategy. Produces
+one `ArtifactKind::CommitSet` per `(repo_path, date)`.
+
+**`connector-gitlab`** (v0.1, GA). Self-hosted and SaaS GitLab via
+the REST API, PAT auth. Emits `CommitAuthored` (deduped against
+`connector-local-git` by SHA), `MrOpened`, `MrMerged`, and a small
+set of review-activity kinds. Produces
+`ArtifactKind::CommitSet` and MR-shaped artefacts.
+
+**`connector-github`** (v0.4, GA). GitHub via the REST API,
+fine-grained PAT. Emits `GitHubPullRequestOpened` / `…Merged` /
+`…Closed` and `GitHubIssueOpened` / `…Closed`. Shares the MR-promotion
+pipeline with `connector-gitlab` (see §7A). Produces
+`ArtifactKind::GitHubPullRequest` and `ArtifactKind::GitHubIssue`.
+
+**`connector-jira`** (v0.2, GA) and **`connector-confluence`** (v0.2,
+GA). Jira Cloud and Confluence Cloud via 3LO OAuth on the shared
+`connector-atlassian-common` helper crate. Emit
+`JiraIssueTransitioned` and `ConfluencePageEdited` respectively;
+produce `ArtifactKind::JiraIssue` / `ArtifactKind::ConfluencePage`.
+
+**`connector-outlook`** (v0.9, GA). Outlook calendar via Microsoft
+Graph, OAuth 2.0 with PKCE + loopback redirect, multi-tenant Entra
+ID app. DAY-200..204 shipped the connector end-to-end; DAY-204
+lights up the user-visible `## Meetings` section in the Dev EOD
+report.
+
+- **Auth.** `AuthStrategy::OAuth2Pkce { client_id, tenant,
+  scopes }`. Tokens live in the macOS Keychain via `dayseam-secrets`
+  (`KeychainTokenPersister`); the one-shot validation path during
+  `outlook_validate_credentials` uses a `NoopTokenPersister` so
+  sign-in proves the tenant works before committing a source row.
+  Refresh is implicit — `connectors-sdk`'s `HttpClient` swaps an
+  expiring access token for a fresh one via the persister.
+- **Identity.** Two `SourceIdentityKind` rows per source:
+  `OutlookUserObjectId` (AAD GUID, primary; matched against
+  `actor.external_id`) and `OutlookUserPrincipalName` (UPN,
+  case-insensitive fallback; matched against `actor.email`). UPN
+  covers shared-mailbox / resource-calendar cases where Graph does
+  not expose an object id for every attendee. The self-identity
+  is bootstrapped at source-add time via `PersonRepo::bootstrap_self`
+  using the `id` + `userPrincipalName` fields from `/me` on the
+  validation Graph call; `tid` (tenant id) is pulled from the JWT
+  payload (manual base64url decode — we don't drag a JWT parser
+  in).
+- **Events emitted.** One kind today:
+  `ActivityKind::OutlookMeetingAttended`, one per `GET
+  /me/calendarView` occurrence in the requested window. Private
+  meetings are redacted upstream by the connector
+  (`title = "Private meeting"`, body omitted) so the renderer never
+  sees the subject. The `occurred_at` is the occurrence's UTC
+  start; `metadata.start_utc` / `metadata.end_utc` carry the raw
+  UTC span and survive into `ArtifactPayload::Meeting`.
+- **Artefacts.** One `ArtifactKind::OutlookMeeting` per event —
+  no aggregation, because each occurrence renders as its own
+  `"- **HH:MM–HH:MM** · <title>"` bullet under `## Meetings`.
+  `ArtifactId::deterministic` is keyed on `(source_id,
+  OutlookMeeting, graph_event_id)` so re-syncing the same window
+  is a DB no-op.
+- **Rendering.** The `## Meetings` section lives between
+  `## Merge requests` and `## Jira issues` in
+  `ReportSection::ALL` — the reading flow is "what I shipped →
+  what I attended → what I triaged → what I wrote → stray
+  activity". The renderer converts UTC timestamps to the user's
+  local wall time via `ReportInput::render_offset`
+  (`chrono::FixedOffset`), which the orchestrator resolves once
+  per run via `chrono::Local::now().offset().fix()`. Pure tests
+  default to UTC so goldens stay stable across hosts.
+- **Trailing summary.** When the section is non-empty, the
+  renderer appends a `"Total time in meetings: Xh Ym / 8h (Z%)"`
+  bullet. The 8h denominator is hard-coded (the v0.9 release
+  ships without a user-configurable working-day length); the
+  percentage is integer-truncated (`total_minutes * 100 /
+  480`), not rounded, which keeps the arithmetic reproducible
+  across architectures.
+- **Jira-key cross-link.** The existing
+  `extract_ticket_keys` pipeline pass runs over Outlook meeting
+  titles without any Outlook-specific code: a meeting titled
+  `"ACME-1234 kickoff"` gains a
+  `EntityKind::JiraIssue` / `external_id = "ACME-1234"` entity
+  on the event, so evidence popovers link the meeting to the
+  Jira ticket it's about. The transition-annotation pass
+  (`annotate_transition_with_mr`) deliberately excludes
+  `OutlookMeetingAttended` from its "MR-like" set because
+  attending a meeting does not imply authorship of the Jira
+  transition that landed during the same hour.
+- **Deferred.** The richer meeting annotations scoped out of
+  DAY-204 (see `docs/plan/2026-04-26-v0.9-outlook-connector.md`) —
+  `(recurring)`, attendee count, tentative/accepted, attendance
+  verification — are deferred until the connector emits the
+  matching metadata. `ArtifactPayload::Meeting` does not carry
+  those fields today; adding them is additive (new optional
+  fields → `ts-rs` regen → sentinel copy in the renderer) and
+  can land in a future `semver:minor` without touching the
+  connector's auth / walker.
+
 ## 9. Sinks — how destinations plug in
 
 Sinks are to output what connectors are to input. v0.1 ships exactly one
