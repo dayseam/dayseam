@@ -134,6 +134,14 @@ pub enum ArtifactKind {
     /// issues don't). The v0.4 GitHub rollup (DAY-96) is the
     /// first producer. Added in DAY-93.
     GitHubIssue,
+    /// A single Outlook calendar meeting the user attended. Each
+    /// Graph `calendarView` occurrence becomes one artefact —
+    /// meetings are not aggregated across a day the way commits
+    /// are, because "9:00 standup" and "14:00 design review"
+    /// render as distinct bullets with their own time ranges
+    /// under `## Meetings`. The v0.9 Outlook rollup (DAY-204) is
+    /// the first producer. Added in DAY-204.
+    OutlookMeeting,
 }
 
 /// Short string used as the `artifacts.kind` column value and as the
@@ -146,6 +154,7 @@ pub(crate) const fn artifact_kind_token(kind: ArtifactKind) -> &'static str {
         ArtifactKind::ConfluencePage => "ConfluencePage",
         ArtifactKind::GitHubPullRequest => "GitHubPullRequest",
         ArtifactKind::GitHubIssue => "GitHubIssue",
+        ArtifactKind::OutlookMeeting => "OutlookMeeting",
     }
 }
 
@@ -277,6 +286,58 @@ pub enum ArtifactPayload {
         /// doesn't repeat per-provider URL construction.
         url: String,
         date: NaiveDate,
+        event_ids: Vec<Uuid>,
+    },
+    /// One Outlook calendar meeting the user attended on a given
+    /// local-timezone day. The v0.9 Outlook connector produces
+    /// one `OutlookMeetingAttended` event per Graph
+    /// `calendarView` occurrence; the rollup stage (DAY-204)
+    /// synthesises one of these artefacts per event (no
+    /// aggregation across events — each meeting renders as its
+    /// own bullet under `## Meetings`). `outlook_event_id` is
+    /// the Graph-assigned stable id for the occurrence, used
+    /// as `Artifact::external_id` for deterministic id
+    /// derivation. `title` carries the meeting subject as
+    /// normalised by the connector (private meetings are
+    /// already redacted to `"Private meeting"` upstream).
+    /// `start_utc` / `end_utc` are the occurrence's start and
+    /// end in UTC; the renderer converts to the report's local
+    /// offset at render time via `ReportInput::render_offset`.
+    ///
+    /// Added in DAY-204. The v0.9 release wave renders only
+    /// these fields; the `is_recurring` / `attendee_count` /
+    /// `user_response` / `attendance_verified` annotations
+    /// described in §4.5 of the v0.9 phase plan are deferred
+    /// until the connector emits the matching metadata.
+    Meeting {
+        /// Graph's stable id for the calendar occurrence. Used
+        /// as the `Artifact::external_id` when the rollup stage
+        /// synthesises one artefact per `OutlookMeetingAttended`
+        /// event (mirrors the "orphan commit synthesises a
+        /// CommitSet" shape).
+        outlook_event_id: String,
+        /// Meeting subject as the connector normalised it.
+        /// Private meetings arrive here already redacted to
+        /// `"Private meeting"`; the renderer prints this verbatim.
+        title: String,
+        /// Occurrence start in UTC. The renderer localises via
+        /// `ReportInput::render_offset` so the engine itself
+        /// stays pure.
+        start_utc: DateTime<Utc>,
+        /// Occurrence end in UTC. `end_utc >= start_utc` is
+        /// guaranteed by the connector's normalisation.
+        end_utc: DateTime<Utc>,
+        /// The local-timezone day the meeting belongs to, as
+        /// decided upstream by the connector (using the user's
+        /// system timezone). Kept on the artefact so the
+        /// section-grouping stage can bucket meetings by day
+        /// without re-applying an offset.
+        date: NaiveDate,
+        /// Event ids that rolled up into this artefact. For
+        /// meetings this is always a single id (one event ⇒
+        /// one artefact), but the shape matches the other
+        /// variants so the renderer's evidence-link pass is
+        /// uniform.
         event_ids: Vec<Uuid>,
     },
 }

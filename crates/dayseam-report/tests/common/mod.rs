@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone, Utc};
 use dayseam_core::{
     ActivityEvent, ActivityKind, Actor, Artifact, ArtifactId, ArtifactKind, ArtifactPayload,
     EntityKind, EntityRef, Person, Privacy, RawRef, RunStatus, SourceId, SourceIdentity,
@@ -287,6 +287,117 @@ pub fn confluence_page_edited_event(
     }
 }
 
+/// Outlook identity matching the DAY-203 self-identity bootstrap: the
+/// connector records the AAD object id on the Person via
+/// [`SourceIdentityKind::OutlookUserObjectId`], and the render-stage
+/// self-filter matches it against `actor.external_id`. Outlook meeting
+/// events set `actor.external_id = Some(<aad_object_id>)` so this is
+/// the primary path; the UPN fallback (see
+/// [`SourceIdentityKind::OutlookUserPrincipalName`]) covers
+/// shared-mailbox / resource-calendar cases where only the email
+/// surfaces.
+pub fn self_outlook_identity(source_id: SourceId, aad_object_id: &str) -> SourceIdentity {
+    SourceIdentity {
+        id: Uuid::new_v4(),
+        person_id: self_person().id,
+        source_id: Some(source_id),
+        kind: SourceIdentityKind::OutlookUserObjectId,
+        external_actor_id: aad_object_id.into(),
+    }
+}
+
+/// Outlook `OutlookMeetingAttended` event matching the shape the
+/// DAY-203 connector produces. `start_utc` / `end_utc` are stashed in
+/// `metadata` so the DAY-204 `meeting_bounds` rollup helper can
+/// recover them when synthesising the [`ArtifactPayload::Meeting`]
+/// artefact. The event's `occurred_at` matches `start_utc` by
+/// convention, so a fixture that only needs the start time can read
+/// that field directly.
+#[allow(clippy::too_many_arguments)]
+pub fn outlook_meeting_event(
+    source_id: SourceId,
+    outlook_event_id: &str,
+    aad_object_id: &str,
+    start_hour: u32,
+    start_minute: u32,
+    end_hour: u32,
+    end_minute: u32,
+    title: &str,
+) -> ActivityEvent {
+    let start_utc = Utc
+        .with_ymd_and_hms(2026, 4, 18, start_hour, start_minute, 0)
+        .unwrap();
+    let end_utc = Utc
+        .with_ymd_and_hms(2026, 4, 18, end_hour, end_minute, 0)
+        .unwrap();
+    ActivityEvent {
+        id: ActivityEvent::deterministic_id(
+            &source_id.to_string(),
+            outlook_event_id,
+            "OutlookMeetingAttended",
+        ),
+        source_id,
+        external_id: outlook_event_id.into(),
+        kind: ActivityKind::OutlookMeetingAttended,
+        occurred_at: start_utc,
+        actor: Actor {
+            display_name: "Self".into(),
+            email: None,
+            external_id: Some(aad_object_id.into()),
+        },
+        title: title.into(),
+        body: None,
+        links: vec![],
+        entities: vec![],
+        parent_external_id: None,
+        metadata: serde_json::json!({
+            "start_utc": start_utc.to_rfc3339(),
+            "end_utc": end_utc.to_rfc3339(),
+        }),
+        raw_ref: RawRef {
+            storage_key: format!("outlook:event:{outlook_event_id}"),
+            content_type: "application/json".into(),
+        },
+        privacy: Privacy::Normal,
+    }
+}
+
+/// Build a [`ArtifactPayload::Meeting`] artefact for the given event.
+/// Mirrors the `synthesize_artifact` shape the DAY-204 rollup stage
+/// produces — keeping this in the common fixtures so goldens don't
+/// have to reach into `dayseam-report`'s internals.
+pub fn outlook_meeting_artifact(source_id: SourceId, event: &ActivityEvent) -> Artifact {
+    let start_utc = event
+        .metadata
+        .get("start_utc")
+        .and_then(|v| v.as_str())
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or(event.occurred_at);
+    let end_utc = event
+        .metadata
+        .get("end_utc")
+        .and_then(|v| v.as_str())
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or(start_utc);
+    Artifact {
+        id: ArtifactId::deterministic(&source_id, ArtifactKind::OutlookMeeting, &event.external_id),
+        source_id,
+        kind: ArtifactKind::OutlookMeeting,
+        external_id: event.external_id.clone(),
+        payload: ArtifactPayload::Meeting {
+            outlook_event_id: event.external_id.clone(),
+            title: event.title.clone(),
+            start_utc,
+            end_utc,
+            date: fixture_date(),
+            event_ids: vec![event.id],
+        },
+        created_at: generated_at(),
+    }
+}
+
 pub fn commit_set_artifact(
     source_id: SourceId,
     repo_path: &str,
@@ -329,6 +440,10 @@ pub fn fixture_input() -> ReportInput {
         source_kinds: HashMap::new(),
         verbose_mode: false,
         generated_at: generated_at(),
+        // Pure tests default to UTC so goldens are stable across
+        // hosts; DAY-204 meeting tests that care about local wall
+        // time override this explicitly.
+        render_offset: FixedOffset::east_opt(0).unwrap(),
     }
 }
 

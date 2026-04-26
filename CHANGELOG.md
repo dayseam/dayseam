@@ -47,6 +47,128 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Added
+
+- **DAY-204: v0.9 capstone — Outlook calendar connector goes GA
+  and lights up the `## Meetings` report section (DAY-200..204).**
+  Closes the v0.9 Outlook arc. DAY-200 scaffolded
+  `AuthStrategy::OAuth2Pkce` and the `bearer-attach` auth layer in
+  `connectors-sdk`; DAY-201 wired the PKCE loopback flow into the
+  Tauri shell, including single-flight refresh of expiring access
+  tokens; DAY-202 shipped `connector-outlook` (Microsoft Graph
+  `/me/calendarView` walker + `OutlookMeetingAttended` event
+  normaliser); DAY-203 shipped `AddOutlookSourceDialog` and the
+  two Outlook IPC commands (`outlook_validate_credentials`,
+  `outlook_sources_add`). Every one of DAY-200..203 was
+  `semver:none` because none of them surfaced a user-visible
+  difference in the rendered report. DAY-204 is the first user-
+  visible change and the only `semver:minor` step of the arc,
+  which is what triggers the `v0.9.0` tag.
+
+  *What the report shows today.* A new `## Meetings` section lands
+  between `## Merge requests` and `## Jira issues` in
+  `ReportSection::ALL`, matching the "what I shipped → what I
+  attended → what I triaged → what I wrote → stray activity"
+  reading flow. Each meeting renders as
+  `"- **HH:MM–HH:MM** · <title>"` in the user's local wall-clock
+  time, sorted chronologically by UTC start (`09:00 standup →
+  14:00 design review` reads the way the user actually lived the
+  day). The renderer converts UTC → local through a new
+  `ReportInput::render_offset: FixedOffset` field; the
+  orchestrator resolves it once per run via
+  `chrono::Local::now().offset().fix()` (note the
+  `use chrono::Offset;` — `FixedOffset::fix()` is trait-gated),
+  and pure-engine tests default to UTC so golden snapshots stay
+  stable across CI hosts. When the section is non-empty, the
+  renderer appends a trailing
+  `"Total time in meetings: Xh Ym / 8h (Z%)"` summary bullet; the
+  8h working-day denominator is hard-coded for v0.9 (making it
+  user-configurable is out of scope and tracked separately), and
+  the percentage is integer-truncated (`total_minutes * 100 /
+  480`) rather than rounded so the arithmetic is reproducible.
+  Meeting titles flow through the existing `extract_ticket_keys`
+  pipeline pass without any Outlook-specific code: a meeting
+  called `"ACME-1234 kickoff"` gains a
+  `EntityKind::JiraIssue` / `external_id = "ACME-1234"` entity on
+  the event, so evidence popovers link the meeting to the Jira
+  ticket it's about. A new regression test pins the symmetric
+  negative: `annotate_transition_with_mr` deliberately excludes
+  `OutlookMeetingAttended` from its "MR-like" set, because
+  attending a meeting does not imply authorship of a Jira
+  transition that landed in the same hour.
+
+  *What the report does NOT show yet.* Out of scope for DAY-204,
+  on purpose: `(recurring)` annotations, attendee counts,
+  accepted/tentative status, and attendance verification. The
+  v0.9 arc ships the connector end-to-end — "render only what
+  the connector already emits today" was the explicit scope
+  decision. `ArtifactPayload::Meeting` carries only
+  `outlook_event_id`, `title`, `start_utc`, `end_utc`, `date`,
+  and `event_ids`. Adding the deferred annotations is purely
+  additive (new optional payload fields → `ts-rs` regen →
+  sentinel copy in the renderer) and can land in a future
+  `semver:minor` without touching the connector's auth or
+  walker. Private meetings are redacted upstream by the
+  connector itself (`title = "Private meeting"`, body omitted)
+  so the renderer never sees the subject — the privacy seam is
+  the connector, not the report engine.
+
+  *Where the shape change actually lives.* New variants:
+  `ArtifactKind::OutlookMeeting` and `ArtifactPayload::Meeting`
+  in `dayseam-core`, regenerated into
+  `packages/ipc-types/src/generated/{ArtifactKind,ArtifactPayload}.ts`
+  via the existing `ts-rs` snapshot test. `rollup.rs` synthesises
+  one `Meeting` artifact per `OutlookMeetingAttended` event (no
+  aggregation — each occurrence is its own bullet) with
+  `ArtifactId::deterministic((source_id, OutlookMeeting,
+  graph_event_id))` so re-syncing the same window is a DB no-op;
+  `sort_groups` carries a narrow special case that orders the
+  Meetings slot by `start_utc` while keeping every other kind on
+  the pre-existing `external_id`-then-`id` ordering. The
+  report section enum grows `ReportSection::Meetings`; the
+  pinning test on `ReportSection::ALL` was tightened to assert
+  the new position. Self-filtering uses both
+  `SourceIdentityKind::OutlookUserObjectId` (AAD GUID, primary,
+  matched against `actor.external_id`) and
+  `SourceIdentityKind::OutlookUserPrincipalName` (UPN,
+  case-insensitive fallback, matched against `actor.email`) —
+  UPN covers shared-mailbox / resource-calendar cases where
+  Graph does not expose an object id for every attendee.
+
+  *Verification.* Three new golden snapshots pin the rendered
+  shape: `dev_eod_outlook_meetings_only` (meetings-only day, full
+  section + summary bullet), `dev_eod_outlook_mixed` (commits +
+  Jira + meetings in one day, asserting section ordering and no
+  section bleed), and
+  `dev_eod_outlook_empty_meetings_day_has_no_meetings_heading`
+  (no `## Meetings` heading when there are no meetings — v0.1's
+  "empty sections are silent" rule holds). The Jira-key
+  enrichment has its own pipeline-level regression test inside
+  `crates/dayseam-report/src/pipeline.rs`. Full hardening battery
+  green (`cargo fmt --all`, `cargo clippy --workspace
+  --all-targets -- -D warnings`, `cargo test --workspace`,
+  `pnpm typecheck`, `pnpm lint`, `pnpm test`).
+
+  *Documentation.* `ARCHITECTURE.md` grows a new §8.4 "Shipped
+  connectors" subsection catalogued as-shipped — every connector
+  currently under `crates/connectors/`, including the new
+  `connector-outlook` (v0.9, GA) with the full shape under
+  auth / identity / events / artefacts / rendering / deferred
+  sub-bullets. The v0.9 phase plan lives in
+  `docs/plan/2026-04-26-v0.9-outlook-connector.md`.
+
+  Touches: `crates/dayseam-core/src/types/artifact.rs`,
+  `crates/dayseam-db/src/repos/{artifacts,helpers}.rs`,
+  `crates/dayseam-report/src/{input,pipeline,render,rollup,sections}.rs`,
+  `crates/dayseam-report/tests/{common/mod.rs,golden.rs}` plus
+  three new snapshots,
+  `crates/dayseam-orchestrator/src/generate.rs`,
+  `crates/connectors/connector-local-git/tests/sync.rs` (test
+  fixture only — compiles against the new `ReportInput` field),
+  `packages/ipc-types/src/generated/{ArtifactKind,ArtifactPayload}.ts`,
+  `ARCHITECTURE.md`, and `CHANGELOG.md` (this entry).
+  `semver:minor` — triggers the `v0.9.0` tag.
+
 ## [0.8.3] - 2026-04-26
 
 ### Added

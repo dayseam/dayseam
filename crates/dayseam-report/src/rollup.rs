@@ -41,7 +41,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use dayseam_core::{
     ActivityEvent, ActivityKind, Artifact, ArtifactId, ArtifactKind, ArtifactPayload, EntityKind,
     MergeRequestProvider, SourceId,
@@ -95,7 +95,8 @@ pub(crate) fn roll_up(
             ArtifactPayload::CommitSet { event_ids, .. }
             | ArtifactPayload::JiraIssue { event_ids, .. }
             | ArtifactPayload::ConfluencePage { event_ids, .. }
-            | ArtifactPayload::MergeRequest { event_ids, .. } => event_ids.clone(),
+            | ArtifactPayload::MergeRequest { event_ids, .. }
+            | ArtifactPayload::Meeting { event_ids, .. } => event_ids.clone(),
         };
 
         let mut claimed_events: Vec<ActivityEvent> = claimed_ids
@@ -161,6 +162,17 @@ enum OrphanKey {
     /// `CommitSet`, silently producing bullets under `## Commits`
     /// (the v0.3 dogfood bug CORR-v0.3-01 filed).
     MergeRequest(SourceId, MergeRequestProvider, String, i64, NaiveDate),
+    /// `(source_id, outlook_event_id, date)` — DAY-204.
+    ///
+    /// One bucket per Outlook calendar occurrence. Unlike the
+    /// MR variant above, *no aggregation across events* — each
+    /// `OutlookMeetingAttended` event becomes its own artefact
+    /// because each occurrence is its own user-visible bullet
+    /// ("9:00 standup" and "14:00 design review" are two lines,
+    /// not one). The key still carries `date` so the final
+    /// section-grouping pass buckets correctly when the UTC
+    /// start straddles the local day boundary.
+    OutlookMeeting(SourceId, String, NaiveDate),
 }
 
 fn orphan_key(event: &ActivityEvent) -> OrphanKey {
@@ -230,6 +242,18 @@ fn orphan_key(event: &ActivityEvent) -> OrphanKey {
             }
             let repo_path = PathBuf::from(group_key_from_event(event).value);
             OrphanKey::CommitSet(event.source_id, repo_path, day)
+        }
+        // DAY-204. Each Outlook occurrence becomes one artefact —
+        // the connector writes `external_id = <graph_event_id>`
+        // (stable per occurrence), so keying on `(source_id,
+        // external_id, day)` is already unique. `day` joins the
+        // key because two occurrences of the same recurring
+        // series on different days still have distinct Graph
+        // occurrence ids, but being explicit keeps the
+        // section-grouping pass honest if a future Graph-API
+        // change ever reuses ids across occurrences.
+        OutlookMeetingAttended => {
+            OrphanKey::OutlookMeeting(event.source_id, event.external_id.clone(), day)
         }
         _ => {
             let repo_path = PathBuf::from(group_key_from_event(event).value);
@@ -336,6 +360,26 @@ fn synthesize_artifact(
                 payload: ArtifactPayload::ConfluencePage {
                     page_id: page_id.clone(),
                     space_key: space_key.clone(),
+                    date: *day,
+                    event_ids,
+                },
+                created_at,
+            }
+        }
+        OrphanKey::OutlookMeeting(source_id, event_id, day) => {
+            let id = ArtifactId::deterministic(source_id, ArtifactKind::OutlookMeeting, event_id);
+            let title = events.first().map(|e| e.title.clone()).unwrap_or_default();
+            let (start_utc, end_utc) = meeting_bounds(events);
+            Artifact {
+                id,
+                source_id: *source_id,
+                kind: ArtifactKind::OutlookMeeting,
+                external_id: event_id.clone(),
+                payload: ArtifactPayload::Meeting {
+                    outlook_event_id: event_id.clone(),
+                    title,
+                    start_utc,
+                    end_utc,
                     date: *day,
                     event_ids,
                 },
@@ -499,8 +543,40 @@ fn commit_set_key(group: &RolledUpArtifact) -> Option<(PathBuf, NaiveDate)> {
         } => Some((repo_path.clone(), *date)),
         ArtifactPayload::JiraIssue { .. }
         | ArtifactPayload::ConfluencePage { .. }
-        | ArtifactPayload::MergeRequest { .. } => None,
+        | ArtifactPayload::MergeRequest { .. }
+        | ArtifactPayload::Meeting { .. } => None,
     }
+}
+
+/// Extract `(start_utc, end_utc)` off an Outlook meeting event's
+/// `metadata.start_utc` / `metadata.end_utc` strings (written by
+/// `connector_outlook::normalise`). Falls back to
+/// `event.occurred_at` for both bounds on a parse miss rather than
+/// panicking — the engine is pure and a malformed timestamp is a
+/// connector bug, not a reason to drop the whole report.
+fn meeting_bounds(events: &[ActivityEvent]) -> (DateTime<Utc>, DateTime<Utc>) {
+    let first = match events.first() {
+        Some(e) => e,
+        None => {
+            let now = Utc::now();
+            return (now, now);
+        }
+    };
+    let start = first
+        .metadata
+        .get("start_utc")
+        .and_then(|v| v.as_str())
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or(first.occurred_at);
+    let end = first
+        .metadata
+        .get("end_utc")
+        .and_then(|v| v.as_str())
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or(start);
+    (start, end)
 }
 
 fn sort_events(events: &mut [ActivityEvent]) {
@@ -516,7 +592,22 @@ fn sort_groups(groups: &mut [RolledUpArtifact]) {
     groups.sort_by(|a, b| {
         kind_token(a.artifact.kind)
             .cmp(kind_token(b.artifact.kind))
-            .then_with(|| a.artifact.external_id.cmp(&b.artifact.external_id))
+            // DAY-204: within the meetings slot, order bullets by
+            // wall-clock `start_utc` so a day's meetings read
+            // "9:00 standup → 14:00 design review" the way the
+            // user actually lived them. For every other kind,
+            // `external_id` keeps the historical order stable.
+            .then_with(|| match (&a.artifact.payload, &b.artifact.payload) {
+                (
+                    ArtifactPayload::Meeting {
+                        start_utc: a_start, ..
+                    },
+                    ArtifactPayload::Meeting {
+                        start_utc: b_start, ..
+                    },
+                ) => a_start.cmp(b_start),
+                _ => a.artifact.external_id.cmp(&b.artifact.external_id),
+            })
             .then_with(|| a.artifact.id.as_uuid().cmp(&b.artifact.id.as_uuid()))
     });
 }
@@ -528,6 +619,7 @@ const fn kind_token(kind: ArtifactKind) -> &'static str {
         ArtifactKind::ConfluencePage => "ConfluencePage",
         ArtifactKind::GitHubPullRequest => "GitHubPullRequest",
         ArtifactKind::GitHubIssue => "GitHubIssue",
+        ArtifactKind::OutlookMeeting => "OutlookMeeting",
     }
 }
 
@@ -557,6 +649,11 @@ pub(crate) fn group_kind_for_payload(payload: &ArtifactPayload) -> GroupKind {
         // observes this value in v0.3 so the choice is defensive
         // only.
         ArtifactPayload::MergeRequest { .. } => GroupKind::Repo,
+        // DAY-204. Meetings render as flat bullets with no group
+        // prefix (no `**<repo>** —` equivalent), so the group
+        // kind never reaches a template — `Repo` is a defensive
+        // placeholder.
+        ArtifactPayload::Meeting { .. } => GroupKind::Repo,
     }
 }
 
@@ -661,7 +758,8 @@ mod tests {
                 }
                 ArtifactPayload::JiraIssue { .. }
                 | ArtifactPayload::ConfluencePage { .. }
-                | ArtifactPayload::MergeRequest { .. } => {
+                | ArtifactPayload::MergeRequest { .. }
+                | ArtifactPayload::Meeting { .. } => {
                     unreachable!("this test only produces CommitSet artefacts")
                 }
             })

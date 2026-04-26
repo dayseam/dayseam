@@ -64,4 +64,45 @@ project_key: string, title: string,
  * forge; pre-computed at rollup time so the renderer
  * doesn't repeat per-provider URL construction.
  */
-url: string, date: string, event_ids: Array<string>, } };
+url: string, date: string, event_ids: Array<string>, } } | { "Meeting": { 
+/**
+ * Graph's stable id for the calendar occurrence. Used
+ * as the `Artifact::external_id` when the rollup stage
+ * synthesises one artefact per `OutlookMeetingAttended`
+ * event (mirrors the "orphan commit synthesises a
+ * CommitSet" shape).
+ */
+outlook_event_id: string, 
+/**
+ * Meeting subject as the connector normalised it.
+ * Private meetings arrive here already redacted to
+ * `"Private meeting"`; the renderer prints this verbatim.
+ */
+title: string, 
+/**
+ * Occurrence start in UTC. The renderer localises via
+ * `ReportInput::render_offset` so the engine itself
+ * stays pure.
+ */
+start_utc: string, 
+/**
+ * Occurrence end in UTC. `end_utc >= start_utc` is
+ * guaranteed by the connector's normalisation.
+ */
+end_utc: string, 
+/**
+ * The local-timezone day the meeting belongs to, as
+ * decided upstream by the connector (using the user's
+ * system timezone). Kept on the artefact so the
+ * section-grouping stage can bucket meetings by day
+ * without re-applying an offset.
+ */
+date: string, 
+/**
+ * Event ids that rolled up into this artefact. For
+ * meetings this is always a single id (one event ⇒
+ * one artefact), but the shape matches the other
+ * variants so the renderer's evidence-link pass is
+ * uniform.
+ */
+event_ids: Array<string>, } };

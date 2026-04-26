@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use dayseam_core::{
     ActivityEvent, Artifact, Person, SourceId, SourceIdentity, SourceKind, SourceRunState,
 };
@@ -82,4 +82,15 @@ pub struct ReportInput {
     /// consults `Utc::now()`; the orchestrator passes in a captured
     /// value so golden snapshots stay byte-stable.
     pub generated_at: DateTime<Utc>,
+    /// The local-timezone offset the renderer converts UTC
+    /// timestamps into before stringifying them for the user.
+    /// Added in DAY-204 so the Outlook `## Meetings` section can
+    /// print `HH:MM–HH:MM` in the user's local wall time without
+    /// making the engine reach for `chrono::Local::now()` (which
+    /// would poison the pure-function contract tests depend on).
+    /// The orchestrator resolves this once per run via
+    /// `chrono::Local::now().offset().fix()`; pure tests default
+    /// to [`FixedOffset::east_opt(0).unwrap()`] so their goldens
+    /// render in UTC.
+    pub render_offset: FixedOffset,
 }

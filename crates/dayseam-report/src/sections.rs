@@ -70,6 +70,16 @@ pub(crate) enum ReportSection {
     /// rollup (DAY-96) and the GitLab promotion (DAY-97) light
     /// it up.
     MergeRequests,
+    /// Outlook calendar meetings the user attended today — fed by
+    /// [`ArtifactPayload::Meeting`]. One bullet per meeting (no
+    /// aggregation); the renderer appends a trailing
+    /// `"Total time in meetings: …"` summary bullet. Slotted
+    /// between [`Self::MergeRequests`] and [`Self::JiraIssues`]
+    /// so the reading flow is "what I shipped → what I attended
+    /// → what I triaged → what I wrote → stray activity". Added
+    /// in DAY-204 alongside the v0.9 Outlook connector going
+    /// user-visible.
+    Meetings,
     /// Jira issue activity — transitions, comments, assignments —
     /// fed by [`ArtifactPayload::JiraIssue`]. One bullet per event
     /// (not per issue) so a day that transitioned the same issue
@@ -123,6 +133,7 @@ impl ReportSection {
             ArtifactPayload::JiraIssue { .. } => Self::JiraIssues,
             ArtifactPayload::ConfluencePage { .. } => Self::ConfluencePages,
             ArtifactPayload::MergeRequest { .. } => Self::MergeRequests,
+            ArtifactPayload::Meeting { .. } => Self::Meetings,
         }
     }
 
@@ -165,6 +176,7 @@ impl ReportSection {
         match self {
             Self::Commits => "commits",
             Self::MergeRequests => "merge_requests",
+            Self::Meetings => "meetings",
             Self::JiraIssues => "jira_issues",
             Self::ConfluencePages => "confluence_pages",
             Self::Unlinked => "unlinked",
@@ -180,6 +192,7 @@ impl ReportSection {
         match self {
             Self::Commits => "Commits",
             Self::MergeRequests => "Merge requests",
+            Self::Meetings => "Meetings",
             Self::JiraIssues => "Jira issues",
             Self::ConfluencePages => "Confluence pages",
             Self::Unlinked => "Unlinked activity",
@@ -204,16 +217,17 @@ impl ReportSection {
         match self {
             Self::Commits => 0,
             Self::MergeRequests => 1,
-            Self::JiraIssues => 2,
-            Self::ConfluencePages => 3,
-            Self::Unlinked => 4,
+            Self::Meetings => 2,
+            Self::JiraIssues => 3,
+            Self::ConfluencePages => 4,
+            Self::Unlinked => 5,
         }
     }
 
     /// Total number of variants — the array length the renderer's
     /// bucket uses. Kept in one place so adding a new section
     /// requires exactly two edits (`index()` + this constant).
-    pub(crate) const COUNT: usize = 5;
+    pub(crate) const COUNT: usize = 6;
 
     /// Render-order iteration of every variant.
     ///
@@ -224,6 +238,7 @@ impl ReportSection {
     pub(crate) const ALL: [Self; Self::COUNT] = [
         Self::Commits,
         Self::MergeRequests,
+        Self::Meetings,
         Self::JiraIssues,
         Self::ConfluencePages,
         Self::Unlinked,
@@ -313,6 +328,7 @@ mod tests {
                     ArtifactPayload::JiraIssue { .. } => ArtifactKind::JiraIssue,
                     ArtifactPayload::ConfluencePage { .. } => ArtifactKind::ConfluencePage,
                     ArtifactPayload::MergeRequest { .. } => ArtifactKind::GitHubPullRequest,
+                    ArtifactPayload::Meeting { .. } => ArtifactKind::OutlookMeeting,
                 },
                 external_id: "x".into(),
                 payload,
@@ -394,6 +410,7 @@ mod tests {
     fn ids_are_pinned_snake_case() {
         assert_eq!(ReportSection::Commits.id(), "commits");
         assert_eq!(ReportSection::MergeRequests.id(), "merge_requests");
+        assert_eq!(ReportSection::Meetings.id(), "meetings");
         assert_eq!(ReportSection::JiraIssues.id(), "jira_issues");
         assert_eq!(ReportSection::ConfluencePages.id(), "confluence_pages");
         assert_eq!(ReportSection::Unlinked.id(), "unlinked");
@@ -405,6 +422,7 @@ mod tests {
     fn titles_are_pinned_sentence_case() {
         assert_eq!(ReportSection::Commits.title(), "Commits");
         assert_eq!(ReportSection::MergeRequests.title(), "Merge requests");
+        assert_eq!(ReportSection::Meetings.title(), "Meetings");
         assert_eq!(ReportSection::JiraIssues.title(), "Jira issues");
         assert_eq!(ReportSection::ConfluencePages.title(), "Confluence pages");
         assert_eq!(ReportSection::Unlinked.title(), "Unlinked activity");
@@ -428,6 +446,7 @@ mod tests {
             ReportSection::ConfluencePages,
             ReportSection::Commits,
             ReportSection::JiraIssues,
+            ReportSection::Meetings,
             ReportSection::MergeRequests,
         ];
         sections.sort();
@@ -436,12 +455,13 @@ mod tests {
             vec![
                 ReportSection::Commits,
                 ReportSection::MergeRequests,
+                ReportSection::Meetings,
                 ReportSection::JiraIssues,
                 ReportSection::ConfluencePages,
                 ReportSection::Unlinked,
             ],
-            "derived Ord must render Commits → Merge requests → Jira issues → \
-             Confluence pages → Unlinked",
+            "derived Ord must render Commits → Merge requests → Meetings → \
+             Jira issues → Confluence pages → Unlinked",
         );
     }
 }

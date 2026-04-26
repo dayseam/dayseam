@@ -250,4 +250,81 @@ mod tests {
         let second = pipeline(first.clone(), &mrs);
         assert_eq!(second, first, "pipeline is a pure function");
     }
+
+    /// DAY-204: the pipeline's ticket-key extractor is source-kind
+    /// agnostic, so an Outlook meeting titled `"ACME-1234 kickoff"`
+    /// should gain a `jira_issue` entity with `external_id =
+    /// "ACME-1234"` for free — no new enrichment code, just a
+    /// regression gate so a future refactor of `scan_ticket_keys`
+    /// that narrows it to commits/MRs/PRs doesn't silently drop
+    /// this cross-link. The Outlook connector never populates
+    /// `entities` upstream, so the pre-pipeline event has an empty
+    /// list; the post-pipeline event carries exactly one
+    /// `JiraIssue` entity.
+    ///
+    /// Also asserts the transition-annotation pass does **not**
+    /// credit the meeting as the trigger, even when the meeting
+    /// falls inside the 24h window — meetings are not MR-like
+    /// (attending a standup doesn't imply authorship), so the
+    /// `is_mr_like` gate in `annotate_transition_with_mr` must
+    /// continue to exclude `OutlookMeetingAttended`.
+    #[test]
+    fn outlook_meeting_title_gains_jira_issue_entity_without_being_mr_trigger() {
+        let meeting = ActivityEvent {
+            id: Uuid::new_v5(&Uuid::NAMESPACE_OID, b"outlook-evt-1"),
+            source_id: src(),
+            external_id: "outlook-evt-1".into(),
+            kind: ActivityKind::OutlookMeetingAttended,
+            occurred_at: Utc.with_ymd_and_hms(2026, 4, 20, 9, 30, 0).unwrap(),
+            actor: Actor {
+                display_name: "Self".into(),
+                email: Some("self@example.com".into()),
+                external_id: None,
+            },
+            title: "ACME-1234 kickoff".into(),
+            body: None,
+            links: Vec::new(),
+            entities: Vec::new(),
+            parent_external_id: None,
+            metadata: serde_json::Value::Null,
+            raw_ref: RawRef {
+                storage_key: "outlook:evt-1".into(),
+                content_type: "application/json".into(),
+            },
+            privacy: Privacy::Normal,
+        };
+        let transition = jira_transition("ACME-1234");
+
+        let events = vec![meeting, transition];
+        let out = pipeline(events, &[]);
+
+        let enriched_meeting = out
+            .iter()
+            .find(|e| e.kind == ActivityKind::OutlookMeetingAttended)
+            .expect("meeting survives the pipeline");
+        let jira_targets: Vec<&EntityRef> = enriched_meeting
+            .entities
+            .iter()
+            .filter(|e| e.kind == EntityKind::JiraIssue)
+            .collect();
+        assert_eq!(
+            jira_targets.len(),
+            1,
+            "meeting title `ACME-1234 kickoff` must gain exactly one jira_issue entity"
+        );
+        assert_eq!(jira_targets[0].external_id, "ACME-1234");
+
+        let annotated_transition = out
+            .iter()
+            .find(|e| e.kind == ActivityKind::JiraIssueTransitioned)
+            .expect("transition survives the pipeline");
+        assert_eq!(
+            annotated_transition.parent_external_id.as_deref(),
+            Some("ACME-1234"),
+            "no MR/PR is present so the transition keeps its pre-existing \
+             `parent_external_id` (the issue key itself, stamped by the Jira \
+             connector). A meeting must NOT overwrite this — attending a \
+             meeting doesn't imply authorship of the transition."
+        );
+    }
 }

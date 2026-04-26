@@ -20,6 +20,7 @@
 
 use std::collections::HashMap;
 
+use chrono::{DateTime, FixedOffset, Utc};
 use dayseam_core::{
     ActivityEvent, ArtifactId, ArtifactPayload, Evidence, MergeRequestProvider, Privacy,
     RenderedBullet, RenderedSection, ReportDraft, SourceId, SourceIdentity, SourceIdentityKind,
@@ -58,6 +59,7 @@ pub(crate) fn render(input: ReportInput) -> Result<ReportDraft, ReportError> {
             &input.template_id,
             input.verbose_mode,
             &input.source_kinds,
+            input.render_offset,
         )?
     };
 
@@ -175,6 +177,7 @@ fn build_sections(
     template_id: &str,
     verbose_mode: bool,
     source_kinds: &HashMap<SourceId, SourceKind>,
+    render_offset: FixedOffset,
 ) -> Result<(Vec<RenderedSection>, Vec<Evidence>), ReportError> {
     // DAY-98 / PERF-v0.3-01. Replaced a `BTreeMap<ReportSection,
     // Vec<RenderedBullet>>` with a fixed-size array indexed by
@@ -207,11 +210,26 @@ fn build_sections(
             section.id(),
             verbose_mode,
             source_kind,
+            render_offset,
         )?;
         let bucket = &mut buckets[section.index()];
         for (bullet, ev) in rendered {
             evidence.push(ev);
             bucket.push(bullet);
+        }
+    }
+
+    // DAY-204: append the `Total time in meetings: Xh Ym / 8h
+    // (Z%)` summary bullet to the `## Meetings` bucket before it
+    // becomes a section. Renders only when at least one meeting
+    // made the cut — an empty `Meetings` bucket is dropped by
+    // the walk below, so this never produces a bare heading with
+    // nothing but a summary line.
+    let meetings_idx = ReportSection::Meetings.index();
+    if !buckets[meetings_idx].is_empty() {
+        let total_minutes = sum_meeting_minutes(groups);
+        if let Some(summary) = meetings_summary_bullet(total_minutes, template_id) {
+            buckets[meetings_idx].push(summary);
         }
     }
 
@@ -298,6 +316,7 @@ fn empty_section(date: chrono::NaiveDate) -> RenderedSection {
 /// filtered out before reaching the rollup) render as zero bullets;
 /// the orchestrator treats a fully-empty day via the `empty_section`
 /// path above, not here.
+#[allow(clippy::too_many_arguments)]
 fn render_group(
     group: &RolledUpArtifact,
     registry: &handlebars::Handlebars<'_>,
@@ -305,6 +324,7 @@ fn render_group(
     section_id: &str,
     verbose_mode: bool,
     source_kind: Option<SourceKind>,
+    render_offset: FixedOffset,
 ) -> Result<Vec<(RenderedBullet, Evidence)>, ReportError> {
     match &group.artifact.payload {
         ArtifactPayload::CommitSet { repo_path, .. } => {
@@ -375,7 +395,135 @@ fn render_group(
             );
             Ok(vec![bullet])
         }
+        // DAY-204. One bullet per meeting, rendered as
+        // `- **HH:MM–HH:MM** · <title>` with the start/end
+        // localised to the report's `render_offset`. The
+        // trailing `- ` prefix is added by the markdown sink;
+        // this function returns the bullet text only.
+        ArtifactPayload::Meeting {
+            title,
+            start_utc,
+            end_utc,
+            ..
+        } => {
+            let bullet = render_meeting_bullet(
+                &group.artifact.id,
+                &group.events,
+                *start_utc,
+                *end_utc,
+                title,
+                template_id,
+                section_id,
+                source_kind,
+                render_offset,
+            );
+            Ok(vec![bullet])
+        }
     }
+}
+
+/// Render one `## Meetings` bullet for an Outlook calendar
+/// occurrence.
+///
+/// The shape is `**HH:MM–HH:MM** · <title>`, with both
+/// timestamps converted into the report's `render_offset` so
+/// the user sees wall-clock times in their own timezone. The
+/// dot (`·`, U+00B7) separator matches the design doc wireframe
+/// in §4.5 of the v0.9 phase plan. No redaction branch —
+/// `connector-outlook::normalise` already rewrites private
+/// meetings' titles to `"Private meeting"` upstream, so the
+/// renderer can print the title verbatim.
+#[allow(clippy::too_many_arguments)]
+fn render_meeting_bullet(
+    artifact_id: &ArtifactId,
+    events: &[ActivityEvent],
+    start_utc: DateTime<Utc>,
+    end_utc: DateTime<Utc>,
+    title: &str,
+    template_id: &str,
+    section_id: &str,
+    source_kind: Option<SourceKind>,
+    render_offset: FixedOffset,
+) -> (RenderedBullet, Evidence) {
+    let event_ids: Vec<Uuid> = events.iter().map(|e| e.id).collect();
+    let id = bullet_id(template_id, section_id, *artifact_id, &event_ids);
+    let start = start_utc.with_timezone(&render_offset);
+    let end = end_utc.with_timezone(&render_offset);
+    let text = format!(
+        "**{}–{}** · {}",
+        start.format("%H:%M"),
+        end.format("%H:%M"),
+        title,
+    );
+    let bullet = RenderedBullet {
+        id: id.clone(),
+        text,
+        source_kind,
+    };
+    let evidence = Evidence {
+        bullet_id: id,
+        event_ids,
+        reason: "1 Outlook meeting".to_string(),
+    };
+    (bullet, evidence)
+}
+
+/// Sum the duration (in whole minutes) of every meeting artefact
+/// in the rollup. Non-meeting groups contribute zero.
+fn sum_meeting_minutes(groups: &[RolledUpArtifact]) -> i64 {
+    groups
+        .iter()
+        .filter_map(|g| match &g.artifact.payload {
+            ArtifactPayload::Meeting {
+                start_utc, end_utc, ..
+            } => Some((*end_utc - *start_utc).num_minutes().max(0)),
+            _ => None,
+        })
+        .sum()
+}
+
+/// Build the trailing `Total time in meetings: Xh Ym / 8h (Z%)`
+/// bullet for the `## Meetings` section. `8h` is the v0.9
+/// reference workday — §4.5 of the phase plan pins this; a
+/// later release can promote it to a preference if the
+/// dogfood data says the constant is wrong for common
+/// schedules.
+///
+/// Returns `None` when `total_minutes == 0` so an all-empty
+/// meeting day (every meeting zero-length, which shouldn't
+/// happen in practice) doesn't render `0h 0m / 8h (0%)` as
+/// noise.
+fn meetings_summary_bullet(total_minutes: i64, template_id: &str) -> Option<RenderedBullet> {
+    if total_minutes <= 0 {
+        return None;
+    }
+    const WORKDAY_MINUTES: i64 = 8 * 60;
+    let hours = total_minutes / 60;
+    let minutes = total_minutes % 60;
+    let percent = (total_minutes * 100) / WORKDAY_MINUTES;
+    let text = format!("Total time in meetings: {hours}h {minutes}m / 8h ({percent}%)");
+    let id = meetings_summary_bullet_id(template_id, total_minutes);
+    Some(RenderedBullet {
+        id,
+        text,
+        // The summary line belongs to the Meetings section as a
+        // whole, not to any individual Outlook source — leave
+        // `source_kind: None` so the sink does not prefix it
+        // with a `### Outlook` subheading.
+        source_kind: None,
+    })
+}
+
+fn meetings_summary_bullet_id(template_id: &str, total_minutes: i64) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(template_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(ReportSection::Meetings.id().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(b"meetings_summary\0");
+    hasher.update(total_minutes.to_be_bytes());
+    let bytes = hasher.finalize();
+    format!("b_{}", hex_encode_short(&bytes[..8]))
 }
 
 /// Render one `## Merge requests` bullet for an aggregated MR/PR

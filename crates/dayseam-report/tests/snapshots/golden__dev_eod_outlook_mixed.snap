@@ -1,0 +1,60 @@
+---
+source: crates/dayseam-report/tests/golden.rs
+assertion_line: 937
+expression: draft
+---
+id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+date: 2026-04-18
+template_id: dayseam.dev_eod
+template_version: 2026-04-24
+sections:
+  - id: commits
+    title: Commits
+    bullets:
+      - id: b_19d0b0dc0ddffa20
+        text: "**dayseam** — feat: render meeting bullets"
+        source_kind: LocalGit
+  - id: meetings
+    title: Meetings
+    bullets:
+      - id: b_929ebd3eeacedeaa
+        text: "**09:00–09:15** · Daily standup"
+        source_kind: Outlook
+      - id: b_1cc1e9ff02cb97d4
+        text: "**14:00–15:00** · Design review"
+        source_kind: Outlook
+      - id: b_2e5d34c757486d18
+        text: "Total time in meetings: 1h 15m / 8h (15%)"
+        source_kind: ~
+  - id: jira_issues
+    title: Jira issues
+    bullets:
+      - id: b_899ccb489820548f
+        text: "**Carbon Team** (CAR) — CAR-5117: In Review → Done"
+        source_kind: Jira
+evidence:
+  - bullet_id: b_19d0b0dc0ddffa20
+    event_ids:
+      - 249e7cbb-e37e-5a91-a629-3a174f84a691
+    reason: 1 commit
+  - bullet_id: b_899ccb489820548f
+    event_ids:
+      - a9d366b5-03cb-527c-86de-90f5a0c3955a
+    reason: 1 Jira event
+  - bullet_id: b_929ebd3eeacedeaa
+    event_ids:
+      - 061730bc-533a-5d12-a6df-e43d3e0a9b62
+    reason: 1 Outlook meeting
+  - bullet_id: b_1cc1e9ff02cb97d4
+    event_ids:
+      - 6478d366-bf9e-5fc1-9922-291b19275bf7
+    reason: 1 Outlook meeting
+per_source_state:
+  29000000-0000-0000-0000-000000000000:
+    status: Succeeded
+    started_at: "2026-04-18T23:00:00Z"
+    finished_at: "2026-04-18T23:00:00Z"
+    fetched_count: 1
+    error: ~
+verbose_mode: false
+generated_at: "2026-04-18T23:00:00Z"
