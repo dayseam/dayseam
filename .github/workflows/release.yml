@@ -1025,9 +1025,31 @@ jobs:
               exit 1
             fi
           done
+          # DAY-206. Stable-named alias so the marketing site can
+          # link to a version-agnostic URL
+          # (`/releases/latest/download/Dayseam.dmg`) and have the
+          # click deliver the actual installer instead of bouncing
+          # the user through the GitHub release page. GitHub's
+          # `/releases/latest/download/<name>` redirect requires a
+          # byte-exact filename match — globs are not supported — so
+          # a versioned filename like `Dayseam-v${VERSION}.dmg`
+          # cannot be the canonical URL: it would 404 the moment the
+          # next release is published. We attach a copy under the
+          # unversioned name `Dayseam.dmg` rather than renaming the
+          # primary asset so versioned URLs and any downstream
+          # tooling that scrapes asset names by version (changelog
+          # mirrors, internal CI fetchers) keep working unchanged.
+          # The copy is the same notarized + stapled binary as the
+          # versioned DMG — Apple's stapled ticket lives inside the
+          # disk image itself, not in the filename — so Gatekeeper
+          # treats both filenames identically and no second
+          # notarization round-trip is needed.
+          ALIAS_DMG="$(dirname "${DMG}")/Dayseam.dmg"
+          cp "${DMG}" "${ALIAS_DMG}"
           gh release create "v${VERSION}" \
             "${DMG}" \
             "${DMG}.sha256" \
+            "${ALIAS_DMG}" \
             "${UPDATER_TAR}" \
             "${UPDATER_SIG}" \
             "${UPDATER_JSON}" \

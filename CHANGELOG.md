@@ -47,6 +47,32 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Changed
+
+- **DAY-206: Releases now publish a stable-named `Dayseam.dmg`
+  alias alongside the versioned `Dayseam-v${VERSION}.dmg`** so the
+  marketing site at <https://dayseam.github.io> can link to a
+  single, version-agnostic download URL —
+  `https://github.com/dayseam/dayseam/releases/latest/download/Dayseam.dmg` —
+  that always resolves to the latest installer instead of bouncing
+  the user through the GitHub release page to hunt for the right
+  asset. GitHub's `/releases/latest/download/<name>` redirect
+  requires a byte-exact filename match (no globs), and our existing
+  asset filenames embed the version (`Dayseam-v0.9.0.dmg`,
+  `Dayseam-v0.10.0.dmg`, …) so they cannot be the canonical URL.
+  Renaming the primary asset to drop the version was rejected
+  because it loses version visibility in the user's Downloads
+  folder and breaks any downstream tooling that scrapes asset names
+  by version (changelog mirrors, internal CI fetchers); attaching a
+  copy preserves both surfaces. The alias is the same notarized +
+  stapled binary as the versioned DMG — Apple's stapled ticket
+  lives inside the disk image itself, not in the filename — so
+  Gatekeeper treats both filenames identically and no second
+  notarization round-trip is needed. The change is a single
+  `cp "${DMG}" Dayseam.dmg` plus one extra entry in
+  `gh release create` inside `.github/workflows/release.yml`'s
+  `Publish GitHub Release` step.
+
 ## [0.9.0] - 2026-04-27
 
 ### Fixed
