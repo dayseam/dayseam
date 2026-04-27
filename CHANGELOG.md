@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-27
+
 ### Fixed
 
 - **DAY-205: Outlook OAuth login now works for personal Microsoft
