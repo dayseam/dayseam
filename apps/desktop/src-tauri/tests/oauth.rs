@@ -146,6 +146,13 @@ fn config_against(mock: &MockServer) -> OAuthProviderConfig {
         token_endpoint: format!("{}/token", mock.uri()),
         scopes: vec!["offline_access".into(), "Calendars.Read".into()],
         redirect_path: "/oauth/callback".to_string(),
+        // DAY-205. Tests use port 0 so the OS assigns an ephemeral
+        // port and many `#[tokio::test]` cases can drive the flow
+        // in parallel without fighting over a shared bind. The
+        // production constructor `OAuthProviderConfig::microsoft_outlook`
+        // pins this to `MICROSOFT_LOOPBACK_PORT` so the shipped
+        // redirect URI matches a registered Azure reply URL.
+        loopback_port: 0,
         prompt: Some("select_account".to_string()),
         client_id: "test-client-id".to_string(),
     }

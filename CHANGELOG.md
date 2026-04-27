@@ -47,6 +47,36 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-205: Outlook OAuth login now works for personal Microsoft
+  accounts.** Before this change the loopback listener bound to
+  `127.0.0.1:0` (OS-assigned ephemeral port), and the redirect URI
+  carried whatever port the OS handed out. Microsoft's Entra ID
+  endpoint accepted that under its loopback wildcard rule, but the
+  legacy MSA endpoint at `login.live.com` (which `/common/` routes
+  every personal `@outlook.com`/`@hotmail.com`/`@live.com` login
+  through) does not honour the wildcard — it requires the redirect
+  URI to match a registered reply URL byte-for-byte, including the
+  port and path. Every personal-account login surfaced as
+  `AADSTS900971: No reply address provided` against an "any port
+  works on `http://localhost`" registration, blocking beta testers
+  on personal tenants. The fix pins the loopback listener to a
+  dedicated port (`53691`) via a new `MICROSOFT_LOOPBACK_PORT`
+  constant in `apps/desktop/src-tauri/src/oauth_config.rs` and a
+  `loopback_port: u16` field on `OAuthProviderConfig` (set to `0`
+  in tests so the existing parallel-test suite stays
+  collision-free). The redirect URI is now stable across launches
+  and matches `http://127.0.0.1:53691/oauth/callback` exactly,
+  which `docs/setup/azure-app-registration.md` walks through
+  registering as a "Mobile and desktop applications" reply URL.
+  A bind-failure on the fixed port (e.g. a second Dayseam window
+  already mid-login) surfaces with a remediation message naming
+  the port so a user can `lsof -i tcp:53691` without source
+  diving. Adds a regression test in `oauth_config::tests` that
+  asserts the Microsoft constructor pins the port — any future
+  refactor that drops the pin would re-introduce the MSA bug.
+
 ### Added
 
 - **DAY-204: v0.9 capstone — Outlook calendar connector goes GA

@@ -53,6 +53,35 @@ pub const PLACEHOLDER_CLIENT_ID: &str = "UNSET-DAYSEAM-CLIENT-ID";
 /// TypeScript map so a typo in the dropdown doesn't compile.
 pub const PROVIDER_MICROSOFT_OUTLOOK: &str = "microsoft-outlook";
 
+/// DAY-205. Fixed loopback port for the Microsoft Outlook PKCE flow.
+///
+/// Background: Microsoft runs two distinct OAuth surfaces behind the
+/// `/common/` authorize endpoint. Entra ID (work / school) tenants
+/// honour the loopback wildcard rule from RFC 8252 — registering
+/// `http://127.0.0.1` (no port) lets the IdP accept any port + any
+/// path coming back. Personal Microsoft accounts (`@outlook.com`,
+/// `@hotmail.com`, `@live.com`) are routed by `/common/` to the
+/// legacy MSA endpoint at `login.live.com`, which does NOT honour
+/// the wildcard rule — every redirect URI must match a registered
+/// reply URL byte-for-byte, including port and path.
+///
+/// Until DAY-205 the loopback listener bound to `127.0.0.1:0` (OS-
+/// assigned ephemeral port). That worked fine for Entra users but
+/// surfaced as `AADSTS900971: No reply address provided` for every
+/// MSA login because the random port could never appear in the
+/// app registration's reply-URL list. Binding to a fixed port lets
+/// us register exactly one MSA-friendly URI (`http://127.0.0.1:53691
+/// /oauth/callback`) while the existing `http://127.0.0.1` and
+/// `http://localhost` registrations keep covering Entra wildcard
+/// matching as a defence-in-depth fallback.
+///
+/// 53691 was picked from the IANA dynamic / private range
+/// (49152–65535) to minimise collision risk with other dev tools.
+/// If a future provider's flow needs a different port we add a new
+/// constant and route by `provider_id` in the constructor below
+/// rather than overloading this one.
+pub const MICROSOFT_LOOPBACK_PORT: u16 = 53691;
+
 /// Everything the PKCE loopback flow needs to talk to one IdP. Owned
 /// `String`s rather than `&'static str`s because integration tests
 /// construct bespoke instances pointing at `http://127.0.0.1:PORT`
@@ -72,11 +101,24 @@ pub struct OAuthProviderConfig {
     /// spaces before going onto the `scope=` parameter.
     pub scopes: Vec<String>,
     /// Path component of the loopback redirect URI. Combined at
-    /// runtime with `http://127.0.0.1:<os-assigned-port>` so the
-    /// full redirect is `http://127.0.0.1:54321/oauth/callback` and
-    /// Microsoft's "any port on loopback" matching rule accepts it
-    /// against a registered `http://localhost` reply URL.
+    /// runtime with `http://127.0.0.1:<loopback_port>` so the full
+    /// redirect URI is e.g. `http://127.0.0.1:53691/oauth/callback`
+    /// and matches a byte-for-byte registered reply URL on the
+    /// Azure side. See [`MICROSOFT_LOOPBACK_PORT`] for the rationale
+    /// behind binding to a fixed port instead of an OS-assigned one.
     pub redirect_path: String,
+    /// Port the loopback listener binds to in
+    /// `oauth_begin_login_impl`. `0` means "OS-assigned ephemeral
+    /// port" — used by integration tests so they parallelise without
+    /// fighting over a shared bind, and acceptable for IdPs that
+    /// honour the RFC 8252 loopback wildcard rule. Production
+    /// providers that need a stable URI in their app registration
+    /// (Microsoft personal accounts, see [`MICROSOFT_LOOPBACK_PORT`])
+    /// set this to a fixed number. A bind failure on a fixed port
+    /// surfaces [`error_codes::OAUTH_LOGIN_LOOPBACK_BIND_FAILED`]
+    /// with a remediation message naming the offending port so the
+    /// user can find and close the conflicting process.
+    pub loopback_port: u16,
     /// Optional `prompt=` parameter on the authorize URL. Microsoft
     /// uses `select_account` so the user can pick between personal
     /// and work accounts on every login; other IdPs may leave this
@@ -113,6 +155,7 @@ impl OAuthProviderConfig {
                 "User.Read".to_string(),
             ],
             redirect_path: "/oauth/callback".to_string(),
+            loopback_port: MICROSOFT_LOOPBACK_PORT,
             prompt: Some("select_account".to_string()),
             client_id: client_id.into(),
         }
@@ -190,6 +233,14 @@ mod tests {
         assert_eq!(cfg.redirect_path, "/oauth/callback");
         assert_eq!(cfg.prompt.as_deref(), Some("select_account"));
         assert_eq!(cfg.client_id, "abc-123");
+        // DAY-205. The Microsoft constructor must pin the loopback
+        // port — every release DMG that uses a different port for
+        // production builds would silently re-introduce
+        // `AADSTS900971` for personal Microsoft accounts. Asserting
+        // against the named constant rather than the literal `53691`
+        // keeps this test honest if we ever need to migrate the
+        // port (the Azure registration would need to follow).
+        assert_eq!(cfg.loopback_port, MICROSOFT_LOOPBACK_PORT);
     }
 
     #[test]
