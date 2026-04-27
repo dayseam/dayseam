@@ -5,9 +5,14 @@
 //!   1. [`oauth_begin_login`] — the renderer's "Add Outlook source"
 //!      dialog calls this with a stable `provider_id` (today only
 //!      `microsoft-outlook`). The command binds a loopback TCP
-//!      listener on `127.0.0.1:0` (OS-assigned port), builds the
-//!      full authorize URL including a fresh PKCE challenge and a
-//!      one-use `state` nonce, launches the user's default browser
+//!      listener on `127.0.0.1:<config.loopback_port>` (production
+//!      Microsoft pins this to [`oauth_config::MICROSOFT_LOOPBACK_PORT`]
+//!      so the redirect URI byte-for-byte matches a registered Azure
+//!      reply URL — required by Microsoft's legacy MSA endpoint;
+//!      see DAY-205 — while integration tests pass `0` for an OS-
+//!      assigned ephemeral port so they parallelise cleanly), builds
+//!      the full authorize URL including a fresh PKCE challenge and
+//!      a one-use `state` nonce, launches the user's default browser
 //!      at that URL, and returns an [`OAuthSessionView`] whose
 //!      `status` is [`OAuthSessionStatus::Pending`]. The flow then
 //!      proceeds entirely on a background task so the IPC returns
@@ -204,11 +209,17 @@ impl SessionEmitter for TauriSessionEmitter {
 ///
 /// Steps, in order:
 ///
-///   1. Bind a TCP listener on `127.0.0.1:0`. The OS-assigned port
-///      is what tells the IdP where to send the user back. Binding
-///      here rather than in the background task means we fail fast
-///      on a "port already claimed" edge case before spending a
-///      session id.
+///   1. Bind a TCP listener on `127.0.0.1:<config.loopback_port>`.
+///      Production Microsoft pins this to a fixed port — see
+///      [`oauth_config::MICROSOFT_LOOPBACK_PORT`] — so the redirect
+///      URI byte-for-byte matches a registered Azure reply URL,
+///      which is required by Microsoft's legacy MSA endpoint
+///      (DAY-205). Tests pass `0` for an OS-assigned ephemeral
+///      port so they parallelise cleanly. Binding here rather than
+///      in the background task means we fail fast on a "port
+///      already claimed" edge case (e.g. another Dayseam window
+///      already mid-login) before spending a session id, with a
+///      remediation message that names the offending port.
 ///   2. Mint a fresh [`OAuthSessionId`], PKCE pair, and `state`
 ///      nonce. `state` is a v4 UUID — plenty of entropy to rule
 ///      out the CSRF attack the parameter exists to prevent.
@@ -224,12 +235,31 @@ pub async fn oauth_begin_login_impl(
     browser: Arc<dyn BrowserOpener>,
     emitter: Arc<dyn SessionEmitter>,
 ) -> Result<OAuthSessionView, DayseamError> {
-    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
-        .await
-        .map_err(|e| DayseamError::Internal {
+    let bind_addr = SocketAddr::from(([127, 0, 0, 1], config.loopback_port));
+    let listener = TcpListener::bind(bind_addr).await.map_err(|e| {
+        // A fixed-port bind failure is almost always "another login
+        // is already in flight in a second window" or "another tool
+        // happens to claim this port". The remediation message names
+        // the port explicitly so a power user can `lsof -i tcp:53691`
+        // without hunting through source. The `0` (OS-assigned) path
+        // can never hit `EADDRINUSE` in practice; it only fails on
+        // exhausted ephemeral ranges, which is rare enough that the
+        // generic message is fine.
+        DayseamError::Internal {
             code: error_codes::OAUTH_LOGIN_LOOPBACK_BIND_FAILED.to_string(),
-            message: format!("failed to bind loopback listener on 127.0.0.1:0: {e}"),
-        })?;
+            message: if config.loopback_port == 0 {
+                format!("failed to bind loopback listener on 127.0.0.1:0: {e}")
+            } else {
+                format!(
+                    "failed to bind OAuth loopback on 127.0.0.1:{port}: {e}. \
+                     Another process is using the port — close any other \
+                     Dayseam window mid-login and retry, or run `lsof -i \
+                     tcp:{port}` to identify the conflicting process.",
+                    port = config.loopback_port,
+                )
+            },
+        }
+    })?;
     let local_addr = listener.local_addr().map_err(|e| DayseamError::Internal {
         code: error_codes::OAUTH_LOGIN_LOOPBACK_BIND_FAILED.to_string(),
         message: format!("listener bound but local_addr() failed: {e}"),

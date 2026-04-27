@@ -18,14 +18,22 @@ You are creating one app registration of the kind Microsoft calls
 *public client* — no secret, no certificate. The registration tells
 the Microsoft identity platform two things:
 
-1. *We are a native app that will ask loopback-bound ports to catch
-   the OAuth callback.* Registering `http://localhost` as the
-   **mobile and desktop** platform reply URL is what enables
-   Microsoft's "any port is fine when the host is loopback" matching
-   rule. You do **not** register `http://127.0.0.1` explicitly —
-   Microsoft accepts either host when the reply URL is
-   `http://localhost`. Dayseam uses `127.0.0.1` on the wire to sidestep
-   IPv4/IPv6 resolution races some OSes have on `localhost`.
+1. *We are a native app that catches the OAuth callback on a fixed
+   loopback port.* Microsoft runs two distinct OAuth surfaces behind
+   the `/common/` endpoint: Entra ID (work / school) tenants honour
+   the RFC 8252 loopback wildcard rule — registering
+   `http://127.0.0.1` (no port, no path) lets the IdP accept any
+   port + any path coming back. Personal Microsoft accounts
+   (`@outlook.com`, `@hotmail.com`, `@live.com`) are routed to the
+   legacy MSA endpoint at `login.live.com`, which does **not**
+   honour that wildcard — every redirect URI must match a registered
+   reply URL byte-for-byte, including the port and path. To work
+   for both account families, Dayseam binds its loopback listener
+   to a fixed port (`53691`) and registers exact URIs for it
+   alongside the wildcard hosts. Both `http://127.0.0.1:53691/oauth/callback`
+   and the host-only `http://127.0.0.1` reply URLs are listed below
+   so an Entra-only deployment still works without the fixed-port
+   entry, and an MSA login still works on the strict endpoint.
 
 2. *These are the Graph scopes we expect to request.* We declare the
    delegated scopes up front so a user consenting to a Dayseam login
@@ -72,13 +80,18 @@ registration**. Fill the form as follows:
 | Name                              | `Dayseam` (or `Dayseam (dev)` for a dev-only tenant) |
 | Supported account types           | *Accounts in any organizational directory (any Entra tenant — multi-tenant) and personal Microsoft accounts* |
 | Redirect URI → Platform           | *Mobile and desktop applications*                  |
-| Redirect URI → Value              | `http://localhost`                                 |
+| Redirect URI → Value              | `http://127.0.0.1:53691/oauth/callback`            |
 
-"Mobile and desktop applications" is what unlocks Microsoft's
-loopback port-matching rule. The `http://localhost` value is
-literal — do **not** add a port; Microsoft treats it as a wildcard
-across any port on either `localhost` or `127.0.0.1` for the lifetime
-of the registration.
+"Mobile and desktop applications" is the platform type that lets
+the registration accept loopback-bound reply URLs at all (the
+*Web* platform would reject every URL Dayseam constructs at
+runtime, regardless of port). The exact `http://127.0.0.1:53691/oauth/callback`
+URL is what Microsoft's legacy MSA endpoint matches against
+byte-for-byte; the `:53691` is Dayseam's fixed loopback port (see
+`apps/desktop/src-tauri/src/oauth_config.rs`'s `MICROSOFT_LOOPBACK_PORT`)
+and the `/oauth/callback` path is the listener's route. After
+registration, add the two extra reply URLs in step 5 to cover
+Entra-only deployments + a localhost-host fallback.
 
 Click **Register**. You land on the new app's **Overview** page.
 Copy the **Application (client) ID** — that is the value you will
@@ -118,12 +131,23 @@ desktop install.
   the registration (e.g. bump redirect URIs if we ever switch off
   loopback). One owner is not enough for a production registration.
 
-### 5. Confirm public-client settings
+### 5. Confirm public-client settings and add the wildcard reply URLs
 
 Navigate to **Authentication**. Verify:
 
 - **Platform configurations** shows *Mobile and desktop
-  applications* with `http://localhost` in its reply URL list.
+  applications* with the **three** reply URLs below in its list:
+  - `http://127.0.0.1:53691/oauth/callback` — exact match required
+    by Microsoft's legacy MSA endpoint (`login.live.com`) for
+    personal Microsoft accounts.
+  - `http://127.0.0.1` — host-only entry that activates the RFC
+    8252 loopback wildcard for Entra ID work / school accounts;
+    Microsoft accepts any port + path against this base.
+  - `http://localhost` — the same wildcard as above on the
+    `localhost` host. Useful when a corporate proxy or VPN
+    intercepts `127.0.0.1` resolution; harmless otherwise.
+  Use the **Add URI** link inside the platform card to register
+  any that are missing, then **Save** at the top of the page.
 - **Advanced settings → Allow public client flows** is set to
   **Yes**. This is the toggle that lets a PKCE grant complete
   without a client secret; Microsoft sometimes flips it off when
@@ -132,6 +156,17 @@ Navigate to **Authentication**. Verify:
 - **Supported account types** matches what you chose in step 2.
 
 Save if you changed anything.
+
+> **Why three URLs?** The single `http://127.0.0.1:53691/oauth/callback`
+> is sufficient for personal Microsoft accounts (and the only one
+> that works for them, because their endpoint disables wildcard
+> matching). The two host-only URLs are the wildcard fallback for
+> Entra ID accounts — they let local dev / debugging on a different
+> port still complete a flow without a docs update. If you only
+> serve corporate Entra users, you can omit the `:53691` entry; if
+> you only serve personal accounts, you can omit the wildcard
+> entries. Listing all three is the union that "just works" for
+> both.
 
 ## Using the `client_id`
 
@@ -170,8 +205,10 @@ this document.
 | Symptom                                                         | Likely cause                                                                                                   |
 | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Consent screen shows *"This app is trying to access..."* but every scope is missing from the list | Delegated permissions weren't saved — re-check step 3 and click **Add permissions**.                           |
-| Callback page shows *"AADSTS50011: The reply URL specified... does not match"* | Either the **Mobile and desktop applications** platform is missing or its reply URL list does not contain `http://localhost`. Add it in step 2/5. |
+| Callback page shows *"AADSTS50011: The reply URL specified... does not match"* | Either the **Mobile and desktop applications** platform is missing or its reply URL list is missing `http://127.0.0.1:53691/oauth/callback`. Add the three URLs from step 5. |
+| Callback page shows *"AADSTS900971: No reply address provided"* (only for personal Microsoft accounts) | The legacy MSA endpoint (`login.live.com`) cannot match Dayseam's redirect URI byte-for-byte. Confirm `http://127.0.0.1:53691/oauth/callback` is in the reply URL list (step 5). The host-only `http://127.0.0.1` and `http://localhost` entries do **not** apply on this endpoint. |
 | Callback page shows *"unauthorized_client"*                     | **Allow public client flows** is off. Toggle it on in step 5.                                                  |
+| Dayseam dialog shows `oauth.login.loopback_bind_failed` referencing port `53691` | Another process already binds the loopback port — usually a second Dayseam window mid-login. The error message includes an `lsof -i tcp:53691` hint to find the offender. Close the conflicting process and retry. |
 | Dayseam dialog shows `oauth.login.not_configured`               | `DAYSEAM_MS_CLIENT_ID` is unset or equals the placeholder. Export it before launching the app.                |
 | Dayseam dialog shows `oauth.login.state_mismatch` immediately   | The browser hit a stale callback URL from an earlier flow. Re-open the dialog and retry; each begin_login mints a fresh state nonce. |
 | Token endpoint returns *"invalid_grant"*                        | The PKCE verifier didn't match the challenge; happens if the app was restarted mid-consent. Retry from the start of the dialog. |
