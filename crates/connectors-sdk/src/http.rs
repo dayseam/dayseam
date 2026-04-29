@@ -84,11 +84,29 @@ pub struct HttpClient {
 impl HttpClient {
     /// A client with sensible production defaults and a
     /// [`SystemClock`].
+    ///
+    /// DAY-186: redirects are disabled at the transport level
+    /// (`Policy::none()`). None of the supported APIs (GitLab
+    /// `/api/v4/*`, Atlassian Cloud `/rest/api/3/*`, GitHub REST,
+    /// Microsoft Graph) redirect on authenticated GETs in normal
+    /// operation. The risk a redirect carries is that
+    /// `reqwest::Client`'s default cross-origin auth-header strip
+    /// only covers RFC-named headers (`Authorization`, `Cookie`,
+    /// `Cookie2`, `Proxy-Authorization`, `Www-Authenticate`) — it
+    /// does NOT strip the `PRIVATE-TOKEN` header GitLab uses, nor
+    /// any other non-standard auth header a future connector might
+    /// reach for. A self-hosted GitLab returning a 302 to
+    /// `attacker.com/leak` would otherwise exfiltrate the user's
+    /// `glpat-…`. Disabling redirects entirely makes the failure
+    /// loud (3xx surfaces as a non-success status the caller's
+    /// `map_status` classifies) and removes the auth-header-leak
+    /// hazard without needing a per-header allowlist.
     pub fn new() -> Result<Self, DayseamError> {
         let inner = reqwest::Client::builder()
             .user_agent(concat!("dayseam/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| DayseamError::Network {
                 code: error_codes::HTTP_TRANSPORT.to_string(),

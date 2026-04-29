@@ -375,3 +375,67 @@ async fn status_401_and_403_return_response_so_caller_can_classify() {
         .expect("403 is returned as Ok(res)");
     assert_eq!(res.status(), 403);
 }
+
+/// DAY-186 audit follow-up: `HttpClient::new` installs
+/// `Policy::none()` so a malicious upstream cannot exfiltrate
+/// auth headers via a 302 to attacker-controlled hosts. Reqwest's
+/// default cross-origin auth-header strip only covers RFC-named
+/// headers (`Authorization`, `Cookie`, `Cookie2`,
+/// `Proxy-Authorization`, `Www-Authenticate`); it does NOT strip
+/// `PRIVATE-TOKEN` (GitLab) or `X-Atlassian-Token`, so a
+/// permissive default would forward those on every redirect.
+/// Pinning `Policy::none()` makes the failure loud — the 3xx
+/// surfaces as a non-success status the caller's `map_status`
+/// classifier handles — and removes the leakage hazard without
+/// needing a per-header allowlist.
+///
+/// We assert that:
+/// 1. A 302 is surfaced verbatim as `Ok(res)` with status 302
+///    (rather than being followed transparently to 200), and
+/// 2. No follow-up GET hits the redirect target (`expect(0)`
+///    on the `/leaked` mock).
+#[tokio::test]
+async fn client_does_not_follow_redirects_to_protect_auth_headers() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/login"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("Location", "/leaked?private_token=glpat-xx"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/leaked"))
+        // If the client followed the redirect, this mock would
+        // observe one hit. `expect(0)` enforces the contract
+        // — wiremock fails the test on drop if the count is
+        // wrong.
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let client = HttpClient::new()
+        .expect("build")
+        .with_policy(RetryPolicy::instant());
+
+    let res = client
+        .send(
+            client
+                .reqwest()
+                .get(server.uri() + "/login")
+                .header("PRIVATE-TOKEN", "glpat-xx"),
+            &CancellationToken::new(),
+            None,
+            None,
+        )
+        .await
+        .expect("302 is surfaced as Ok(res)");
+
+    assert_eq!(
+        res.status(),
+        302,
+        "redirect must be returned verbatim, not transparently followed"
+    );
+}

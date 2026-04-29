@@ -42,6 +42,7 @@ use dayseam_secrets::Secret;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
+use url::Url;
 use uuid::Uuid;
 
 use crate::ipc::run_forwarder;
@@ -964,6 +965,15 @@ pub async fn sources_add(
                 ));
             }
         }
+        // DAY-186: validate the base URL server-side before persisting
+        // anything. Mirrors the GitHub flow's `parse_api_base_url`
+        // gate (DAY-99 invariant 2). Without this, a renderer-side
+        // bug or a hand-crafted IPC call could persist a row whose
+        // `base_url` is `http://gitlab.attacker.com`, and the next
+        // sync would ship the PAT in the clear / to the attacker.
+        if let SourceConfig::GitLab { base_url, .. } = &config {
+            parse_gitlab_base_url(base_url)?;
+        }
     }
 
     let source_id = Uuid::new_v4();
@@ -1112,6 +1122,13 @@ pub async fn sources_update(
         // reporting itself as a contender.
         if let SourceConfig::LocalGit { scan_roots } = config {
             ensure_local_git_scan_roots_are_disjoint(&state, Some(id), scan_roots).await?;
+        }
+        // DAY-186: rotating a GitLab base URL goes through the same
+        // server-side validator as `sources_add` so an edit cannot
+        // smuggle in `http://` or `gitlab.attacker.com` after the
+        // initial create.
+        if let SourceConfig::GitLab { base_url, .. } = config {
+            parse_gitlab_base_url(base_url)?;
         }
         repo.update_config(&id, config)
             .await
@@ -2095,16 +2112,113 @@ pub async fn shell_open(url: String) -> Result<(), DayseamError> {
 /// [`sources_add`] call owns that half of the flow; this command is a
 /// pure validator so the dialog can show green-check / red-error
 /// feedback before the user commits to creating the source.
+///
+/// DAY-186: server-side URL validation runs first. The dialog
+/// normalises and warns on `http://` client-side, but a phishing
+/// form or a renderer regression that calls `invoke("gitlab_validate_pat",
+/// { host, pat })` directly would otherwise POST the PAT to
+/// whatever host the renderer supplied (the `PRIVATE-TOKEN` header
+/// is what GitLab uses; without an HTTPS-only check, an `http://`
+/// downgrade ships the token in the clear, and without a
+/// path/query/fragment guard, an attacker-controlled host can
+/// receive it). [`parse_gitlab_base_url`] mirrors GitHub's
+/// `parse_api_base_url` shape — HTTPS only, host nonempty, no
+/// path/query/fragment, with a narrow `127.0.0.1` carve-out under
+/// the `test-helpers` feature for wiremock.
 #[tauri::command]
 pub async fn gitlab_validate_pat(
     host: String,
     pat: IpcSecretString,
 ) -> Result<GitlabValidationResult, DayseamError> {
-    let user = connector_gitlab::auth::validate_pat(&host, pat.expose()).await?;
+    let parsed = parse_gitlab_base_url(&host)?;
+    let user =
+        connector_gitlab::auth::validate_pat(parsed.as_str().trim_end_matches('/'), pat.expose())
+            .await?;
     Ok(GitlabValidationResult {
         user_id: user.id,
         username: user.username,
     })
+}
+
+/// Parse a caller-supplied GitLab `host` / `base_url` into an
+/// absolute `https://` [`Url`]. Mirrors `parse_api_base_url` in
+/// `ipc/github.rs`: production builds require `https://`, reject
+/// path/query/fragment, and require a non-empty host. The
+/// `test-helpers` feature flag (or the crate's own `#[cfg(test)]`)
+/// allows `http://127.0.0.1:PORT` so wiremock-driven tests can
+/// point the probe at a loopback origin. The host carve-out is
+/// scoped to the loopback so a misuse of the test feature flag in
+/// production cannot turn this into a cleartext-PAT escape hatch.
+fn parse_gitlab_base_url(input: &str) -> Result<Url, DayseamError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(invalid_config_public(
+            error_codes::IPC_GITLAB_INVALID_BASE_URL,
+            "GitLab base URL must not be empty",
+        ));
+    }
+    // Pad a trailing slash so `Url::join("api/v4/user")` on the
+    // result behaves predictably across callers.
+    let padded = if trimmed.ends_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}/")
+    };
+    let parsed = Url::parse(&padded).map_err(|e| {
+        invalid_config_public(
+            error_codes::IPC_GITLAB_INVALID_BASE_URL,
+            format!("GitLab base URL `{trimmed}` is not a valid URL: {e}"),
+        )
+    })?;
+    let host = parsed.host_str().unwrap_or("");
+    if host.is_empty() {
+        return Err(invalid_config_public(
+            error_codes::IPC_GITLAB_INVALID_BASE_URL,
+            "GitLab base URL has no host component",
+        ));
+    }
+    let host_lower = host.to_ascii_lowercase();
+    let is_test_loopback = gitlab_host_is_test_loopback(&host_lower);
+    if parsed.scheme() != "https" && !(is_test_loopback && parsed.scheme() == "http") {
+        return Err(invalid_config_public(
+            error_codes::IPC_GITLAB_INVALID_BASE_URL,
+            format!(
+                "GitLab base URL scheme must be `https`; got `{}`",
+                parsed.scheme()
+            ),
+        ));
+    }
+    // GitLab Cloud is `gitlab.com`; self-hosted instances are
+    // arbitrary domains; CE/EE installs sometimes live on a
+    // sub-path (`https://internal.acme.com/gitlab/`). Allow a
+    // path so far-end CE installs work, but reject query and
+    // fragment — neither has any meaning in a base URL and both
+    // would let an attacker piggyback structured data into
+    // requests we issue.
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        return Err(invalid_config_public(
+            error_codes::IPC_GITLAB_INVALID_BASE_URL,
+            "GitLab base URL must not carry a query string or fragment",
+        ));
+    }
+    Ok(parsed)
+}
+
+/// Narrow loopback carve-out for [`parse_gitlab_base_url`]: see the
+/// equivalent helper in `ipc/github.rs`. Production builds always
+/// return `false`, so the `https`-only invariant holds in release;
+/// under `test-helpers` (or `#[cfg(test)]`) we allow `127.0.0.1`
+/// and `localhost` so the integration tests in
+/// `connector-gitlab/tests/` can target a wiremock origin without
+/// having to weaken the IPC's URL gate.
+fn gitlab_host_is_test_loopback(_host_lower: &str) -> bool {
+    #[cfg(any(test, feature = "test-helpers"))]
+    {
+        if _host_lower == "127.0.0.1" || _host_lower == "localhost" {
+            return true;
+        }
+    }
+    false
 }
 
 // ---- Retention ------------------------------------------------------------
@@ -3778,5 +3892,94 @@ mod completion_payload_tests {
 
         assert_eq!(payload.status, SyncRunStatus::Failed);
         assert!(payload.draft_id.is_none());
+    }
+}
+
+/// DAY-186 audit follow-up. The GitLab base-URL validator is the
+/// security gate between the renderer and a credential-bearing
+/// HTTP request — without it, a phishing form or a renderer
+/// regression that calls `invoke("gitlab_validate_pat", { host,
+/// pat })` directly forwards the user's PAT to whatever host the
+/// renderer supplied. Mirrors the table-driven coverage in
+/// `ipc/github.rs` for `parse_api_base_url`.
+#[cfg(test)]
+mod parse_gitlab_base_url_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_https_gitlab_com() {
+        let url = parse_gitlab_base_url("https://gitlab.com").expect("https://gitlab.com");
+        assert_eq!(url.as_str(), "https://gitlab.com/");
+    }
+
+    #[test]
+    fn accepts_self_hosted_https_with_path() {
+        // CE/EE installs sometimes live on a sub-path
+        // (`https://internal.acme.com/gitlab/`); the validator
+        // accepts the path as long as the scheme/host pass.
+        let url = parse_gitlab_base_url("https://internal.acme.com/gitlab/")
+            .expect("self-hosted with path");
+        assert_eq!(url.as_str(), "https://internal.acme.com/gitlab/");
+    }
+
+    #[test]
+    fn preserves_existing_trailing_slash() {
+        let url = parse_gitlab_base_url("https://gitlab.com/").expect("trailing slash");
+        assert_eq!(url.as_str(), "https://gitlab.com/");
+    }
+
+    #[test]
+    fn rejects_http_in_production_path() {
+        // The H1 attack: `http://gitlab.attacker.com` ships the
+        // PAT in cleartext. The IPC must refuse the scheme even
+        // when the host parses cleanly.
+        let err = parse_gitlab_base_url("http://gitlab.attacker.com").unwrap_err();
+        assert_eq!(err.code(), error_codes::IPC_GITLAB_INVALID_BASE_URL);
+    }
+
+    #[test]
+    fn rejects_empty_input() {
+        let err = parse_gitlab_base_url("   ").unwrap_err();
+        assert_eq!(err.code(), error_codes::IPC_GITLAB_INVALID_BASE_URL);
+    }
+
+    #[test]
+    fn rejects_scheme_missing() {
+        // `gitlab.attacker.com` without a scheme parses to an
+        // opaque/relative URL whose host_str is empty — the
+        // host-nonempty check catches it.
+        let err = parse_gitlab_base_url("gitlab.attacker.com").unwrap_err();
+        assert_eq!(err.code(), error_codes::IPC_GITLAB_INVALID_BASE_URL);
+    }
+
+    #[test]
+    fn rejects_query_or_fragment() {
+        for bad in ["https://gitlab.com?foo=bar", "https://gitlab.com#fragment"] {
+            let err = parse_gitlab_base_url(bad).unwrap_err();
+            assert_eq!(
+                err.code(),
+                error_codes::IPC_GITLAB_INVALID_BASE_URL,
+                "{bad} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unrecognised_scheme() {
+        let err = parse_gitlab_base_url("ftp://gitlab.com").unwrap_err();
+        assert_eq!(err.code(), error_codes::IPC_GITLAB_INVALID_BASE_URL);
+    }
+
+    #[cfg(any(test, feature = "test-helpers"))]
+    #[test]
+    fn allows_loopback_http_under_test_helpers() {
+        // The wiremock-driven integration tests in
+        // `connector-gitlab/tests/` need to point the probe at a
+        // loopback origin without a TLS handshake. Production
+        // builds never enter this branch (the cfg gate is
+        // compiled out).
+        let url = parse_gitlab_base_url("http://127.0.0.1:8080/")
+            .expect("loopback http allowed under test-helpers");
+        assert_eq!(url.scheme(), "http");
     }
 }
