@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   LogEvent,
   ProgressEvent,
@@ -269,5 +269,196 @@ describe("useReport", () => {
     expect(result.current.runId).toBeNull();
     expect(result.current.status).toBe("idle");
     expect(result.current.progress).toEqual([]);
+  });
+
+  // DAY-185 #1: a stale `report:completed` from a superseded prior
+  // run that arrives during the *new* run's handshake gap used to
+  // slip through when `runId` was still null. We stash completions
+  // until invoke returns and only apply when `pending.run_id ===
+  // runId`, so a stale prior id is discarded at flush time.
+  it("ignores a stale report:completed during the handshake gap of a new run", async () => {
+    let resolveGenerate: ((id: string) => void) | undefined;
+    const generatePromise = new Promise<string>((resolve) => {
+      resolveGenerate = resolve;
+    });
+    registerInvokeHandler("report_generate", () => generatePromise);
+    const reportGetSpy = vi.fn(async () => DRAFT);
+    registerInvokeHandler("report_get", reportGetSpy);
+
+    const { result } = renderHook(() => useReport());
+
+    let generatePending: Promise<unknown> | undefined;
+    act(() => {
+      generatePending = result.current.generate("2026-04-17", ["src-1"]);
+    });
+
+    // We are now in the handshake gap: `currentRef.runId === null`.
+    // A late `report:completed` arrives for the *prior* run (the
+    // stale one the supersede path is terminating).
+    const stalePriorRun = "ssssssss-ssss-ssss-ssss-ssssssssssss";
+    act(() => {
+      emitEvent(REPORT_COMPLETED_EVENT, {
+        run_id: stalePriorRun,
+        status: "Cancelled",
+        draft_id: null,
+        cancel_reason: { kind: "superseded_by", run_id: RUN_ID },
+      } satisfies ReportCompletedEvent);
+    });
+
+    // The hook must NOT have flipped to "cancelled" — the prior
+    // run's terminal must not leak into the new run's state.
+    expect(result.current.status).not.toBe("cancelled");
+    // And it must NOT have invoked `report_get` for the prior run.
+    expect(reportGetSpy).not.toHaveBeenCalled();
+
+    // Now finish the handshake; the new run's runId arrives.
+    await act(async () => {
+      resolveGenerate?.(RUN_ID);
+      await generatePending;
+    });
+    expect(result.current.runId).toBe(RUN_ID);
+  });
+
+  // DAY-185 #1 (companion): a `report:completed` event that fires
+  // while the hook has no foreground run at all (background
+  // scheduler catch-up) must not surface a draft into the
+  // foreground UI. Without the strict identity check, the listener
+  // would write a foreign draft into `state` and flip `status`
+  // even though the user never clicked Generate.
+  it("ignores report:completed events when no foreground run is active", async () => {
+    const reportGetSpy = vi.fn(async () => DRAFT);
+    registerInvokeHandler("report_get", reportGetSpy);
+
+    const { result } = renderHook(() => useReport());
+    expect(result.current.status).toBe("idle");
+
+    act(() => {
+      emitEvent(REPORT_COMPLETED_EVENT, {
+        run_id: "background-run",
+        status: "Completed",
+        draft_id: DRAFT_ID,
+        cancel_reason: null,
+      } satisfies ReportCompletedEvent);
+    });
+
+    expect(result.current.status).toBe("idle");
+    expect(result.current.draft).toBeNull();
+    expect(reportGetSpy).not.toHaveBeenCalled();
+  });
+
+  // DAY-185 #3: when `report_generate` rejects, the Rust side may
+  // already have emitted progress events through the channel. The
+  // catch block must null `currentRef.current` so subsequent
+  // `progress.onmessage` deliveries fail their identity check and
+  // do not flip `status: "failed"` back to `"running"`.
+  it("a tail progress event after a failed generate does not flip status back to running", async () => {
+    registerInvokeHandler("report_generate", async () => {
+      throw new Error("orchestrator validation failed");
+    });
+
+    const { result } = renderHook(() => useReport());
+
+    // Capture the channels created by this generate so we can
+    // deliver a tail event into them after the catch.
+    const channelsBefore = getCreatedChannels().length;
+    await act(async () => {
+      await expect(
+        result.current.generate("2026-04-17", ["src-1"]),
+      ).rejects.toThrow();
+    });
+    expect(result.current.status).toBe("failed");
+
+    const channelsAfter = getCreatedChannels();
+    const progressCh = channelsAfter[channelsBefore]; // the progress channel created by generate()
+    expect(progressCh).toBeDefined();
+
+    act(() => {
+      progressCh?.deliver({
+        run_id: RUN_ID,
+        source_id: null,
+        phase: { status: "in_progress", message: "tail event" },
+        emitted_at: "2026-04-17T12:00:00Z",
+      } as unknown as ProgressEvent);
+    });
+
+    expect(result.current.status).toBe("failed");
+  });
+
+  // DAY-185 #4: starting a fresh generate should silence the
+  // previous run's channels so a stragglers tail event from a
+  // prior run cannot reach React state. We verify this by
+  // pre-creating one run, swapping a fresh one in, and delivering
+  // a tail event into the *first* run's progress channel.
+  it("a tail event from a prior run's channel is no-op after a fresh generate", async () => {
+    registerInvokeHandler("report_generate", async () => RUN_ID);
+
+    const { result } = renderHook(() => useReport());
+
+    await act(async () => {
+      await result.current.generate("2026-04-17", ["src-1"]);
+    });
+    const firstChannels = getCreatedChannels();
+    const firstProgressCh = firstChannels[firstChannels.length - 2];
+
+    // Start a second generate, which swaps the channel pair.
+    await act(async () => {
+      await result.current.generate("2026-04-18", ["src-1"]);
+    });
+
+    const progressBefore = result.current.progress.length;
+
+    // Now drive a tail event into the *first* run's channel. The
+    // prior `onmessage` should be silenced; state must not grow.
+    act(() => {
+      firstProgressCh?.deliver({
+        run_id: RUN_ID,
+        source_id: null,
+        phase: { status: "in_progress", message: "stale tail" },
+        emitted_at: "2026-04-17T12:00:00Z",
+      } as unknown as ProgressEvent);
+    });
+
+    expect(result.current.progress.length).toBe(progressBefore);
+  });
+
+  // DAY-185 #5: if the user clicks Cancel during the handshake
+  // gap (before `report_generate` returns the runId), the intent
+  // must be honoured the moment the runId arrives. Previously the
+  // Cancel was a silent no-op and the user had to click again
+  // after the run started.
+  it("queues a Cancel clicked during the handshake and fires it once the runId arrives", async () => {
+    let resolveGenerate: ((id: string) => void) | undefined;
+    const generatePromise = new Promise<string>((resolve) => {
+      resolveGenerate = resolve;
+    });
+    registerInvokeHandler("report_generate", () => generatePromise);
+    const cancelSpy = vi.fn(async () => undefined);
+    registerInvokeHandler("report_cancel", cancelSpy);
+
+    const { result } = renderHook(() => useReport());
+
+    let generatePending: Promise<unknown> | undefined;
+    act(() => {
+      generatePending = result.current.generate("2026-04-17", ["src-1"]);
+    });
+
+    // User clicks Cancel during the handshake gap.
+    await act(async () => {
+      await result.current.cancel();
+    });
+    // `report_cancel` should NOT have been invoked yet (no runId
+    // available).
+    expect(cancelSpy).not.toHaveBeenCalled();
+
+    // Resolve the handshake.
+    await act(async () => {
+      resolveGenerate?.(RUN_ID);
+      await generatePending;
+      // Give the queued cancel a microtask to fire.
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(cancelSpy).toHaveBeenCalledWith({ runId: RUN_ID });
   });
 });
