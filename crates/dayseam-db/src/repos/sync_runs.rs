@@ -134,6 +134,31 @@ impl SyncRunRepo {
         .await
     }
 
+    /// Apply a `Running → terminal` transition.
+    ///
+    /// **Atomicity (DAY-188 H1).** The previous shape was a
+    /// SELECT-then-UPDATE pair issued without a transaction: it
+    /// SELECTed the row, checked `status == Running` in Rust, then
+    /// UPDATEd unconditionally. Two concurrent transitions for the
+    /// same `RunId` (e.g. the supersede path's
+    /// `mark_prior_superseded` racing the older task's
+    /// `terminate_cancelled`) both observed `Running`, both passed
+    /// the Rust-side check, and both UPDATEd — meaning the second
+    /// caller silently overwrote the first writer's
+    /// `cancel_reason` / `finished_at` / `per_source_state_json`
+    /// instead of being rejected as the state-machine contract
+    /// says it should be.
+    ///
+    /// The fix is a single `UPDATE … WHERE id = ? AND status = 'Running'`
+    /// statement: SQLite's WAL writer lock serialises the two
+    /// concurrent updates, the second one observes
+    /// `rows_affected == 0` because the row's status is no longer
+    /// `Running`, and the repo returns the same `InvalidData`
+    /// error the SELECT-then-check shape used to surface. The
+    /// follow-up `get()` is only needed to disambiguate
+    /// "row missing" from "already terminal" so the error message
+    /// stays informative for the orchestrator's tolerant call
+    /// sites.
     async fn transition(
         &self,
         id: &RunId,
@@ -143,19 +168,6 @@ impl SyncRunRepo {
         superseded_by: Option<RunId>,
         per_source_state: Option<&[PerSourceState]>,
     ) -> DbResult<()> {
-        let current = self.get(id).await?.ok_or_else(|| DbError::InvalidData {
-            column: "sync_runs.id".into(),
-            message: format!("no sync_runs row for id {id}"),
-        })?;
-        if current.status != SyncRunStatus::Running {
-            return Err(DbError::InvalidData {
-                column: "sync_runs.status".into(),
-                message: format!(
-                    "illegal transition from {:?} to {:?}",
-                    current.status, to_status
-                ),
-            });
-        }
         let cancel_json = cancel_reason
             .map(|r| serde_json::to_string(&r))
             .transpose()?;
@@ -163,14 +175,14 @@ impl SyncRunRepo {
             Some(state) => Some(serde_json::to_string(&state)?),
             None => None,
         };
-        sqlx::query(
+        let result = sqlx::query(
             "UPDATE sync_runs SET
                 status = ?,
                 finished_at = ?,
                 cancel_reason_json = ?,
                 superseded_by = ?,
                 per_source_state_json = COALESCE(?, per_source_state_json)
-             WHERE id = ?",
+             WHERE id = ? AND status = ?",
         )
         .bind(sync_run_status_to_db(&to_status))
         .bind(finished_at.map(|t| t.to_rfc3339()))
@@ -178,9 +190,32 @@ impl SyncRunRepo {
         .bind(superseded_by.map(|r| r.to_string()))
         .bind(per_source_json)
         .bind(id.to_string())
+        .bind(sync_run_status_to_db(&SyncRunStatus::Running))
         .execute(&self.pool)
         .await?;
-        Ok(())
+
+        if result.rows_affected() == 1 {
+            return Ok(());
+        }
+
+        // Zero rows touched: either the row is missing, or it was
+        // already terminal when the UPDATE arrived. Disambiguate so
+        // the error message is actionable for the supersede /
+        // shutdown paths that tolerate "already terminal" but treat
+        // "row missing" as a real bug.
+        match self.get(id).await? {
+            None => Err(DbError::InvalidData {
+                column: "sync_runs.id".into(),
+                message: format!("no sync_runs row for id {id}"),
+            }),
+            Some(current) => Err(DbError::InvalidData {
+                column: "sync_runs.status".into(),
+                message: format!(
+                    "illegal transition from {:?} to {:?}",
+                    current.status, to_status
+                ),
+            }),
+        }
     }
 
     pub async fn get(&self, id: &RunId) -> DbResult<Option<SyncRun>> {

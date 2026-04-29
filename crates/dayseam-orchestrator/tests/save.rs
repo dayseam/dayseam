@@ -47,7 +47,7 @@ async fn seed_draft(pool: &sqlx::SqlitePool) -> (Uuid, ReportDraft) {
         generated_at: Utc::now(),
     };
     dayseam_db::DraftRepo::new(pool.clone())
-        .insert(&draft)
+        .insert(&draft, None)
         .await
         .expect("seed draft");
     (draft.id, draft)

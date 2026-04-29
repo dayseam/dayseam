@@ -525,7 +525,7 @@ async fn run_background(
     // `Failed` rather than `Completed` — a draft that isn't on disk
     // is not a draft.
     let draft_repo = dayseam_db::DraftRepo::new(orch.pool.clone());
-    if let Err(e) = draft_repo.insert(&draft).await {
+    if let Err(e) = draft_repo.insert(&draft, Some(&run_id)).await {
         tracing::error!(
             run_id = %run_id,
             error = %e,
