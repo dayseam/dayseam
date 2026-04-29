@@ -170,3 +170,23 @@ jobs:
         run: bash scripts/ci/test-check-entitlements.sh
       - name: check-entitlements.sh (entitlements.plist validity)
         run: bash scripts/ci/check-entitlements.sh
+
+  # DAY-195: same extract-release-notes preflight release.yml runs,
+  # but at PR time — empty [Unreleased] used to fail only post-merge.
+  changelog-semver-pr:
+    name: changelog preflight (semver PR)
+    if: >
+      github.event_name == 'pull_request' &&
+      (contains(join(github.event.pull_request.labels.*.name, ','), 'semver:patch') ||
+       contains(join(github.event.pull_request.labels.*.name, ','), 'semver:minor') ||
+       contains(join(github.event.pull_request.labels.*.name, ','), 'semver:major'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Verify CHANGELOG would satisfy release.yml extract step
+        env:
+          PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
+        run: bash scripts/release/check-unreleased-for-semver-pr.sh

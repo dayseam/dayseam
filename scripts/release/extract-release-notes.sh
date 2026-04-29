@@ -144,4 +144,6 @@ if has_content "$unreleased_body"; then
 fi
 
 echo "extract-release-notes.sh: no non-empty section in [$VERSION] or [Unreleased]" >&2
+echo "hint: add at least one bullet under ## [Unreleased] in CHANGELOG.md before merging a semver:patch|minor|major PR;" >&2
+echo "     empty ### subheads alone are ignored. Capstone PRs may use a pre-filled ## [$VERSION] block instead." >&2
 exit 2

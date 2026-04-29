@@ -158,6 +158,26 @@ test_semver_none_is_noop() {
   return 0
 }
 
+test_dry_run_patch_leaves_tree_unchanged() {
+  local root="$1"
+  stage_scratch_repo "$root" "0.3.7"
+  local before_hash
+  before_hash="$(hash_tracked "$root")"
+  local out
+  out="$(REPO_ROOT="$root" DAYSEAM_PREV_VERSION="0.3.7" "$SCRIPT" --dry-run patch)"
+  if [[ "$out" != "0.3.8" ]]; then
+    echo "  FAIL: expected stdout '0.3.8', got '$out'" >&2
+    return 1
+  fi
+  local after_hash
+  after_hash="$(hash_tracked "$root")"
+  if [[ "$before_hash" != "$after_hash" ]]; then
+    echo "  FAIL: --dry-run patch mutated the working tree" >&2
+    return 1
+  fi
+  return 0
+}
+
 test_patch_bumps_to_next_patch() {
   local root="$1"
   stage_scratch_repo "$root" "0.0.0"
@@ -316,6 +336,7 @@ EOF
 }
 
 run_test "semver:none is a byte-for-byte no-op" test_semver_none_is_noop
+run_test "--dry-run patch prints target without touching files" test_dry_run_patch_leaves_tree_unchanged
 run_test "semver:patch bumps 0.0.0 -> 0.0.1" test_patch_bumps_to_next_patch
 run_test "semver:minor bumps 0.0.0 -> 0.1.0" test_minor_bumps_to_next_minor
 run_test "semver:major bumps 0.0.0 -> 1.0.0" test_major_bumps_to_next_major
