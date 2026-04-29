@@ -466,6 +466,19 @@ pub const IPC_GITHUB_PAT_MISSING: &str = "ipc.github.pat_missing";
 /// network call.
 pub const IPC_GITHUB_INVALID_API_BASE_URL: &str = "ipc.github.invalid_api_base_url";
 
+/// The `host` / `base_url` argument to a GitLab IPC command failed
+/// to parse as an absolute `https://` URL with a host but no
+/// path/query/fragment. Mirrors [`IPC_GITHUB_INVALID_API_BASE_URL`]
+/// (DAY-186 audit follow-up). The dialog normalises and warns on
+/// `http://` client-side, but the IPC layer is now the
+/// authoritative gate — without it, a phishing form or a renderer
+/// regression that writes `gitlab.attacker.com` (or `http://...`)
+/// into the dialog would forward the user's PAT to whatever host
+/// the renderer supplied. Production builds reject any non-https
+/// scheme; the `test-helpers` feature carves a narrow loopback
+/// exception for the wiremock-driven integration tests.
+pub const IPC_GITLAB_INVALID_BASE_URL: &str = "ipc.gitlab.invalid_base_url";
+
 /// Writing the GitHub PAT to the OS keychain failed. Same
 /// rollback-and-retry semantics as
 /// [`IPC_GITLAB_KEYCHAIN_WRITE_FAILED`]: `github_sources_add` and
