@@ -57,23 +57,41 @@ pub(crate) struct FrontmatterFields {
 /// `---` delimiter. The returned `frontmatter_block` includes the two
 /// delimiter lines and every line in between; the body is everything
 /// after the closing delimiter's trailing newline.
+///
+/// DAY-187 audit follow-up: the previous shape required the
+/// opening delimiter to be terminated by a bare LF, which meant a
+/// Windows file with a CRLF-terminated `---\r\n` leading delimiter
+/// was treated as "no frontmatter" and the merge then *duplicated*
+/// the block on every save. Accepting either `\n` or `\r\n` after
+/// the opening delimiter (and after the closing one) closes that
+/// hole without affecting the LF round-trip.
 pub(crate) fn split(text: &str) -> (Option<&str>, &str) {
-    // A well-formed opening is `---\n` at offset 0; anything else
-    // (leading prose, BOM, a bare `---` at EOF) means "no frontmatter".
+    // A well-formed opening is `---\n` (or `---\r\n`) at offset 0;
+    // anything else (leading prose, BOM, a bare `---` at EOF) means
+    // "no frontmatter".
     if !text.starts_with(DELIM) {
         return (None, text);
     }
-    let search_start = DELIM.len() + 1;
-    if text.len() < search_start || !text[DELIM.len()..].starts_with('\n') {
+    let after_delim = &text[DELIM.len()..];
+    let opener_len = if let Some(rest) = after_delim.strip_prefix("\r\n") {
+        // Tracked so the search-start offset below skips both bytes
+        // of the CRLF rather than only the `\n`.
+        let _ = rest;
+        DELIM.len() + 2
+    } else if after_delim.starts_with('\n') {
+        DELIM.len() + 1
+    } else {
         return (None, text);
-    }
-    let remaining = &text[search_start..];
+    };
+    let remaining = &text[opener_len..];
     let Some(close_rel) = find_delim_line(remaining) else {
         return (None, text);
     };
-    let close_abs = search_start + close_rel;
+    let close_abs = opener_len + close_rel;
     let mut end_of_block = close_abs + DELIM.len();
-    if text[end_of_block..].starts_with('\n') {
+    if text[end_of_block..].starts_with("\r\n") {
+        end_of_block += 2;
+    } else if text[end_of_block..].starts_with('\n') {
         end_of_block += 1;
     }
     (Some(&text[..end_of_block]), &text[end_of_block..])
@@ -243,6 +261,37 @@ mod tests {
         let (fm, body) = split(text);
         assert_eq!(fm.unwrap(), "---\nkey: val\n---\n");
         assert_eq!(body, "# Journal\n");
+    }
+
+    /// DAY-187 audit follow-up: a Windows file with a CRLF-terminated
+    /// leading `---\r\n` must split cleanly; the previous shape
+    /// returned `(None, original)` and `merge` then duplicated the
+    /// block on every save.
+    #[test]
+    fn split_handles_crlf_terminated_delimiters() {
+        let text = "---\r\nkey: val\r\n---\r\n# Journal\r\n";
+        let (fm, body) = split(text);
+        assert_eq!(
+            fm.unwrap(),
+            "---\r\nkey: val\r\n---\r\n",
+            "frontmatter block must include the CRLF-terminated delimiters"
+        );
+        assert_eq!(body, "# Journal\r\n");
+    }
+
+    /// DAY-187 audit follow-up: with a CRLF leading delimiter, the
+    /// merger sees an existing block and updates it in place instead
+    /// of stacking a fresh `---` block on top.
+    #[test]
+    fn merge_does_not_duplicate_block_for_crlf_input() {
+        let existing = "---\r\ntags: [daily]\r\n---\r\n";
+        let (fm, _body) = split(existing);
+        let merged = merge(fm, &sample_fields());
+        let delim_count = merged.matches("---\n").count();
+        assert_eq!(
+            delim_count, 2,
+            "merge must produce exactly one frontmatter block, got: {merged}"
+        );
     }
 
     #[test]

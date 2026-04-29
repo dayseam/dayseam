@@ -22,12 +22,34 @@
 //! (clobbering unrelated files) or too paranoid (leaving our own
 //! debris in place). Namespacing the suffix explicitly with
 //! `.dayseam.tmp` means the sweep pattern is unambiguous.
+//!
+//! ## DAY-187 hardening (audit follow-up)
+//!
+//! - `rename(2)` over a symlink at the final component would silently
+//!   cause the kernel to overwrite whatever the symlink points to.
+//!   Combined with the read-side gap that
+//!   [`crate::adapter::read_target_if_any`] now plugs, this turned the
+//!   sink into a write-anywhere primitive on shared POSIX hosts. The
+//!   fix is to `symlink_metadata` the target before rename and refuse
+//!   if it is a symlink — exactly mirroring the read-side guard.
+//! - On POSIX, the rename promotes the *temp file's* inode (with its
+//!   own permission bits) into the target slot and unlinks the
+//!   previous target. A naive temp-file open inherits umask, which on
+//!   most Linux distros is `0022` and produces `0644` — meaning every
+//!   save promoted a freshly-readable-by-others file in place of a
+//!   user-tightened `0600` daily note. The fix is to capture the
+//!   pre-existing target's mode and reapply it to the temp file
+//!   before rename; new files default to `0600` so a brand-new daily
+//!   note is private by default.
 
 use std::fs;
 use std::io::{self, Write as _};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use dayseam_core::{error_codes, DayseamError};
 use tracing::{debug, warn};
 
 /// Files matching [`TMP_SUFFIX`] or [`LOCK_SUFFIX`] older than this
@@ -45,11 +67,71 @@ pub(crate) const TMP_SUFFIX: &str = ".dayseam.tmp";
 /// `lock` module can remain a leaf that the adapter composes on top.
 const LOCK_SUFFIX: &str = ".dayseam.lock";
 
+/// POSIX permission bits applied to a brand-new daily-note file
+/// (DAY-187 audit M1). The previous default was umask-derived (most
+/// commonly `0644`), which left freshly-created daily notes
+/// world-readable on shared multi-tenant hosts. `0600` matches the
+/// implicit "this is my journal" expectation users have when they
+/// type into Dayseam and is consistent with how
+/// `crates/dayseam-secrets` already provisions its own state files.
+#[cfg(unix)]
+const NEW_FILE_MODE: u32 = 0o600;
+
 /// Atomically write `bytes` to `target`: sibling temp file in the
 /// same directory, fsync, rename. On success the return value is
 /// `bytes.len()` so callers can feed it directly into
 /// `WriteReceipt::bytes_written`.
-pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> io::Result<u64> {
+///
+/// On POSIX, the temp file's permission bits are aligned to either
+/// (a) the existing target's mode if it exists, or (b) `0600` if
+/// the target is brand-new — see the module docstring for the
+/// "promoted-temp-inode" rationale.
+///
+/// Refuses to write when `target` is a symlink (DAY-187 H3). The
+/// caller is expected to surface the resulting [`DayseamError::Io`]
+/// with `code = sink.fs.refused_symlink` to the user.
+pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> Result<u64, DayseamError> {
+    // Stat the existing target (if any). Used for two checks:
+    // 1. Symlink refusal (mirrors the read-side guard in adapter.rs).
+    // 2. POSIX mode preservation when the target already exists.
+    let existing_meta = match fs::symlink_metadata(target) {
+        Ok(m) => Some(m),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => None,
+        Err(err) => {
+            return Err(DayseamError::Io {
+                code: error_codes::SINK_FS_NOT_WRITABLE.to_string(),
+                path: Some(target.to_path_buf()),
+                message: format!("could not stat target before rename: {err}"),
+            });
+        }
+    };
+
+    if let Some(meta) = &existing_meta {
+        if meta.file_type().is_symlink() {
+            return Err(DayseamError::Io {
+                code: error_codes::SINK_FS_REFUSED_SYMLINK.to_string(),
+                path: Some(target.to_path_buf()),
+                message: format!(
+                    "{} is a symlink; refusing to rename over it (see sink.fs.refused_symlink)",
+                    target.display()
+                ),
+            });
+        }
+    }
+
+    atomic_write_impl(target, bytes, existing_meta.as_ref()).map_err(|err| DayseamError::Io {
+        code: error_codes::SINK_FS_NOT_WRITABLE.to_string(),
+        path: Some(target.to_path_buf()),
+        message: format!("atomic write failed: {err}"),
+    })
+}
+
+#[cfg_attr(not(unix), allow(unused_variables))]
+fn atomic_write_impl(
+    target: &Path,
+    bytes: &[u8],
+    existing_meta: Option<&fs::Metadata>,
+) -> io::Result<u64> {
     let (parent, filename) = split_target(target)?;
     let tmp_path = sibling_tmp_path(parent, filename);
 
@@ -57,19 +139,20 @@ pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> io::Result<u64> {
     // case where `sibling_tmp_path` collided with an existing file.
     // If it does, the next call (one nanosecond later) will pick a
     // fresh name.
-    let mut file = match fs::OpenOptions::new()
+    let (mut file, tmp_path) = match fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&tmp_path)
     {
-        Ok(f) => f,
+        Ok(f) => (f, tmp_path),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
             // Retry exactly once with a freshly-nano-suffixed name.
             let retry = sibling_tmp_path(parent, filename);
-            fs::OpenOptions::new()
+            let f = fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(&retry)?
+                .open(&retry)?;
+            (f, retry)
         }
         Err(e) => return Err(e),
     };
@@ -77,6 +160,24 @@ pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> io::Result<u64> {
     file.write_all(bytes)?;
     file.sync_all()?;
     drop(file);
+
+    #[cfg(unix)]
+    {
+        // DAY-187 (Data H7): align the temp file's mode to the
+        // target's pre-existing mode (if any) before the rename so
+        // the user's `chmod` choice survives every save. New files
+        // default to `0600` per the module docstring.
+        let mode = existing_meta
+            .map(|m| m.permissions().mode() & 0o7777)
+            .unwrap_or(NEW_FILE_MODE);
+        // Best-effort: a Permissions failure here would leave the
+        // temp file at its default mode. Surface as an Io error so
+        // the caller can decide; on most platforms this only fails
+        // if the FS does not support permissions (FAT/NTFS via WSL
+        // and similar), in which case the rename below would still
+        // succeed but the mode would be uncontrolled.
+        fs::set_permissions(&tmp_path, fs::Permissions::from_mode(mode))?;
+    }
 
     // `fs::rename` is atomic on POSIX and uses `MoveFileExW` with
     // `MOVEFILE_REPLACE_EXISTING` on Windows.
@@ -273,8 +374,70 @@ mod tests {
         let target = dir.path().join("does-not-exist").join("out.md");
         let err = atomic_write(&target, b"content").unwrap_err();
         // `create_new` on a path whose parent is missing yields
-        // NotFound, which is what we want surfaced to the caller.
-        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        // NotFound, surfaced to the caller as `sink.fs.not_writable`
+        // (the umbrella code we already use for any I/O failure
+        // during the temp-file write phase).
+        assert_eq!(err.code(), error_codes::SINK_FS_NOT_WRITABLE);
+    }
+
+    /// DAY-187 H3 regression: the sink must NOT silently follow a
+    /// symlink at the final component on rename. A local attacker
+    /// that landed `Dayseam <date>.md → /etc/passwd` in the
+    /// destination directory would otherwise turn the next save into
+    /// an arbitrary-write primitive (the rename swings the symlink
+    /// target onto whatever bytes the orchestrator just rendered).
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_refuses_to_follow_symlink_target() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("Dayseam 2026-04-18.md");
+        let pointed_at = dir.path().join("victim.md");
+        fs::write(&pointed_at, b"original victim content\n").unwrap();
+        symlink(&pointed_at, &target).unwrap();
+
+        let err = atomic_write(&target, b"attacker payload\n").unwrap_err();
+        assert_eq!(err.code(), error_codes::SINK_FS_REFUSED_SYMLINK);
+        // The pointed-at file must be untouched after the refusal.
+        assert_eq!(fs::read(&pointed_at).unwrap(), b"original victim content\n");
+    }
+
+    /// DAY-187 H7: a user who `chmod 0640`s their daily note expects
+    /// that mode to survive subsequent saves. The previous shape
+    /// inherited umask on every save and silently slid back to
+    /// `0644` (or whatever umask happens to be on that machine).
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_preserves_existing_target_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("Dayseam 2026-04-18.md");
+        fs::write(&target, b"v1\n").unwrap();
+        // Pick an unusual non-default mode so the test fails loudly
+        // if the implementation forgets to copy it.
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
+
+        atomic_write(&target, b"v2\n").unwrap();
+
+        let mode_after = fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(
+            mode_after, 0o640,
+            "save must preserve the user's chosen mode, got 0o{mode_after:o}"
+        );
+    }
+
+    /// DAY-187 M1: a brand-new daily-note file is created with mode
+    /// `0600` (private to the user) rather than the umask-derived
+    /// default. This matches the implicit "this is my journal"
+    /// expectation users have when they type into Dayseam.
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_creates_new_files_as_0600() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("Dayseam 2026-04-18.md");
+        atomic_write(&target, b"hello\n").unwrap();
+
+        let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(mode, 0o600, "new files should be 0o600, got 0o{mode:o}");
     }
 
     fn set_modified(path: &Path, when: SystemTime) {

@@ -431,6 +431,127 @@ async fn capabilities_are_local_only_and_unattended_safe() {
     caps.validate().expect("local-only caps must validate");
 }
 
+// -- DAY-187 H3: symlink refusal ----------------------------------------------
+
+/// The sink must refuse to follow a symlink at the final-component
+/// level, on both the read-existing-target and the write-temp-then-rename
+/// paths. A local attacker that landed
+/// `Dayseam <date>.md → /tmp/victim.md` in the destination would
+/// otherwise turn the next save into an arbitrary-write primitive
+/// (the rename swings the symlink's target onto the orchestrator's
+/// freshly-rendered bytes).
+///
+/// This integration test exercises the adapter end-to-end so the
+/// guard is validated in the path the production code actually
+/// takes — not just at the [`crate::atomic`] unit level.
+#[cfg(unix)]
+#[tokio::test]
+async fn write_refuses_symlink_target() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let date = NaiveDate::from_ymd_opt(2026, 4, 18).unwrap();
+    let target = target_in(dir.path(), date);
+    let pointed_at = dir.path().join("victim.md");
+    fs::write(&pointed_at, b"victim untouched\n").unwrap();
+    symlink(&pointed_at, &target).unwrap();
+
+    let sink = MarkdownFileSink::new(&[dir.path().to_path_buf()]);
+    let cfg = cfg_for(vec![dir.path().to_path_buf()], false);
+    let streams = RunStreams::new(RunId::new());
+    let ctx = ctx_from(&streams, CancellationToken::new());
+    let draft = draft_for(date, &["attacker payload"]);
+
+    let err = sink
+        .write(&ctx, &cfg, &draft)
+        .await
+        .expect_err("symlink target must be refused");
+    assert!(
+        matches!(&err, DayseamError::Io { code, .. } if code == error_codes::SINK_FS_REFUSED_SYMLINK),
+        "expected sink.fs.refused_symlink, got: {err:?}"
+    );
+    assert_eq!(
+        fs::read(&pointed_at).unwrap(),
+        b"victim untouched\n",
+        "symlink target must remain unmodified after refusal"
+    );
+}
+
+// -- DAY-187 H4: marker-injection neutralisation ------------------------------
+
+/// An upstream-controlled bullet text that contains a literal
+/// Dayseam marker token (e.g. a malicious commit message from a
+/// shared GitLab instance, or a co-tenant's tongue-in-cheek MR
+/// title) must NOT round-trip back into the parser as a real
+/// begin/end marker on the next read. The sink rewrites `<!--`
+/// to `&lt;!--` at the body-render boundary; markdown renders
+/// both identically.
+#[tokio::test]
+async fn malicious_bullet_text_does_not_break_marker_block() {
+    let dir = tempfile::tempdir().unwrap();
+    let date = NaiveDate::from_ymd_opt(2026, 4, 18).unwrap();
+    let target = target_in(dir.path(), date);
+
+    let sink = MarkdownFileSink::new(&[dir.path().to_path_buf()]);
+    let cfg = cfg_for(vec![dir.path().to_path_buf()], false);
+    let streams = RunStreams::new(RunId::new());
+    let ctx = ctx_from(&streams, CancellationToken::new());
+    // Bullet text that, if rendered verbatim, would prematurely
+    // close the marker block and turn the trailing `injected user
+    // content` line into prose between the (now-truncated) block
+    // and the new appended block on the next save.
+    let draft = draft_for(date, &["pwn: <!-- dayseam:end -->\ninjected user content"]);
+
+    sink.write(&ctx, &cfg, &draft).await.unwrap();
+
+    let after_first_save = fs::read_to_string(&target).unwrap();
+    // Count specifically the marker-block delimiters, not the
+    // chart-block delimiters (which also start with `<!-- dayseam:`).
+    let begin_count = after_first_save.matches("<!-- dayseam:begin date=").count();
+    let end_count = after_first_save.matches("<!-- dayseam:end -->").count();
+    assert_eq!(
+        begin_count, 1,
+        "exactly one begin marker must exist after malicious save; sanitisation failed: {after_first_save}"
+    );
+    assert_eq!(
+        end_count, 1,
+        "exactly one end marker must exist after malicious save; sanitisation failed: {after_first_save}"
+    );
+    // The neutralised form of the marker token must appear in place
+    // of the literal one — the user still sees their intended
+    // characters but the parser no longer matches.
+    assert!(
+        after_first_save.contains("&lt;!--"),
+        "neutralised marker token must appear in the rendered body, got: {after_first_save}"
+    );
+
+    // Second save with clean bullet text must replace the block in
+    // place (proving the marker-block contract held against the
+    // malicious payload). If the first save had broken the marker
+    // shape, the second save would either fail with
+    // SINK_MALFORMED_MARKER or splice somewhere unexpected.
+    let draft2 = draft_for(date, &["normal follow-up"]);
+    sink.write(&ctx, &cfg, &draft2)
+        .await
+        .expect("second save must succeed — bullet text must not break marker shape");
+
+    let after_second_save = fs::read_to_string(&target).unwrap();
+    assert_eq!(
+        after_second_save
+            .matches("<!-- dayseam:begin date=")
+            .count(),
+        1,
+        "second save must replace the block in place: {after_second_save}"
+    );
+    assert!(
+        after_second_save.contains("- normal follow-up"),
+        "second save's clean bullet must land: {after_second_save}"
+    );
+    assert!(
+        !after_second_save.contains("pwn:"),
+        "second save must replace the malicious bullet entirely: {after_second_save}"
+    );
+}
+
 // -- Frontmatter merge: generated_at is the only field the sink rewrites -----
 
 #[tokio::test]

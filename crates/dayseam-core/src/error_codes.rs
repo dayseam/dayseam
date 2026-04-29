@@ -253,6 +253,26 @@ pub const SINK_MALFORMED_MARKER: &str = "sink.malformed_marker";
 /// interleaving atomic renames. Surfaced as `DayseamError::Io` with the
 /// target path so the UI can offer a "retry in a moment" action.
 pub const SINK_FS_CONCURRENT_WRITE: &str = "sink.fs.concurrent_write";
+/// Sink target file (or its parent directory) is a symlink. The
+/// markdown sink refuses to follow symlinks on read or write because
+/// a symlink whose target sits outside the configured destination
+/// directory is the canonical exfiltration / arbitrary-write
+/// primitive on shared multi-tenant POSIX hosts:
+///
+/// - On *read*, blindly following the link with `fs::read_to_string`
+///   would copy the link target's bytes into the spliced output,
+///   handing the next save a verbatim copy of (e.g.) the user's
+///   `~/.ssh/id_rsa` or another tenant's daily note.
+/// - On *write*, `fs::rename` over a symlink-to-arbitrary-path
+///   silently overwrites the target, turning the sink into a
+///   write-anywhere primitive any local attacker who can place
+///   `Dayseam <date>.md` symlinks in the destination dir gets to
+///   abuse.
+///
+/// The sink declines the operation with this code rather than
+/// silently dereferencing; the user can resolve it by removing the
+/// symlink or pointing the destination at a different directory.
+pub const SINK_FS_REFUSED_SYMLINK: &str = "sink.fs.refused_symlink";
 
 // -------- Connector SDK ----------------------------------------------------
 
@@ -844,6 +864,7 @@ pub const ALL: &[&str] = &[
     LOCAL_GIT_COMMITS_FILTERED_BY_IDENTITY,
     SINK_FS_NOT_WRITABLE,
     SINK_FS_DESTINATION_MISSING,
+    SINK_FS_REFUSED_SYMLINK,
     SINK_MALFORMED_MARKER,
     SINK_FS_CONCURRENT_WRITE,
     RUN_CANCELLED_BY_USER,
