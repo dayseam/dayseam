@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-04-29
+
 ### Added
 
 - **DAY-214: Persist the day-summary donut chart into the saved markdown
