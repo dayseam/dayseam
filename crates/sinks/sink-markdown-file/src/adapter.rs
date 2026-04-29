@@ -122,6 +122,11 @@ impl SinkAdapter for MarkdownFileSink {
                 version: draft.template_version.clone(),
             },
             body,
+            // DAY-187: a freshly-rendered draft is platform-agnostic
+            // and emits LF; on splice into an existing CRLF file the
+            // marker-line terminator is copied forward from the
+            // existing block by `markers::splice`.
+            line_ending: markers::LineEnding::default(),
         };
 
         let total = u32::try_from(dest_dirs.len()).unwrap_or(u32::MAX);
@@ -269,14 +274,67 @@ fn write_one(
         s.into_bytes()
     };
 
-    atomic::atomic_write(target, &final_bytes).map_err(|err| DayseamError::Io {
-        code: error_codes::SINK_FS_NOT_WRITABLE.to_string(),
-        path: Some(target.to_path_buf()),
-        message: format!("atomic write failed: {err}"),
-    })
+    atomic::atomic_write(target, &final_bytes)
 }
 
+/// Read `target` if it exists, refusing to follow a symlink at the
+/// final-component level.
+///
+/// DAY-187 audit (Security H3): the previous shape called
+/// [`fs::read_to_string`] directly, which transparently dereferences
+/// the final component. On a shared POSIX host that meant a local
+/// attacker who could land a symlink at the destination path
+/// (e.g. by persuading the user to point Obsidian's daily-note
+/// folder at `/tmp` for one save) could redirect every subsequent
+/// load through the link target — and because the sink writes the
+/// load's bytes back into the file, the next save would copy those
+/// bytes into the user's daily-note location. Refusing on
+/// `symlink_metadata().is_symlink()` shuts that vector entirely.
+///
+/// We deliberately do NOT canonicalise + path-prefix-check the
+/// destination directory: the user-facing "where do my notes
+/// live?" UX leaves the canonicalisation choice to the user
+/// (Obsidian vaults frequently sit on iCloud / Dropbox paths whose
+/// canonical form changes from machine to machine). Refusing
+/// symlinks at the final component is the smallest gate that
+/// blocks the documented exfiltration / arbitrary-write
+/// primitives without leaking surprising "your vault is
+/// elsewhere" errors on benign mount-style setups.
 fn read_target_if_any(target: &Path) -> Result<Option<String>, DayseamError> {
+    let meta = match fs::symlink_metadata(target) {
+        Ok(m) => m,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => {
+            return Err(DayseamError::Io {
+                code: error_codes::SINK_FS_NOT_WRITABLE.to_string(),
+                path: Some(target.to_path_buf()),
+                message: format!("could not stat existing target: {err}"),
+            });
+        }
+    };
+
+    if meta.file_type().is_symlink() {
+        return Err(DayseamError::Io {
+            code: error_codes::SINK_FS_REFUSED_SYMLINK.to_string(),
+            path: Some(target.to_path_buf()),
+            message: format!(
+                "{} is a symlink; the markdown sink refuses to follow symlinks (see sink.fs.refused_symlink)",
+                target.display()
+            ),
+        });
+    }
+
+    if !meta.file_type().is_file() {
+        // Special-case directories / FIFOs / sockets with the same
+        // refusal so downstream `read_to_string` does not surface a
+        // confusing "is a directory" or block forever on a FIFO.
+        return Err(DayseamError::Io {
+            code: error_codes::SINK_FS_NOT_WRITABLE.to_string(),
+            path: Some(target.to_path_buf()),
+            message: format!("{} exists but is not a regular file", target.display()),
+        });
+    }
+
     match fs::read_to_string(target) {
         Ok(s) => Ok(Some(s)),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),

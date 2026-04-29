@@ -55,6 +55,33 @@ use dayseam_core::{RenderedBullet, RenderedSection, ReportDraft, SourceKind};
 
 use crate::summary_chart;
 
+/// Substrings that, if they appeared verbatim on their own logical
+/// line in the marker-block body, would be parsed as Dayseam's own
+/// begin/end markers on the next read — turning a malicious
+/// upstream commit message or MR title into a marker-block-injection
+/// primitive. The bullet renderer always prefixes lines with `"- "`
+/// (so the `<!-- dayseam:…-->` substring is never line-leading), but
+/// upstream-controlled `text` fields can carry literal `\n`
+/// characters and the line *after* the embedded newline lands
+/// unprefixed in the body.
+///
+/// The fix is to neutralise these tokens at the sink boundary:
+/// every literal `<!--` in a bullet's `text` is rewritten to the
+/// HTML entity `&lt;!--` before the bullet hits the file. Markdown
+/// readers render `&lt;` and `<` identically, so the user sees the
+/// same characters they typed, but the marker parser's literal
+/// substring match no longer fires.
+///
+/// We also collapse interior `\r` / `\n` to a single space so a
+/// commit message containing `\n<!-- dayseam:end -->\n` cannot
+/// land as a free-standing line in the rendered body even before
+/// the entity rewrite kicks in. Together the two passes leave
+/// zero degrees of freedom for an upstream attacker (or
+/// well-meaning user with a `<!--` in their MR title) to break
+/// the marker-block contract.
+const MARKER_TOKEN: &str = "<!--";
+const MARKER_TOKEN_NEUTRALISED: &str = "&lt;!--";
+
 /// Render the body that lives between the begin and end markers:
 /// the day-summary block (when there's anything to summarise)
 /// followed by the section / per-kind / bullet structure. Does
@@ -112,10 +139,37 @@ fn render_section(out: &mut String, section: &RenderedSection) {
         }
         for bullet in bullets {
             out.push_str("- ");
-            out.push_str(&bullet.text);
+            out.push_str(&sanitise_bullet_text(&bullet.text));
             out.push('\n');
         }
     }
+}
+
+/// Neutralise marker-injection vectors in a bullet's user-facing
+/// text. See [`MARKER_TOKEN`] for the rationale. Two passes:
+///
+/// 1. Replace interior `\r` / `\n` with a single space so an
+///    upstream-controlled commit message like
+///    `"fix: bug\n<!-- dayseam:end -->\n"` cannot break the bullet
+///    into multiple body lines, the second of which would otherwise
+///    render with no `- ` prefix and thus match the trim-equal
+///    end-marker test in [`crate::markers::parse`].
+/// 2. Rewrite any remaining `<!--` to `&lt;!--`. Markdown readers
+///    render the entity identically to a literal `<`, so the user
+///    still sees the original text, but the parser's literal
+///    substring match no longer fires.
+fn sanitise_bullet_text(text: &str) -> String {
+    let mut buf = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\r' | '\n' => buf.push(' '),
+            other => buf.push(other),
+        }
+    }
+    if buf.contains(MARKER_TOKEN) {
+        buf = buf.replace(MARKER_TOKEN, MARKER_TOKEN_NEUTRALISED);
+    }
+    buf
 }
 
 /// Group a section's bullets by [`SourceKind`], preserving per-group
@@ -327,6 +381,58 @@ mod tests {
             out.starts_with("Today was all **Local git**"),
             "body must lead with the headline paragraph: {out}"
         );
+    }
+
+    /// DAY-187 H4: an upstream-controlled bullet `text` that
+    /// contains a literal Dayseam marker token (e.g. a commit
+    /// message that quotes the marker syntax for documentation,
+    /// or a malicious MR title from a co-tenant on a shared GitLab
+    /// instance) must NOT round-trip back into the parser as a
+    /// real begin/end marker on the next read. The sink rewrites
+    /// `<!--` to `&lt;!--` at the body-render boundary; markdown
+    /// renders both identically.
+    #[test]
+    fn bullet_text_with_marker_token_is_neutralised() {
+        let section = RenderedSection {
+            id: "commits".to_string(),
+            title: "Commits".to_string(),
+            bullets: vec![bullet(
+                "b1",
+                "fix: oops <!-- dayseam:end -->",
+                Some(SourceKind::LocalGit),
+            )],
+        };
+        let out = render_sections(&draft_with_sections(vec![section]));
+        assert!(
+            !out.contains("<!-- dayseam:end -->"),
+            "bullet text must not allow marker injection, got: {out}"
+        );
+        assert!(
+            out.contains("&lt;!-- dayseam:end --&gt;") || out.contains("&lt;!-- dayseam:end -->"),
+            "neutralised form must be present, got: {out}"
+        );
+    }
+
+    /// DAY-187 H4 (companion): an upstream-controlled bullet text
+    /// that embeds a `\n` character cannot split into a second
+    /// free-standing body line. The sink collapses interior
+    /// newlines to a single space at the body-render boundary so
+    /// the bullet always emits exactly one `- <text>\n` line.
+    #[test]
+    fn bullet_text_with_embedded_newline_collapses_to_one_line() {
+        let section = RenderedSection {
+            id: "commits".to_string(),
+            title: "Commits".to_string(),
+            bullets: vec![bullet(
+                "b1",
+                "fix: oops\nfollow-up note",
+                Some(SourceKind::LocalGit),
+            )],
+        };
+        let out = render_sections(&draft_with_sections(vec![section]));
+        // Exactly one bullet line, joined by a single space.
+        let bullet_lines: Vec<&str> = out.lines().filter(|l| l.starts_with("- ")).collect();
+        assert_eq!(bullet_lines, vec!["- fix: oops follow-up note"]);
     }
 
     #[test]

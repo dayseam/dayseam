@@ -24,6 +24,23 @@
 //!   end, end without begin, missing required attribute) returns
 //!   [`MarkerError`] **without mutating** the input. Unit test:
 //!   `malformed_begin_or_end_is_rejected`.
+//! - **Fenced code blocks are opaque to marker recognition** (DAY-187).
+//!   A line whose trimmed form is `<!-- dayseam:begin … -->` or
+//!   `<!-- dayseam:end -->` inside a fenced code block is treated as
+//!   prose / body content, never as a real begin/end marker. This
+//!   protects the contract against a user pasting Dayseam's own
+//!   marker-syntax illustration into their journal — without the
+//!   guard, the sink would rewrite the user's example on the next
+//!   save. Unit test: `fenced_marker_syntax_inside_prose_is_not_a_marker`.
+//! - **Empty marker bodies round-trip without an injected blank line**
+//!   (DAY-187). `render(parse("<begin>\n<end>\n"))` is byte-identical
+//!   to the input. Unit test: `empty_block_round_trips_without_blank_line`.
+//! - **Marker-line line endings are preserved** (DAY-187). When the
+//!   parsed file's marker lines were CRLF-terminated, the rendered
+//!   output emits CRLF on its marker lines too. Without this guard,
+//!   Windows users see every marker line drift from CRLF → LF on the
+//!   first save. Unit test:
+//!   `crlf_marker_lines_round_trip_preserved`.
 //!
 //! ## Deliberate non-goals
 //!
@@ -43,6 +60,54 @@ use thiserror::Error;
 pub(crate) const BEGIN_PREFIX: &str = "<!-- dayseam:begin ";
 pub(crate) const BEGIN_SUFFIX: &str = " -->";
 pub(crate) const END_MARKER: &str = "<!-- dayseam:end -->";
+
+/// Line terminator observed on a [`Block`]'s marker lines.
+///
+/// DAY-187 audit follow-up: previously the renderer always emitted
+/// `\n` for the begin and end marker lines. On a Windows-saved file
+/// with CRLF marker lines, the round-trip silently rewrote them to
+/// LF on every save and the user's git diff showed every marker
+/// line as a CRLF→LF change after the first save. Tracking the
+/// observed terminator per block (rather than at the doc level)
+/// keeps mixed-line-ending files honest without hand-rolling a
+/// dominant-line-ending heuristic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum LineEnding {
+    #[default]
+    Lf,
+    CrLf,
+}
+
+impl LineEnding {
+    /// Observe the line terminator of `raw_line`. The `raw_line` is
+    /// the slice [`split_lines_preserving_newlines`] yielded — i.e.
+    /// the line including its trailing terminator (or the file's
+    /// final, terminator-less tail).
+    fn observe(raw_line: &str) -> LineEnding {
+        if raw_line.ends_with("\r\n") {
+            LineEnding::CrLf
+        } else {
+            LineEnding::Lf
+        }
+    }
+
+    /// Render this terminator into a string buffer. Called by
+    /// [`render_block_into`] for the begin and end marker lines.
+    fn push_into(self, out: &mut String) {
+        match self {
+            LineEnding::Lf => out.push('\n'),
+            LineEnding::CrLf => out.push_str("\r\n"),
+        }
+    }
+
+    /// `true` iff this is the `\r\n` variant. Used by the renderer
+    /// to decide whether the block body — which is preserved
+    /// byte-for-byte — should be padded with CRLF or LF before the
+    /// closing marker when its trailing terminator is missing.
+    fn is_crlf(self) -> bool {
+        matches!(self, LineEnding::CrLf)
+    }
+}
 
 /// Attributes on the begin marker. The parser is strict about presence
 /// (all four are required) and tolerant about order, interior
@@ -78,6 +143,13 @@ pub(crate) struct Block {
     /// lines themselves but including the trailing newline of the last
     /// body line.
     pub body: String,
+    /// Line terminator observed on the begin / end marker lines when
+    /// this block was parsed. New blocks constructed at render time
+    /// (the orchestrator's freshly-rendered draft) default to LF; on
+    /// splice we copy the existing block's terminator forward so the
+    /// rewritten output keeps the file's per-marker-line ending shape.
+    /// See [`LineEnding`] for the rationale.
+    pub line_ending: LineEnding,
 }
 
 /// Parsed view of a markdown file, segmented into prose and marker
@@ -128,17 +200,61 @@ impl MarkerError {
 pub(crate) fn parse(text: &str) -> Result<ParsedDoc, MarkerError> {
     let mut segments: Vec<Segment> = Vec::new();
     let mut prose_buf = String::new();
-    let mut open: Option<(MarkerAttrs, String, usize)> = None;
+    // (attrs, body, start_line, line_ending observed on the begin line)
+    let mut open: Option<(MarkerAttrs, String, usize, LineEnding)> = None;
+    // DAY-187: track fenced-code-block nesting so a `<!-- dayseam:begin
+    // … -->` line inside a fenced code block (the user's own
+    // illustration of Dayseam's syntax in their daily-note prose, or
+    // an inert example inside a block body) is treated as prose / body
+    // rather than a real marker. The fence sentinel records the exact
+    // ASCII run that opened the fence so an inner indented run cannot
+    // accidentally close the outer fence.
+    let mut fence: Option<FenceSentinel> = None;
 
     for (idx, line) in split_lines_preserving_newlines(text).enumerate() {
         let line_no = idx + 1;
         let trimmed = line.trim_end_matches(['\r', '\n']).trim();
 
-        if let Some((attrs, ref mut body, start_line)) = open.as_mut() {
+        // DAY-187 fence-toggle pre-check: a line that opens or closes
+        // a fence is itself just prose / body content, never a
+        // marker — even if the fence delimiter happens to appear on
+        // the same line as a begin/end marker (which our renderer
+        // never emits, but a hand-edited file could carry).
+        if let Some(active) = fence {
+            // Inside a fence: only the matching closing-fence line
+            // can pop us out. Markdown's contract is that the
+            // closing fence is the same character with at least the
+            // same count; we accept any equal-or-larger run of the
+            // same delimiter here.
+            if active.line_closes(trimmed) {
+                fence = None;
+            }
+            // Treat this line as body / prose verbatim.
+            if let Some((_, body, _, _)) = open.as_mut() {
+                body.push_str(line);
+            } else {
+                prose_buf.push_str(line);
+            }
+            continue;
+        }
+
+        if let Some(opened) = FenceSentinel::detect_open(trimmed) {
+            fence = Some(opened);
+            // Opening fence line itself is body / prose.
+            if let Some((_, body, _, _)) = open.as_mut() {
+                body.push_str(line);
+            } else {
+                prose_buf.push_str(line);
+            }
+            continue;
+        }
+
+        if let Some((attrs, ref mut body, start_line, _line_ending)) = open.as_mut() {
             if is_end_marker(trimmed) {
                 let block = Block {
                     attrs: attrs.clone(),
                     body: std::mem::take(body),
+                    line_ending: *_line_ending,
                 };
                 segments.push(Segment::Block(block));
                 open = None;
@@ -164,14 +280,15 @@ pub(crate) fn parse(text: &str) -> Result<ParsedDoc, MarkerError> {
                 segments.push(Segment::Prose(std::mem::take(&mut prose_buf)));
             }
             let attrs = parse_begin_attrs(trimmed, line_no)?;
-            open = Some((attrs, String::new(), line_no));
+            let observed = LineEnding::observe(line);
+            open = Some((attrs, String::new(), line_no, observed));
             continue;
         }
 
         prose_buf.push_str(line);
     }
 
-    if let Some((_attrs, _body, start_line)) = open {
+    if let Some((_attrs, _body, start_line, _le)) = open {
         return Err(MarkerError::UnclosedBegin { line: start_line });
     }
     if !prose_buf.is_empty() {
@@ -185,10 +302,20 @@ pub(crate) fn parse(text: &str) -> Result<ParsedDoc, MarkerError> {
 /// [`MarkerAttrs::date`] matches. The rest of the document is
 /// preserved byte-for-byte. Returns `true` if an existing block was
 /// replaced, `false` if the block was appended.
-pub(crate) fn splice(doc: &mut ParsedDoc, new_block: Block) -> bool {
+///
+/// DAY-187: when replacing an existing block, the per-block line
+/// ending is copied from the old block onto the new one so a
+/// CRLF-bearing file does not silently flip to LF on save. New
+/// blocks appended to a fresh file inherit the new block's
+/// caller-supplied terminator (LF by default — the orchestrator's
+/// freshly-rendered draft is LF on every platform).
+pub(crate) fn splice(doc: &mut ParsedDoc, mut new_block: Block) -> bool {
     for seg in doc.segments.iter_mut() {
         if let Segment::Block(existing) = seg {
             if existing.attrs.date == new_block.attrs.date {
+                // Preserve the existing block's marker-line ending so
+                // a CRLF Windows file stays CRLF after rewrite.
+                new_block.line_ending = existing.line_ending;
                 *existing = new_block;
                 return true;
             }
@@ -223,13 +350,35 @@ fn render_block_into(out: &mut String, block: &Block) {
     out.push_str(&format!(" template=\"{}\"", block.attrs.template));
     out.push_str(&format!(" version=\"{}\"", block.attrs.version));
     out.push_str(BEGIN_SUFFIX);
-    out.push('\n');
+    block.line_ending.push_into(out);
     out.push_str(&block.body);
-    if !block.body.ends_with('\n') {
-        out.push('\n');
+    // DAY-187: only force a separator newline when the body is
+    // non-empty AND does not already end in one. The previous
+    // shape (`!body.ends_with('\n') -> push('\n')`) injected an
+    // extra newline for empty bodies because `"" ends_with('\n')`
+    // is false. The empty-body round-trip test
+    // (`empty_block_round_trips_without_blank_line`) pins this
+    // invariant.
+    if !block.body.is_empty() && !ends_with_compatible_newline(&block.body, block.line_ending) {
+        block.line_ending.push_into(out);
     }
     out.push_str(END_MARKER);
-    out.push('\n');
+    block.line_ending.push_into(out);
+}
+
+/// `true` if `body` already ends in a line terminator that is
+/// compatible with the marker line's ending. We accept either `\n`
+/// or `\r\n` for an LF-terminated marker (a body line ending in
+/// CRLF is still a valid line break before the LF closing marker)
+/// and require `\r\n` for a CRLF-terminated marker (otherwise the
+/// closing marker line would appear glued onto a body line, which
+/// markdown readers would render as a heading-paragraph collision).
+fn ends_with_compatible_newline(body: &str, le: LineEnding) -> bool {
+    if le.is_crlf() {
+        body.ends_with("\r\n")
+    } else {
+        body.ends_with('\n')
+    }
 }
 
 fn is_begin_marker(trimmed: &str) -> bool {
@@ -238,6 +387,44 @@ fn is_begin_marker(trimmed: &str) -> bool {
 
 fn is_end_marker(trimmed: &str) -> bool {
     trimmed == END_MARKER
+}
+
+/// DAY-187: marker-aware fenced-code-block sentinel. A "fence" is the
+/// markdown construct ` ```rust ` or ` ~~~ ` opening a code span. We
+/// support backtick and tilde fences with three or more delimiters.
+/// The sentinel records the exact delimiter character and its run
+/// length so an inner shorter run cannot accidentally close the
+/// outer fence — matching CommonMark's "closing fence must use the
+/// same character and at least the same count" rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FenceSentinel {
+    delim: char,
+    len: usize,
+}
+
+impl FenceSentinel {
+    fn detect_open(trimmed: &str) -> Option<FenceSentinel> {
+        for delim in ['`', '~'] {
+            let count = trimmed.chars().take_while(|c| *c == delim).count();
+            if count >= 3 {
+                return Some(FenceSentinel { delim, len: count });
+            }
+        }
+        None
+    }
+
+    /// `true` if `trimmed` is a closing fence for `self`. CommonMark
+    /// requires same character, equal-or-greater run, and no other
+    /// non-whitespace content on the line. We approximate by
+    /// requiring the entire trimmed line to be the delimiter
+    /// repeated — info-strings on the closing fence are not legal.
+    fn line_closes(self, trimmed: &str) -> bool {
+        if trimmed.is_empty() {
+            return false;
+        }
+        let count = trimmed.chars().take_while(|c| *c == self.delim).count();
+        count >= self.len && trimmed.len() == count
+    }
 }
 
 fn parse_begin_attrs(trimmed: &str, line_no: usize) -> Result<MarkerAttrs, MarkerError> {
@@ -395,6 +582,7 @@ mod tests {
         Block {
             attrs: attrs(date),
             body: body.to_string(),
+            line_ending: LineEnding::Lf,
         }
     }
 
@@ -573,5 +761,140 @@ mod tests {
             <!-- dayseam:end -->\n";
         let doc = parse(text).unwrap();
         assert_eq!(render(&doc), text);
+    }
+
+    /// DAY-187: a fenced code block in user prose containing the
+    /// literal marker syntax must NOT be parsed as a real begin/end
+    /// pair. Without the fence-tracking guard, the first save would
+    /// rewrite the user's example block on disk.
+    #[test]
+    fn fenced_marker_syntax_inside_prose_is_not_a_marker() {
+        let text = concat!(
+            "Here's how Dayseam stores its blocks:\n",
+            "\n",
+            "```md\n",
+            "<!-- dayseam:begin date=\"2026-04-18\" run_id=\"example\" template=\"dayseam.dev_eod\" version=\"v\" -->\n",
+            "## Commits\n",
+            "- example body\n",
+            "<!-- dayseam:end -->\n",
+            "```\n",
+            "\n",
+            "End of explanation.\n",
+        );
+        let doc = parse(text).expect("fence-wrapped marker syntax must not be parsed as a marker");
+        // The whole text should round-trip as prose — no Block segment
+        // should exist because the fence makes the markers opaque.
+        assert!(
+            doc.segments.iter().all(|s| matches!(s, Segment::Prose(_))),
+            "fence-wrapped marker syntax must be treated as prose, got {doc:?}"
+        );
+        assert_eq!(render(&doc), text);
+    }
+
+    /// DAY-187 (companion): tilde fences must work the same as
+    /// backtick fences — CommonMark allows both.
+    #[test]
+    fn tilde_fenced_marker_syntax_is_not_a_marker() {
+        let text = concat!(
+            "~~~md\n",
+            "<!-- dayseam:begin date=\"2026-04-18\" run_id=\"example\" template=\"t\" version=\"v\" -->\n",
+            "<!-- dayseam:end -->\n",
+            "~~~\n",
+        );
+        let doc = parse(text).expect("tilde-fenced markers are inert");
+        assert!(doc.segments.iter().all(|s| matches!(s, Segment::Prose(_))));
+        assert_eq!(render(&doc), text);
+    }
+
+    /// DAY-187: a closing fence with a shorter run does NOT close
+    /// the outer fence (CommonMark rule). This pins the
+    /// `FenceSentinel::line_closes` invariant.
+    #[test]
+    fn fence_closing_run_must_match_or_exceed_opening() {
+        let text = concat!(
+            "````md\n",
+            "```\n", // shorter inner run — does NOT close the outer
+            "<!-- dayseam:end -->\n",
+            "```\n",  // still inner
+            "````\n", // matching close
+        );
+        let doc = parse(text).expect("inner shorter run must not close outer fence");
+        assert!(doc.segments.iter().all(|s| matches!(s, Segment::Prose(_))));
+    }
+
+    /// DAY-187: an empty marker block must round-trip without an
+    /// injected blank line. The previous shape pushed a `\n`
+    /// unconditionally because `"" ends_with('\n')` is false; after
+    /// the fix, an empty body emits exactly one `\n` between begin
+    /// and end (the begin's terminator) plus the end's terminator.
+    #[test]
+    fn empty_block_round_trips_without_blank_line() {
+        let text = "<!-- dayseam:begin date=\"2026-04-18\" run_id=\"r1\" template=\"t\" version=\"v\" -->\n\
+                    <!-- dayseam:end -->\n";
+        let doc = parse(text).unwrap();
+        assert_eq!(render(&doc), text);
+    }
+
+    /// DAY-187: a CRLF-terminated marker line must round-trip CRLF.
+    /// Without per-block line-ending tracking, the marker lines
+    /// silently flipped to LF on every save and Windows users saw a
+    /// one-line drift on first contact.
+    #[test]
+    fn crlf_marker_lines_round_trip_preserved() {
+        let text = "<!-- dayseam:begin date=\"2026-04-18\" run_id=\"r1\" template=\"t\" version=\"v\" -->\r\n\
+                    - body\r\n\
+                    <!-- dayseam:end -->\r\n";
+        let doc = parse(text).unwrap();
+        assert_eq!(render(&doc), text);
+    }
+
+    /// DAY-187 (companion): splicing a new block into a CRLF-bearing
+    /// document copies the existing block's terminator forward so
+    /// the rewrite stays CRLF on the marker lines. Without this, a
+    /// CRLF Windows file flipped to LF on every save the moment the
+    /// orchestrator's freshly-rendered LF block was spliced in.
+    #[test]
+    fn splice_preserves_existing_blocks_line_ending() {
+        let text = "<!-- dayseam:begin date=\"2026-04-18\" run_id=\"r1\" template=\"t\" version=\"v\" -->\r\n\
+                    - old body\r\n\
+                    <!-- dayseam:end -->\r\n";
+        let mut doc = parse(text).unwrap();
+        let replaced = splice(&mut doc, block("2026-04-18", "- new body\r\n"));
+        assert!(replaced);
+        let out = render(&doc);
+        // Marker lines must still end in CRLF.
+        assert!(
+            out.contains("<!-- dayseam:end -->\r\n"),
+            "expected CRLF on end marker, got: {out:?}"
+        );
+        assert!(
+            out.contains("\" -->\r\n"),
+            "expected CRLF on begin marker, got: {out:?}"
+        );
+    }
+
+    /// DAY-187 (companion to the L5 audit nit): splice against a doc
+    /// whose last segment is a `Block` (no prose tail) emits a
+    /// syntactically clean concatenation. Pins the
+    /// `ensure_trailing_newline` no-op behaviour for the
+    /// last-segment-is-Block case.
+    #[test]
+    fn splice_against_doc_ending_in_block_produces_clean_output() {
+        // First parse a doc with one block and no trailing prose.
+        let text = "<!-- dayseam:begin date=\"2026-04-17\" run_id=\"r0\" template=\"t\" version=\"v\" -->\n\
+                    - yesterday\n\
+                    <!-- dayseam:end -->\n";
+        let mut doc = parse(text).unwrap();
+        // Splice in a new (different-date) block. The doc's last
+        // segment is currently a Block; ensure_trailing_newline is
+        // a no-op there (Blocks are emitted with their own
+        // terminator). The resulting text must be parseable
+        // again.
+        let replaced = splice(&mut doc, block("2026-04-18", "- today\n"));
+        assert!(!replaced);
+        let out = render(&doc);
+        // Round-trip through parse to assert structural validity.
+        let reparsed = parse(&out).expect("appended doc must re-parse");
+        assert_eq!(reparsed.segments.len(), 2);
     }
 }

@@ -41,6 +41,7 @@ expression: ALL
 - local_git.commits_filtered_by_identity
 - sink.fs.not_writable
 - sink.fs.destination_missing
+- sink.fs.refused_symlink
 - sink.malformed_marker
 - sink.fs.concurrent_write
 - run.cancelled.by_user
