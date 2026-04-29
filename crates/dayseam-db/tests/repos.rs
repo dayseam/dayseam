@@ -351,6 +351,163 @@ async fn find_by_outlook_identity_does_not_match_non_outlook_rows() {
     assert!(miss.is_none());
 }
 
+/// DAY-188 M2 regression: the schema now has a partial UNIQUE
+/// index keyed on the Outlook identity tuple, so two
+/// `(tenant_id, user_principal_name)` rows for `kind = 'Outlook'`
+/// can never both insert. Without this, two concurrent
+/// `outlook_sources_add` IPC calls (or a hand-edited DB) could
+/// stack two rows for the same calendar and double-count every
+/// downstream meeting in the report.
+///
+/// We assert the constraint at the schema level rather than in
+/// the IPC layer because the IPC's find-then-insert pattern is
+/// itself a TOCTOU; the index is the only place that actually
+/// closes the race.
+#[tokio::test]
+async fn outlook_unique_index_rejects_duplicate_account() {
+    let (pool, _dir) = test_pool().await;
+    let repo = SourceRepo::new(pool.clone());
+
+    let mut first = fixture_source();
+    first.id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+    first.kind = SourceKind::Outlook;
+    first.label = "Outlook — vedanth".into();
+    first.config = SourceConfig::Outlook {
+        tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+        user_principal_name: "vedanth@contoso.com".into(),
+    };
+    first.secret_ref = Some(SecretRef {
+        keychain_service: "dayseam.outlook".into(),
+        keychain_account: format!("source:{}", first.id),
+    });
+    repo.insert(&first).await.unwrap();
+
+    // Second insertion for the same `(tenant_id, upn)` — must be
+    // rejected by the UNIQUE index even though every other column
+    // (id, secret_ref) is fresh.
+    let mut dup = fixture_source();
+    dup.id = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+    dup.kind = SourceKind::Outlook;
+    dup.label = "Outlook — vedanth (re-add)".into();
+    dup.config = SourceConfig::Outlook {
+        tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+        user_principal_name: "vedanth@contoso.com".into(),
+    };
+    dup.secret_ref = Some(SecretRef {
+        keychain_service: "dayseam.outlook".into(),
+        keychain_account: format!("source:{}", dup.id),
+    });
+    let err = repo.insert(&dup).await.expect_err(
+        "second Outlook row for the same (tenant_id, upn) must be rejected by the UNIQUE index",
+    );
+    let msg = format!("{err:?}").to_lowercase();
+    assert!(
+        msg.contains("unique") || msg.contains("constraint"),
+        "expected a UNIQUE constraint error from SQLite, got: {err:?}"
+    );
+}
+
+/// DAY-188 M2 (companion): the partial UNIQUE index normalises
+/// `tenant_id` and `user_principal_name` to lower-case before
+/// comparing, so a row inserted with `Vedanth@Contoso.com` and a
+/// row inserted with `vedanth@contoso.com` are treated as the
+/// same calendar even though SQLite's default collation is
+/// case-sensitive on TEXT.
+#[tokio::test]
+async fn outlook_unique_index_is_case_insensitive_on_upn() {
+    let (pool, _dir) = test_pool().await;
+    let repo = SourceRepo::new(pool.clone());
+
+    let mut first = fixture_source();
+    first.id = Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap();
+    first.kind = SourceKind::Outlook;
+    first.label = "Outlook — vedanth".into();
+    first.config = SourceConfig::Outlook {
+        tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+        user_principal_name: "Vedanth@Contoso.com".into(),
+    };
+    first.secret_ref = None;
+    repo.insert(&first).await.unwrap();
+
+    let mut second = fixture_source();
+    second.id = Uuid::parse_str("dddddddd-dddd-dddd-dddd-dddddddddddd").unwrap();
+    second.kind = SourceKind::Outlook;
+    second.label = "Outlook — vedanth (lower)".into();
+    second.config = SourceConfig::Outlook {
+        tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+        user_principal_name: "vedanth@contoso.com".into(),
+    };
+    second.secret_ref = None;
+    let err = repo
+        .insert(&second)
+        .await
+        .expect_err("case-only difference in UPN must still collide on the partial UNIQUE index");
+    let msg = format!("{err:?}").to_lowercase();
+    assert!(
+        msg.contains("unique") || msg.contains("constraint"),
+        "{err:?}"
+    );
+}
+
+/// DAY-188 M1 regression: source-agnostic identities (`source_id
+/// IS NULL`) must dedup on their natural key. The default
+/// `UNIQUE(person_id, source_id, kind, external_actor_id)`
+/// constraint from migration 0003 treats `NULL ≠ NULL` so the
+/// DAO's `INSERT OR IGNORE` silently inserted a duplicate row
+/// every time. The new partial UNIQUE index from migration 0006
+/// substitutes a sentinel for NULL so the dedup actually fires.
+///
+/// Latent in v0.10 (every production caller passes `Some(_)`),
+/// but ready to bite the moment a bare-`GitEmail` backfill
+/// lands.
+#[tokio::test]
+async fn source_identities_dedup_for_null_source_id() {
+    let (pool, _dir) = test_pool().await;
+    let person_repo = PersonRepo::new(pool.clone());
+    let id_repo = SourceIdentityRepo::new(pool.clone());
+
+    let person = person_repo.bootstrap_self("Vedanth").await.unwrap();
+
+    // Two attempts to insert the same source-agnostic
+    // `(person_id, NULL source_id, GitEmail, vedanth@example.com)`
+    // identity, but with two distinct row ids. With the new partial
+    // UNIQUE index in place, only one row lands; without it, the
+    // `INSERT OR IGNORE` would silently append a duplicate because
+    // `NULL ≠ NULL` defeats the natural-key UNIQUE.
+    let first_inserted = id_repo
+        .ensure(&SourceIdentity {
+            id: Uuid::parse_str("11111111-2222-3333-4444-aaaaaaaaaaaa").unwrap(),
+            person_id: person.id,
+            source_id: None,
+            kind: SourceIdentityKind::GitEmail,
+            external_actor_id: "vedanth@example.com".into(),
+        })
+        .await
+        .unwrap();
+    assert!(first_inserted, "first insertion must materialise the row");
+    let second_inserted = id_repo
+        .ensure(&SourceIdentity {
+            id: Uuid::parse_str("11111111-2222-3333-4444-bbbbbbbbbbbb").unwrap(),
+            person_id: person.id,
+            source_id: None,
+            kind: SourceIdentityKind::GitEmail,
+            external_actor_id: "vedanth@example.com".into(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        !second_inserted,
+        "second insertion must be deduped by the partial UNIQUE index"
+    );
+
+    let listed = id_repo.list_for_person(person.id).await.unwrap();
+    assert_eq!(
+        listed.len(),
+        1,
+        "exactly one source-agnostic identity must exist after dedup, got {listed:?}"
+    );
+}
+
 #[tokio::test]
 async fn deleting_nonexistent_source_is_a_no_op() {
     // Safety net — a stray `sources_delete` IPC call for an id that
@@ -941,7 +1098,7 @@ async fn drafts_insert_list_recent_and_prune() {
         verbose_mode: false,
         generated_at: fixed_now(),
     };
-    repo.insert(&draft).await.unwrap();
+    repo.insert(&draft, None).await.unwrap();
 
     let got = repo.get(&draft.id).await.unwrap().unwrap();
     assert_eq!(got, draft);
@@ -1067,12 +1224,69 @@ async fn run_status_and_source_run_state_round_trip_via_draft() {
         verbose_mode: true,
         generated_at: fixed_now(),
     };
-    repo.insert(&draft).await.unwrap();
+    repo.insert(&draft, None).await.unwrap();
     let got = repo.get(&draft.id).await.unwrap().unwrap();
     assert_eq!(got, draft);
     // `_` silences clippy::items_after_test_module warnings when no
     // `fixture_*` helpers are used further down the file.
     let _ = (SourceKind::GitLab, SourceKind::LocalGit);
+}
+
+/// DAY-188 H2 regression: the orchestrator path passes a `RunId`
+/// to `DraftRepo::insert`, and the repo binds it to the
+/// `report_drafts.sync_run_id` column. Without this, every draft
+/// ever written would have a NULL `sync_run_id` (as v0.10 in fact
+/// did) and every future join `report_drafts ⋈ sync_runs`
+/// returned zero rows.
+#[tokio::test]
+async fn draft_insert_round_trips_sync_run_id() {
+    let (pool, _dir) = test_pool().await;
+    let drafts = DraftRepo::new(pool.clone());
+    let runs = SyncRunRepo::new(pool.clone());
+
+    // Seed a sync_runs row first — `report_drafts.sync_run_id` is a
+    // FK so the linkage only persists when the run actually exists.
+    let run = fixture_running_run();
+    runs.insert(&run).await.unwrap();
+
+    let draft = ReportDraft {
+        id: Uuid::new_v4(),
+        date: NaiveDate::from_ymd_opt(2026, 4, 17).unwrap(),
+        template_id: "dev_eod".into(),
+        template_version: "1.0.0".into(),
+        sections: vec![],
+        evidence: vec![],
+        per_source_state: std::collections::HashMap::new(),
+        verbose_mode: false,
+        generated_at: fixed_now(),
+    };
+    drafts.insert(&draft, Some(&run.id)).await.unwrap();
+
+    let linked = drafts.sync_run_id_for(&draft.id).await.unwrap();
+    assert_eq!(
+        linked,
+        Some(run.id),
+        "DraftRepo::insert must persist the sync_run_id linkage"
+    );
+
+    // A draft inserted with `None` retains NULL — the optional-ness
+    // is preserved for test seeders / future import paths.
+    let import_draft = ReportDraft {
+        id: Uuid::new_v4(),
+        date: NaiveDate::from_ymd_opt(2026, 4, 16).unwrap(),
+        template_id: "dev_eod".into(),
+        template_version: "1.0.0".into(),
+        sections: vec![],
+        evidence: vec![],
+        per_source_state: std::collections::HashMap::new(),
+        verbose_mode: false,
+        generated_at: fixed_now(),
+    };
+    drafts.insert(&import_draft, None).await.unwrap();
+    assert_eq!(
+        drafts.sync_run_id_for(&import_draft.id).await.unwrap(),
+        None
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1293,6 +1507,106 @@ async fn sync_runs_reject_terminal_reentry() {
     assert!(
         matches!(err, DbError::InvalidData { .. }),
         "terminal → terminal must be rejected, got {err:?}"
+    );
+}
+
+/// DAY-188 H1 regression: two concurrent transitions for the same
+/// run id must net out to exactly one success — the second
+/// transition has to be rejected on the same `Running → terminal`
+/// guard as a sequential terminal-reentry. Pre-fix the SELECT-
+/// then-UPDATE shape silently let both writers succeed, with the
+/// second one overwriting the first writer's `cancel_reason` /
+/// `finished_at` / `per_source_state_json` columns.
+#[tokio::test]
+async fn sync_runs_concurrent_transitions_serialise_to_one_winner() {
+    let (pool, _dir) = test_pool().await;
+    let repo = SyncRunRepo::new(pool);
+    let run = fixture_running_run();
+    repo.insert(&run).await.unwrap();
+
+    // Two transitions racing on the same row: one calls
+    // `mark_finished` (the orchestrator's happy-path), the other
+    // calls `mark_cancelled` with a SupersededBy reason (the
+    // supersede path's `mark_prior_superseded` writer). Pre-fix
+    // both of these would have updated the row, with the second
+    // one winning silently.
+    let repo_finish = repo.clone();
+    let id = run.id;
+    let new_run_id = RunId::new();
+    let finish_handle =
+        tokio::spawn(async move { repo_finish.mark_finished(&id, fixed_now(), &[]).await });
+    let repo_cancel = repo.clone();
+    let cancel_handle = tokio::spawn(async move {
+        repo_cancel
+            .mark_cancelled(
+                &id,
+                fixed_now(),
+                SyncRunCancelReason::SupersededBy { run_id: new_run_id },
+                &[],
+            )
+            .await
+    });
+
+    let finish_res = finish_handle.await.unwrap();
+    let cancel_res = cancel_handle.await.unwrap();
+
+    let finish_ok = finish_res.is_ok();
+    let cancel_ok = cancel_res.is_ok();
+    assert!(
+        finish_ok ^ cancel_ok,
+        "exactly one of finish/cancel must succeed, got finish={finish_res:?} cancel={cancel_res:?}"
+    );
+    let loser = if finish_ok { cancel_res } else { finish_res };
+    assert!(
+        matches!(loser.as_ref().unwrap_err(), DbError::InvalidData { column, .. } if column == "sync_runs.status"),
+        "loser must be rejected with the sync_runs.status state-machine error, got {loser:?}"
+    );
+
+    // The row must reflect *one* terminal state — not a half-way
+    // overwrite. We don't pin which one wins because the
+    // SQLite-level serialisation of two concurrent UPDATEs is
+    // implementation-defined; only the "exactly one wins"
+    // contract is.
+    let got = repo.get(&run.id).await.unwrap().unwrap();
+    assert!(
+        matches!(
+            got.status,
+            SyncRunStatus::Completed | SyncRunStatus::Cancelled
+        ),
+        "row must end in one terminal state, got {got:?}"
+    );
+    if finish_ok {
+        assert_eq!(got.status, SyncRunStatus::Completed);
+        assert!(
+            got.cancel_reason.is_none() && got.superseded_by.is_none(),
+            "loser's cancel fields must not have leaked onto the winner row: {got:?}"
+        );
+    } else {
+        assert_eq!(got.status, SyncRunStatus::Cancelled);
+        assert_eq!(got.superseded_by, Some(new_run_id));
+    }
+}
+
+/// DAY-188 H1 (companion): a transition against a missing row
+/// must surface the `sync_runs.id` error — distinct from the
+/// `sync_runs.status` error returned for an already-terminal
+/// row. The supersede / shutdown call sites tolerate "already
+/// terminal" but treat "row missing" as a real bug, so the two
+/// have to be distinguishable from the error message even
+/// though both return `rows_affected == 0`.
+#[tokio::test]
+async fn sync_runs_transition_against_missing_row_returns_id_error() {
+    let (pool, _dir) = test_pool().await;
+    let repo = SyncRunRepo::new(pool);
+
+    let phantom = RunId::new();
+    let err = repo
+        .mark_finished(&phantom, fixed_now(), &[])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, DbError::InvalidData { ref column, .. } if column == "sync_runs.id"),
+        "missing row must surface sync_runs.id error, got: {err:?}"
     );
 }
 

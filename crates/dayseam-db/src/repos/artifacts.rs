@@ -31,6 +31,20 @@ impl ArtifactRepo {
     /// `created_at`. Connectors re-run the same sync after fixing a
     /// bug and rely on this being a no-op-or-overwrite, never a
     /// conflict.
+    ///
+    /// **DAY-188 M3:** the `ON CONFLICT … DO UPDATE` branch
+    /// deliberately does NOT touch the `id` column. Today
+    /// `excluded.id` happens to equal `old.id` because every
+    /// connector minting a `(source_id, kind, external_id)` re-uses
+    /// the same deterministic [`ArtifactId`], so reassigning the PK
+    /// is a no-op — but if a future change makes `ArtifactId`
+    /// even momentarily non-deterministic (e.g. a UUID v7 carrying
+    /// a timestamp prefix, or a refactor that mints a fresh id at
+    /// retry time) the previous shape would have re-pointed every
+    /// FK that references this row in lockstep. The safer
+    /// invariant is "PKs are immutable once written"; pinning it
+    /// here makes the future change surface as a UNIQUE-violation
+    /// at the boundary instead of silently rewriting the FK graph.
     pub async fn upsert(&self, artifact: &Artifact) -> DbResult<()> {
         let kind = artifact_kind_to_db(&artifact.kind);
         let payload = serde_json::to_string(&artifact.payload)?;
@@ -38,7 +52,6 @@ impl ArtifactRepo {
             "INSERT INTO artifacts (id, source_id, kind, external_id, payload_json, created_at)
              VALUES (?, ?, ?, ?, ?, ?)
              ON CONFLICT(source_id, kind, external_id) DO UPDATE SET
-                id = excluded.id,
                 payload_json = excluded.payload_json,
                 created_at = excluded.created_at",
         )
