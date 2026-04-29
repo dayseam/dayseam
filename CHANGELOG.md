@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-29
+
 ### Changed
 
 - **DAY-195: CI runs the release workflow's `extract-release-notes.sh`
