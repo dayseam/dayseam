@@ -54,12 +54,14 @@
 //! above the `donut_paths` function explicitly documents how to
 //! re-derive the canonical strings.
 //!
-//! Output convention (lifted from the TS port unchanged):
+//! Output convention (lifted from the TS port unchanged for the
+//! donut; legend is Rust-only for Obsidian / GitHub parity):
 //!
-//!   * Centre `(50, 50)`, outer radius `48`, inner radius `28`,
-//!     viewBox `100×100`, display `72×72` — identical to the live
-//!     preview so the chart in the saved file and the chart in the
-//!     app are visually interchangeable.
+//!   * Centre `(50, 50)`, outer radius `48`, inner radius `28` in a
+//!     `100×100` donut box; a **legend** (swatch + label + count) per
+//!     slice appears **below** the ring in the same SVG. `viewBox`
+//!     height grows with row count; `width="72"` is fixed to match
+//!     the in-app chart width, `height` scales to preserve aspect.
 //!   * Radii formatted as integer literals (`A 48 48 …`); vertex
 //!     coordinates formatted with two decimals (`50.00`, `38.51`,
 //!     …) — matches JavaScript's `Number.toString()` for whole
@@ -103,11 +105,16 @@ const CY: f64 = 50.0;
 const OUTER_RADIUS: u32 = 48;
 /// Inner-hole radius. Matches `INNER_RADIUS` in `DaySummaryChart.tsx`.
 const INNER_RADIUS: u32 = 28;
-/// SVG viewBox edge. Matches `VIEWBOX_SIZE` in the live preview.
-const VIEWBOX_SIZE: u32 = 100;
-/// Display edge in CSS pixels. Matches the `width`/`height` attributes
-/// the live preview applies to its top-card SVG.
-const DISPLAY_SIZE: u32 = 72;
+/// Donut geometry lives in a `100×100` square (matches live `viewBox`).
+const DONUT_VIEW: u32 = 100;
+/// Horizontal `viewBox` width; legend text uses the full width under the donut.
+const VIEWBOX_W: u32 = DONUT_VIEW;
+/// First legend row text baseline (user units), below the donut.
+const LEGEND_FIRST_LINE_Y: u32 = 109;
+/// Vertical gap between legend rows (user units).
+const LEGEND_LINE_SPACING: u32 = 11;
+/// Display width in CSS pixels (matches the live card SVG `width={72}`).
+const DISPLAY_W: u32 = 72;
 
 /// Public entry point: render the entire summary block (headline
 /// paragraph + delimited inline SVG) for `draft`. Returns an empty
@@ -254,31 +261,50 @@ fn render_headline(counts: &[(SourceKind, u32)], total: u32) -> String {
     format!("Spread across {}.", oxford_join(&parts))
 }
 
-/// Render the inline SVG for the donut. Geometry, viewBox, and
-/// display size all match the live preview so the marketing
-/// screenshots and the rendered note look interchangeable.
+/// Render the inline SVG for the donut. Path geometry and palette
+/// match the live preview; the **legend** (colour → source) is
+/// included so Obsidian and other markdown readers show the same
+/// mapping the desktop HTML legend provides.
 ///
 /// Each slice is a single `<path>` with the slice's brand-accent
 /// `fill` attribute and a `<title>` child carrying the tooltip
 /// copy GitHub / Obsidian show on hover. A `<style>` block at the
-/// top layers a `prefers-color-scheme: dark` override for kinds
-/// whose default mark sits poorly on a dark canvas (notably the
-/// GitHub black). Viewers that strip `<style>` (some sandboxed
-/// pipelines do for safety) keep the inline fills and lose only
-/// the dark-mode adaptation.
+/// top layers light/dark palette for kinds and for centre/legend text.
+/// Slice paths keep inline `fill` so the ring stays coloured if `<style>`
+/// is stripped; typography uses **class-based** fills only so dark
+/// themes (Obsidian Reading view) can override muddy inline greys.
 fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
+    let vb_h = view_box_height_px(counts.len());
+    let display_h = display_height_px(vb_h);
+
     let segments: Vec<u32> = counts.iter().map(|(_, n)| *n).collect();
     let paths = donut_paths(&segments, CX, CY, OUTER_RADIUS, INNER_RADIUS);
     let aria = build_aria_label(counts);
 
     let mut out = String::new();
     out.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {vb} {vb}\" width=\"{ds}\" height=\"{ds}\" role=\"img\" aria-label=\"{a}\">\n",
-        vb = VIEWBOX_SIZE,
-        ds = DISPLAY_SIZE,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {vbw} {vbh}\" width=\"{dw}\" height=\"{dh}\" role=\"img\" aria-label=\"{a}\">\n",
+        vbw = VIEWBOX_W,
+        vbh = vb_h,
+        dw = DISPLAY_W,
+        dh = display_h,
         a = escape_xml_attr(&aria),
     ));
+    // Text colours live in `<style>` only — inline `fill` on `<text>`
+    // wins over class rules in embedded SVG (Obsidian, some WebKit hosts),
+    // which left `#404040` cemented on-screen even when prefers dark.
+    //
+    // `color-scheme` nudges UA/theme resolution inside the subtree so vault
+    // dark themes that respect it still pick up `@media (prefers-color-scheme:
+    // dark)` for centre + legend.
     out.push_str("  <style>\n");
+    out.push_str("    svg {\n");
+    out.push_str("      color-scheme: light dark;\n");
+    out.push_str("    }\n");
+    out.push_str("    .ds-centre-label,\n");
+    out.push_str("    .ds-legend-text {\n");
+    out.push_str("      fill: var(--text-normal, #374151);\n");
+    out.push_str("    }\n");
     out.push_str("    @media (prefers-color-scheme: dark) {\n");
     for kind in counts.iter().map(|(k, _)| *k) {
         let dark = connector_accent_dark(kind);
@@ -291,9 +317,8 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
             ));
         }
     }
-    // Centre numeral picks up the same theme adaptation so it stays
-    // legible against either a dark or light viewer background.
-    out.push_str("      .ds-centre-label { fill: #E5E7EB; }\n");
+    out.push_str("      .ds-centre-label,\n");
+    out.push_str("      .ds-legend-text { fill: var(--text-normal, #F9FAFB); }\n");
     out.push_str("    }\n");
     out.push_str("  </style>\n");
 
@@ -323,11 +348,54 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
     // matches the desktop app's default UI font so the rendered
     // markdown looks at home next to the prose around it.
     out.push_str(&format!(
-        "  <text class=\"ds-centre-label\" x=\"{CX}\" y=\"{CY}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"20\" font-weight=\"600\" fill=\"#404040\">{total}</text>\n"
+        "  <text class=\"ds-centre-label\" x=\"{CX}\" y=\"{CY}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"20\" font-weight=\"600\">{total}</text>\n"
     ));
+
+    out.push_str("  <g class=\"ds-legend\" aria-hidden=\"true\">\n");
+    for (i, (kind, count)) in counts.iter().enumerate() {
+        let line_y = LEGEND_FIRST_LINE_Y + i as u32 * LEGEND_LINE_SPACING;
+        let rect_top = line_y.saturating_sub(3);
+        let pct = whole_percent(*count, total);
+        let caption = format!(
+            "{} — {} item{} ({}%)",
+            kind.display_label(),
+            count,
+            plural_s(*count),
+            pct
+        );
+        out.push_str(&format!(
+            "    <rect class=\"ds-{cls}\" x=\"4\" y=\"{rect_top}\" width=\"8\" height=\"8\" rx=\"2\" fill=\"{light}\"/>\n",
+            cls = kind_css_class(*kind),
+            rect_top = rect_top,
+            light = connector_accent_light(*kind),
+        ));
+        out.push_str(&format!(
+            "    <text class=\"ds-legend-text\" x=\"16\" y=\"{line_y}\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"7\">{cap}</text>\n",
+            line_y = line_y,
+            cap = escape_xml_text(&caption),
+        ));
+    }
+    out.push_str("  </g>\n");
 
     out.push_str("</svg>");
     out
+}
+
+/// `viewBox` height: donut uses the top `100` units; legend stacks below.
+#[must_use]
+fn view_box_height_px(slice_count: usize) -> u32 {
+    if slice_count == 0 {
+        return DONUT_VIEW;
+    }
+    let rows = slice_count as u32;
+    let last_line_y =
+        LEGEND_FIRST_LINE_Y + rows.saturating_sub(1).saturating_mul(LEGEND_LINE_SPACING);
+    last_line_y + 8
+}
+
+#[must_use]
+fn display_height_px(view_box_h: u32) -> u32 {
+    ((DISPLAY_W as u64 * view_box_h as u64 + (VIEWBOX_W as u64 / 2)) / VIEWBOX_W as u64) as u32
 }
 
 /// Build one SVG `d` string per slice, in the same shape and byte
@@ -835,9 +903,13 @@ mod tests {
         // Centre label echoes the day's bullet total.
         assert!(svg.contains(">6</text>"), "centre numeral missing: {svg}");
 
-        // viewBox + display match the live preview.
-        assert!(svg.contains("viewBox=\"0 0 100 100\""), "{svg}");
-        assert!(svg.contains("width=\"72\" height=\"72\""), "{svg}");
+        // Taller viewBox: legend under donut (2 slices → height 128, display height 92).
+        assert!(svg.contains("viewBox=\"0 0 100 128\""), "{svg}");
+        assert!(svg.contains("width=\"72\" height=\"92\""), "{svg}");
+
+        assert!(svg.contains("class=\"ds-legend\""), "{svg}");
+        assert!(svg.contains(">GitHub — 4 items (67%)</text>"), "{svg}");
+        assert!(svg.contains(">GitLab — 2 items (33%)</text>"), "{svg}");
 
         // aria-label summarises the day.
         assert!(
@@ -856,11 +928,24 @@ mod tests {
             !svg.contains(".ds-gitlab { fill: #FC6D26; }"),
             "GitLab override should be elided when light==dark: {svg}"
         );
-        // Centre label gets a dark-mode override so it stays
-        // legible against either viewer background.
+        // Typography: Obsidian theme vars + dark prefers (no inline fill on <text>).
         assert!(
-            svg.contains(".ds-centre-label { fill: #E5E7EB; }"),
-            "centre-label dark override missing: {svg}"
+            svg.contains("fill: var(--text-normal, #374151);"),
+            "light-mode text fill missing: {svg}"
+        );
+        assert!(
+            svg.contains("color-scheme: light dark;"),
+            "svg color-scheme hint missing: {svg}"
+        );
+        assert!(
+            !svg.contains("fill=\"#404040\""),
+            "inline grey text fill must not trump stylesheet in embeds: {svg}"
+        );
+        assert!(
+            svg.contains(
+                ".ds-centre-label,\n      .ds-legend-text { fill: var(--text-normal, #F9FAFB); }"
+            ),
+            "centre/legend dark override missing: {svg}"
         );
     }
 
