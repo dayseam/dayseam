@@ -9,11 +9,30 @@
 // Phase-1 `useRunStreams` so a future refactor can merge them if
 // that ends up being the right abstraction.
 //
-// Stale-run protection: each `generate()` call swaps a fresh pair
-// of channels into `currentRef` and the `onmessage` callbacks gate
-// on identity. A second `generate()` before the previous run
-// finishes will start a fresh run on the Rust side and ignore any
-// late events from the old one.
+// Stale-run protection (DAY-185): every `generate()` swaps a fresh
+// pair of channels into `currentRef`. The `onmessage` callbacks gate
+// on **channel-object identity** (`currentRef.current?.progress !==
+// progress`) so a tail event from a prior run cannot reach state.
+// The `report:completed` listener matches payloads with
+// `payload.run_id === ref.runId` once the handshake has supplied an
+// id. During the handshake gap (`ref.runId === null`) completions are
+// **stashed** on `pendingCompletionRef` and applied **after** invoke
+// returns only when `pending.run_id === runId`, so (a) fast runs that
+// finish before IPC returns still hydrate the draft, and (b) a stale
+// superseded run id never applies once the new id is known. Background
+// scheduler runs can't leak because `ref` is `null` while idle.
+//
+// Failure path (DAY-185 #3): when the `report_generate` invoke
+// itself rejects, the channel may already have queued progress
+// events on the Rust side. The catch block nulls `currentRef.current`
+// so subsequent message handlers' identity check fails and tail
+// events don't flip `failed` back to `running`.
+//
+// Cancel-during-handshake (DAY-185 #5): if the user clicks Cancel
+// before `report_generate` has returned the run id, we record the
+// intent on `cancelPendingRef`. When the run id arrives we honour
+// it by firing `report_cancel` immediately. Without this, the
+// Cancel button is a silent no-op during the handshake gap.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -129,6 +148,44 @@ export function useReport(): UseReportState {
   // blocking on a React render cycle; ref mirrors whatever the
   // completion listener last wrote into state.draft.
   const draftIdRef = useRef<string | null>(null);
+  // DAY-185 #5: if the user clicks Cancel while `report_generate`
+  // is still mid-handshake (no runId yet), record the intent so
+  // the awaiting `generate()` call can fire `report_cancel` as
+  // soon as it has the run id.
+  const cancelPendingRef = useRef<boolean>(false);
+  // DAY-185 #2: any in-flight `report_get` triggered by a
+  // `report:completed` event must not write into state after the
+  // hook unmounts. The outer `useEffect` flips this to `true` in
+  // its cleanup; the listener's `.then` checks before calling
+  // `setState`. Tracked as a ref because the check happens inside
+  // a closure registered on the Tauri event bus.
+  const unmountedRef = useRef<boolean>(false);
+  // While `ref.runId === null`, stash at most one terminal payload;
+  // `generate()` flushes it after invoke returns if `run_id` matches.
+  const pendingCompletionRef = useRef<ReportCompletedEvent | null>(null);
+
+  const applyReportCompletion = useCallback((payload: ReportCompletedEvent) => {
+    setState((prev) => ({
+      ...prev,
+      status: statusFromSyncRunStatus(payload.status),
+    }));
+    if (payload.draft_id) {
+      const draftId = payload.draft_id;
+      draftIdRef.current = draftId;
+      void invoke("report_get", { draftId })
+        .then((draft) => {
+          if (unmountedRef.current) return;
+          setState((prev) => ({ ...prev, draft }));
+        })
+        .catch((err) => {
+          if (unmountedRef.current) return;
+          setState((prev) => ({
+            ...prev,
+            error: err instanceof Error ? err.message : JSON.stringify(err),
+          }));
+        });
+    }
+  }, []);
 
   // One listener per mount pipes `report:completed` into the hook.
   // We keep it here rather than in `generate()` so we don't miss
@@ -139,30 +196,16 @@ export function useReport(): UseReportState {
     let cancelled = false;
     listen<ReportCompletedEvent>(REPORT_COMPLETED_EVENT, (evt) => {
       const payload = evt.payload;
-      if (
-        currentRef.current?.runId &&
-        payload.run_id !== currentRef.current.runId
-      ) {
+      const ref = currentRef.current;
+      // DAY-185 #1: no foreground generate — background completions only.
+      if (!ref) return;
+      // Handshake gap: stash until invoke returns; flush compares ids.
+      if (ref.runId === null) {
+        pendingCompletionRef.current = payload;
         return;
       }
-      setState((prev) => ({
-        ...prev,
-        status: statusFromSyncRunStatus(payload.status),
-      }));
-      if (payload.draft_id) {
-        const draftId = payload.draft_id;
-        draftIdRef.current = draftId;
-        void invoke("report_get", { draftId })
-          .then((draft) => {
-            setState((prev) => ({ ...prev, draft }));
-          })
-          .catch((err) => {
-            setState((prev) => ({
-              ...prev,
-              error: err instanceof Error ? err.message : JSON.stringify(err),
-            }));
-          });
-      }
+      if (payload.run_id !== ref.runId) return;
+      applyReportCompletion(payload);
     })
       .then((fn) => {
         if (cancelled) {
@@ -176,13 +219,16 @@ export function useReport(): UseReportState {
       });
     return () => {
       cancelled = true;
+      unmountedRef.current = true;
       unlisten?.();
     };
-  }, []);
+  }, [applyReportCompletion]);
 
   const reset = useCallback(() => {
     currentRef.current = null;
     draftIdRef.current = null;
+    cancelPendingRef.current = false;
+    pendingCompletionRef.current = null;
     setState(INITIAL);
   }, []);
 
@@ -192,10 +238,27 @@ export function useReport(): UseReportState {
       sourceIds: string[],
       templateId: string | null = null,
     ) => {
+      // DAY-185 #4: any prior run's channels are about to be
+      // dropped. Tauri 2's `Channel` has no public unregister
+      // API, so the bridge entry stays in `transformCallback`
+      // until the page reloads — but we *can* short-circuit any
+      // late delivery by replacing the `onmessage` handler with
+      // a no-op. That keeps the closure-capture footprint
+      // bounded (no setState, no React reconciliation work) even
+      // if the Rust side emits one final tail event after we
+      // swap.
+      const previous = currentRef.current;
+      if (previous) {
+        previous.progress.onmessage = () => {};
+        previous.logs.onmessage = () => {};
+      }
+
       const progress = new Channel<ProgressEvent>();
       const logs = new Channel<LogEvent>();
       currentRef.current = { runId: null, progress, logs };
       draftIdRef.current = null;
+      cancelPendingRef.current = false;
+      pendingCompletionRef.current = null;
 
       setState({ ...INITIAL, status: "starting" });
 
@@ -223,19 +286,71 @@ export function useReport(): UseReportState {
           currentRef.current.runId = runId;
         }
         setState((prev) => ({ ...prev, runId }));
+        // `pendingCompletionRef.current` is populated during the awaited
+        // `invoke` by the `report:completed` listener. TS 5's control flow
+        // for `Ref['current']` after `await` does not preserve
+        // `ReportCompletedEvent | null` (it collapses for this read site), so
+        // re-assert the nominal shape before comparing to `runId`.
+        const stashedTerminal = pendingCompletionRef.current as unknown as
+          | ReportCompletedEvent
+          | null;
+        pendingCompletionRef.current = null;
+        const stillOnThisGeneration =
+          currentRef.current?.progress === progress;
+        if (
+          stillOnThisGeneration &&
+          stashedTerminal !== null &&
+          stashedTerminal.run_id === runId
+        ) {
+          applyReportCompletion(stashedTerminal);
+        }
+        // DAY-185 #5: honour a Cancel click that landed during
+        // the handshake gap. Read-and-clear under the same
+        // identity check so a Cancel intent recorded *before*
+        // this generate() ran (impossible today but defensive
+        // against future refactors) doesn't bleed into a fresh
+        // run.
+        if (cancelPendingRef.current && currentRef.current?.progress === progress) {
+          cancelPendingRef.current = false;
+          void invoke("report_cancel", { runId }).catch((err) => {
+            console.warn("dayseam pending-cancel failed", err);
+          });
+        }
         return runId;
       } catch (err) {
+        // DAY-185 #3: null the ref so the channel `onmessage`
+        // identity checks fail for any tail progress / log
+        // events the Rust side may already have queued. Without
+        // this, the channel handler still matches and would
+        // flip `failed` back to `running` via
+        // `deriveStatusFromProgress`.
+        if (currentRef.current?.progress === progress) {
+          currentRef.current = null;
+        }
+        pendingCompletionRef.current = null;
         const message = err instanceof Error ? err.message : JSON.stringify(err);
         setState((prev) => ({ ...prev, status: "failed", error: message }));
         throw err;
       }
     },
-    [],
+    [applyReportCompletion],
   );
 
   const cancel = useCallback(async () => {
     const runId = currentRef.current?.runId;
-    if (!runId) return;
+    // DAY-185 #5: if there is an active foreground generate but
+    // the runId hasn't arrived yet, queue a pending-cancel intent
+    // so the awaiting `generate()` call can honour it the moment
+    // the runId resolves. Without this, the Cancel button looks
+    // wired up (the sidebar flips into the Cancel state on
+    // `status: "starting"`) but does nothing during the
+    // handshake.
+    if (!runId) {
+      if (currentRef.current) {
+        cancelPendingRef.current = true;
+      }
+      return;
+    }
     await invoke("report_cancel", { runId });
   }, []);
 
