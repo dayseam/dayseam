@@ -47,6 +47,37 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Added
+
+- **DAY-214: Persist the day-summary donut chart into the saved markdown
+  file.** The SVG chart and headline are written inside an HTML-comment
+  block so GitHub/Obsidian still render cleanly; users deleting the chart
+  can remove one contiguous block rather than chasing scattered fragments.
+
+### Fixed
+
+- **DAY-185: Correct `useReport` races around `report:completed`,
+  handshake timing, tail progress after failed generate, queued cancel
+  during handshake, and stricter stale-run filtering** so superseded runs
+  and background completions cannot repaint the foreground preview during
+  a fresh generate.
+
+- **DAY-188: Database integrity fixes — atomic `sync_runs` terminal
+  transitions, wiring `report_drafts.sync_run_id`, partial UNIQUE indexes
+  for Outlook accounts and source-agnostic identities, safer `artifacts`
+  upserts** — eliminates TOCTOU double-finalisation drift and aligns DAOs
+  with migration 0006.
+
+### Security
+
+- **DAY-186: Validate GitLab base URLs server-side and tighten shared
+  `HttpClient` redirect/header behaviour** so PATs are not echoed across
+  hostile redirects.
+
+- **DAY-187: Markdown sink — refuse symlink/file-type surprises on read,
+  neutralise bullet text that could break marker fences, CRLF/frontmatter/
+  fenced-code safeguards, atomic POSIX file modes.**
+
 ## [0.10.0] - 2026-04-29
 
 ### Changed
