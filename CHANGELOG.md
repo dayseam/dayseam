@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-29
+
 ### Changed
 
 - **DAY-206: Releases now publish a stable-named `Dayseam.dmg`
