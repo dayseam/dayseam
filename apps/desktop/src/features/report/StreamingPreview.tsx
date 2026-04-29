@@ -19,6 +19,7 @@ import type {
 } from "@dayseam/ipc-types";
 import type { ReportStatus } from "../../ipc";
 import { BulletEvidencePopover } from "./BulletEvidencePopover";
+import { DaySummaryChart } from "./DaySummaryChart";
 
 // DAY-104. Keep this ordering (and the emoji / label pair) in
 // lockstep with `dayseam_core::SourceKind::render_order` +
@@ -236,16 +237,29 @@ export function StreamingPreview({
               rescanning your sources.
             </p>
           ) : (
-            draft.sections.map((section) => (
-              <SectionView
-                key={section.id}
-                section={section}
-                draft={draft}
-                activeBulletId={activeBulletId}
-                onOpenBullet={setActiveBulletId}
-                onCloseBullet={() => setActiveBulletId(null)}
-              />
-            ))
+            <>
+              {/*
+                DAY-211. At-a-glance day summary. Sits between the
+                report header and the kind-grouped bullet sections so
+                a reader's first downward glance lands on the
+                breakdown ("today was mostly GitHub + Jira") before
+                they start parsing prose. Slice clicks anchor to the
+                matching `[data-kind="<kind>"]` element rendered by
+                `SectionView` below — the chart is the legend that
+                also navigates.
+              */}
+              <DaySummaryChart sections={draft.sections} />
+              {draft.sections.map((section) => (
+                <SectionView
+                  key={section.id}
+                  section={section}
+                  draft={draft}
+                  activeBulletId={activeBulletId}
+                  onOpenBullet={setActiveBulletId}
+                  onCloseBullet={() => setActiveBulletId(null)}
+                />
+              ))}
+            </>
           )}
         </article>
       ) : isCompleted ? (
