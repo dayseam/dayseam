@@ -47,6 +47,13 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-214 (saved report):** the inline SVG in exported daily notes now
+  includes a **legend** (colour swatch + source name + count/%) under the
+  donut so Obsidian and other readers show which slice is which, matching
+  the in-app chart’s list.
+
 ## [0.11.0] - 2026-04-29
 
 ### Changed
