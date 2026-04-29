@@ -50,5 +50,6 @@ mod frontmatter;
 mod lock;
 mod markdown;
 mod markers;
+mod summary_chart;
 
 pub use adapter::{report_filename_for_date, MarkdownFileSink};
