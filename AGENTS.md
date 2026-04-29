@@ -92,6 +92,12 @@ follow them; humans editing directly are also expected to.
   v0.8.0 pair (no `[0.7.0]` block exists on master at all) and the
   v0.8.1 → v0.8.2 pair (v0.8.2 re-shipped v0.8.1's DAY-161 entry on
   top of its own DAY-159 entry).
+  PRs labeled `semver:patch`, `semver:minor`, or `semver:major` must
+  include non-empty release notes under `[Unreleased]` (or a filled
+  `[$VERSION]` block for capstone PRs): CI runs the same
+  `extract-release-notes.sh` gate as `release.yml` (DAY-195), so an
+  empty changelog fails before merge instead of breaking the release
+  workflow.
 
 - **Verification before claiming done:** before opening a PR the agent
   should have run the relevant subset of `pnpm -r lint`, `pnpm -r

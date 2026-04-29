@@ -45,7 +45,12 @@
 # survive the release workflow.
 #
 # Usage:
-#   bump-version.sh {patch|minor|major|none}
+#   bump-version.sh [--dry-run] {patch|minor|major|none}
+#
+# `--dry-run` prints the computed target version and exits without
+# touching VERSION / Cargo.toml / tauri.conf.json (DAY-195: CI
+# preflight and local checks that mirror `release.yml` without
+# mutating the tree).
 #
 # Exit codes:
 #   0  success (prints target version to stdout)
@@ -62,8 +67,14 @@ VERSION_FILE="${REPO_ROOT}/VERSION"
 CARGO_TOML="${REPO_ROOT}/Cargo.toml"
 TAURI_CONF="${REPO_ROOT}/apps/desktop/src-tauri/tauri.conf.json"
 
+DRY_RUN=false
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=true
+  shift
+fi
+
 if [[ $# -ne 1 ]]; then
-  echo "usage: bump-version.sh {patch|minor|major|none}" >&2
+  echo "usage: bump-version.sh [--dry-run] {patch|minor|major|none}" >&2
   exit 1
 fi
 
@@ -128,6 +139,11 @@ case "$LEVEL" in
     exit 1
     ;;
 esac
+
+if [[ "$DRY_RUN" == true ]]; then
+  printf '%s\n' "$TARGET"
+  exit 0
+fi
 
 # In-place file rewrites use awk with a temp file. awk's range
 # handling is identical on GNU (Linux CI) and BSD (local macOS) awks,

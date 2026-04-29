@@ -47,6 +47,13 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Changed
+
+- **DAY-195: CI runs the release workflow's `extract-release-notes.sh`
+  preflight on every PR that carries `semver:patch|minor|major`,** so
+  merging without `[Unreleased]` bullets can no longer brick automated
+  releases the way empty changelog content did for #183.
+
 ## [0.10.1] - 2026-04-29
 
 ### Added
