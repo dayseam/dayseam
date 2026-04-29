@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-04-29
+
 ### Fixed
 
 - **DAY-214 (saved report):** the inline SVG in exported daily notes now
