@@ -47,6 +47,12 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-214 (saved report):** legend + centre labels in the inline SVG now
+  follow Obsidian’s theme text colour (`--text-normal`) so dark vaults
+  don’t show muddy grey captions.
+
 ## [0.12.0] - 2026-04-29
 
 ### Fixed
