@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-04-30
+
 ### Added
 
 - **DAY-210 / MAS-1b:** MAS **stub entitlements** [`entitlements.mas.plist`](apps/desktop/src-tauri/entitlements.mas.plist) wired through `tauri.mas.conf.json`, documented in [`entitlements.mas.md`](apps/desktop/src-tauri/entitlements.mas.md), and verified in CI: new macOS job **`desktop-bundle (direct + MAS)`** runs two `tauri build --bundles app` passes (default + MAS merge) then [`verify-tauri-bundle-entitlements.sh`](scripts/ci/verify-tauri-bundle-entitlements.sh); `shell-scripts` on macOS also runs [`check-entitlements.sh`](scripts/ci/check-entitlements.sh) against the MAS plist via **`ENTITLEMENTS_FILE`**.
