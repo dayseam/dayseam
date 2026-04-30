@@ -1,6 +1,6 @@
 # Phase 5 (MAS): Mac App Store distribution — Implementation plan
 
-> **Status:** planning document. **Target:** complete Phase 5 engineering on the **`0.13.x`** line; if Apple or CI blockers force overflow, document remaining work under **`MAS-*-followup`** and the next patch line (**`0.14.x`**) only by explicit decision — do not silently drift.  
+> **Status:** **MAS-0a** — active for execution (plan index in [`README.md`](./README.md); locked **Versioning contract** below). **MAS-0b** expands [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md). **Target:** complete Phase 5 engineering on the **`0.13.x`** line; if Apple or CI blockers force overflow, document remaining work under **`MAS-*-followup`** and the next patch line (**`0.14.x`**) only by explicit decision — do not silently drift.  
 > **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210).  
 > **Canonical architecture:** this phase extends [`ARCHITECTURE.md`](../../ARCHITECTURE.md); sandbox-specific decisions live in the Phase 5 architecture addendum produced by **MAS-0b** (below).  
 > **Agent execution:** follow [`AGENTS.md`](../../AGENTS.md) — issue → branch `DAY-NNN` from `master`, one commit per branch, no agent-merge of PRs.
@@ -345,3 +345,4 @@ MAS-9a ──► MAS-9c
 | 2026-04-30 | Initial Phase 5 plan (`v0.13.0` kickoff). |
 | 2026-04-30 | Testing / flags / dual-channel / review fixes / #210. |
 | 2026-04-30 | **Hardening pass:** locked semver (**minor** → `v0.13.0`); two exit bars; coexistence + migration + bookmark contract; **MAS-4f**; **MAS-6c** merged into **MAS-6b**; real-shell **MAS-2b**; early privacy inventory; codesign CI gates; **MAS-1c** optional; capability full audit; skew/rollback; **MAS-8b** disposable note; graph dependencies; **MAS-0b** expanded obligations. |
+| 2026-04-30 | **MAS-0a:** [`README.md`](./README.md) Phase 5 row links [#210](https://github.com/dayseam/dayseam/issues/210) and calls out **MAS-0a** deliverables; intro copy covers v0.1 vs later phases; plan header marks execution (vs draft-only). |
