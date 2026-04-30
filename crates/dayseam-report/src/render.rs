@@ -125,7 +125,8 @@ fn render_sync_issues(input: &ReportInput) -> Option<RenderedSection> {
             let label = kind.map_or_else(
                 || {
                     let hex = source_id.simple().to_string();
-                    format!("Source `{}`", &hex[..8])
+                    let prefix = hex.get(..8).unwrap_or(hex.as_str());
+                    format!("Source `{prefix}`")
                 },
                 |k| k.display_label().to_string(),
             );
