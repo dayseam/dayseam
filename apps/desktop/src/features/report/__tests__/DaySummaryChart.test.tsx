@@ -113,6 +113,27 @@ describe("aggregateByKind", () => {
     expect(aggregateByKind(sections)).toEqual([{ kind: "GitHub", count: 1 }]);
   });
 
+  it("does not count sync_issues bullets with null source_kind as activity", () => {
+    const syncIssues = makeSection("sync_issues", "Sync issues", [
+      makeBullet("s1", "**GitLab** sync failed: offline", null),
+      makeBullet("s2", "**GitHub** sync failed: timeout", null),
+    ]);
+    const counts = aggregateByKind([COMMITS_SECTION, syncIssues]);
+    const byKind = Object.fromEntries(counts.map((c) => [c.kind, c.count]));
+    // COMMITS_SECTION alone: two GitHub commits, one GitLab, one each
+    // other kind; sync rows are null `source_kind` and must not add to
+    // GitHub/GitLab (the strings mention those names but are not typed
+    // kinds).
+    expect(byKind).toEqual({
+      GitHub: 2,
+      GitLab: 1,
+      Jira: 1,
+      Confluence: 1,
+      Outlook: 1,
+      LocalGit: 1,
+    });
+  });
+
   it("sums counts across multiple sections", () => {
     const counts = aggregateByKind([COMMITS_SECTION, PRS_SECTION]);
     const byKind = Object.fromEntries(counts.map((c) => [c.kind, c.count]));

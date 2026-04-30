@@ -112,9 +112,11 @@ export interface KindCount {
  * Aggregate bullets across every section of a draft into one
  * count per `SourceKind`, dropping kinds with zero bullets.
  *
- * Three shapes of bullet are excluded from the chart entirely:
+ * Several bullet shapes never contribute to slice counts:
  *
- *   1. `source_kind === null` (legacy pre-DAY-104 drafts).
+ *   1. `source_kind === null` (legacy pre-DAY-104 drafts, plus DAY-201
+ *      `sync_issues` diagnostics — prose may bold “GitLab” etc., but the
+ *      typed field stays null so connector failures never read as “work”).
  *   2. `source_kind === undefined` (the e2e mock omits the field
  *      from its baseline LocalGit bullets; runtime data does
  *      not always honour the ts-rs-generated `SourceKind | null`

@@ -143,10 +143,11 @@ pub(crate) fn render_block(draft: &ReportDraft) -> String {
 }
 
 /// Aggregate every bullet across every section into one count per
-/// [`SourceKind`]. Bullets with `source_kind == None` (legacy
-/// pre-DAY-104 drafts) are excluded — they have no kind to paint
-/// and including them as an "unknown" slice would teach the reader
-/// a category that doesn't exist anywhere else in the saved file.
+/// [`SourceKind`]. Skip bullets whose `source_kind` is `None`: legacy
+/// pre-DAY-104 drafts have no forge to paint; DAY-201 `sync_issues`
+/// diagnostics deliberately omit it so failures are not mistaken for
+/// work. Counting unknowns would invent a slice the reader cannot map
+/// back to headings elsewhere in the note.
 ///
 /// Sorted by count descending, ties broken by
 /// [`SourceKind::render_order`] so re-renders are stable.
@@ -681,6 +682,26 @@ mod tests {
             ],
         )]);
         assert_eq!(aggregate_by_kind(&d), vec![(SourceKind::GitHub, 1)]);
+    }
+
+    /// DAY-201 sync-issue rows use `source_kind: None` so they must not
+    /// inflate kind counts when real activity exists for the same forge.
+    #[test]
+    fn aggregate_ignores_sync_section_none_kind_alongside_activity() {
+        let d = draft_with(vec![
+            section(
+                "sync_issues",
+                vec![bullet("sync-1", None), bullet("sync-2", None)],
+            ),
+            section(
+                "commits",
+                vec![
+                    bullet("c1", Some(SourceKind::GitLab)),
+                    bullet("c2", Some(SourceKind::GitLab)),
+                ],
+            ),
+        ]);
+        assert_eq!(aggregate_by_kind(&d), vec![(SourceKind::GitLab, 2)]);
     }
 
     #[test]

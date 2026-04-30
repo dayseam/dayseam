@@ -47,6 +47,17 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-201:** Reports surface per-source sync failures inline (e.g. GitLab
+  unreachable without VPN) instead of silently rendering as “No tracked
+  activity”, while still generating other sources’ sections.
+  Sync-issue rows omit `source_kind` so they do **not** count toward the
+  day-summary donut (in-app preview and saved Markdown SVG). Failed runs
+  with no stored error, or sources missing from the kind map, still render a
+  readable row. Also brings `Cargo.lock` workspace stanzas in line with the
+  **0.12.1** manifests so `cargo metadata --locked` succeeds.
+
 ## [0.12.1] - 2026-04-30
 
 ### Fixed
