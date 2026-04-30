@@ -309,12 +309,23 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ---
 
-## 20. Open decisions checklist (pre-MAS-1a gate)
+## 20. Open decisions checklist (pre–App Store submission)
 
-- [ ] Final **MAS bundle identifier** + Team ID pairing registered in Apple Developer.
-- [ ] Confirm **`DATA_SUBDIR` / Keychain prefix** strings for MAS profile in code (today hardcoded to `dev.dayseam.desktop` in `startup.rs`).
+- [x] **MAS bundle identifier (scaffold)** — `tauri.mas.conf.json` sets **`dev.dayseam.mas`** for merge builds (**MAS-1a**). Replace with the final App Store Connect bundle id when registered.
+- [ ] Confirm **`DATA_SUBDIR` / Keychain prefix** strings for MAS profile in Rust (`startup.rs` and secret descriptors) so co-installed SKUs do not trample state.
 - [ ] Confirm **JIT entitlement** narrative with legal/compliance if Apple pushes back.
 - [ ] Confirm **network entitlement** shape for self-hosted connector domains.
+
+---
+
+## 21. Build profiles (**MAS-1a**)
+
+| Profile | Command | Cargo features | Tauri config |
+|---------|---------|----------------|--------------|
+| **Direct (default)** | `pnpm --filter @dayseam/desktop tauri build` | none (release) | [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) only |
+| **MAS (scaffold)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas`) |
+
+The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/src/lib.rs) (`"direct"` \| `"mas"`) for future compile-time gates — **no** user-visible behaviour branches yet.
 
 ---
 
@@ -323,3 +334,4 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 | Date | Change |
 |------|--------|
 | 2026-04-30 | **MAS-0b:** initial full addendum (matrices, bookmarks, coexistence, subprocess baseline, skew, testing). |
+| 2026-04-30 | **MAS-1a:** §21 build profiles + open-decisions checkbox for scaffold bundle id. |

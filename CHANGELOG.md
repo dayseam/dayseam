@@ -47,9 +47,15 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Added
+
+- **DAY-210 / MAS-1a:** Mac App Store **packaging scaffold** on the desktop shell: Cargo feature **`mas`**, merge config [`apps/desktop/src-tauri/tauri.mas.conf.json`](apps/desktop/src-tauri/tauri.mas.conf.json) (distinct bundle identifier `dev.dayseam.mas` for the MAS profile), `tauri:build:mas` script on `@dayseam/desktop`, and a compile-time **`DISTRIBUTION_PROFILE`** constant (`direct` \| `mas`) for later SKU gates. Default `tauri build` / direct SKU unchanged ([`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §21).
+
 ## [0.12.3] - 2026-04-30
 
 ### Fixed
+
+- **DAY-210:** `sync_runs_concurrent_transitions_serialise_to_one_winner` now inserts the `SupersededBy` target `sync_runs` row before racing `mark_finished` vs `mark_cancelled`, matching the real supersede path and avoiding a **foreign-key** failure when SQLite applies the cancel writer first (Linux `rust-linux` CI flake).
 
 - **DAY-214 (saved report):** inline summary-chart legend and centre
   numeral: Obsidian Reading view wraps raw HTML so **`color:

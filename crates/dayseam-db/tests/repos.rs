@@ -1524,6 +1524,17 @@ async fn sync_runs_concurrent_transitions_serialise_to_one_winner() {
     let run = fixture_running_run();
     repo.insert(&run).await.unwrap();
 
+    // `superseded_by` is a FK to `sync_runs(id)` (migration 0002). If
+    // `mark_cancelled` wins the race it applies a real UPDATE with the
+    // superseded-by id — SQLite validates the FK even though the
+    // concurrent `mark_finished` path only cares about the status guard.
+    // Without a backing row, the loser surfaces `FOREIGN KEY constraint
+    // failed` instead of the `sync_runs.status` `InvalidData` this test
+    // asserts on (Linux CI flakes when cancel wins first).
+    let superseder = fixture_running_run();
+    let new_run_id = superseder.id;
+    repo.insert(&superseder).await.unwrap();
+
     // Two transitions racing on the same row: one calls
     // `mark_finished` (the orchestrator's happy-path), the other
     // calls `mark_cancelled` with a SupersededBy reason (the
@@ -1532,7 +1543,6 @@ async fn sync_runs_concurrent_transitions_serialise_to_one_winner() {
     // one winning silently.
     let repo_finish = repo.clone();
     let id = run.id;
-    let new_run_id = RunId::new();
     let finish_handle =
         tokio::spawn(async move { repo_finish.mark_finished(&id, fixed_now(), &[]).await });
     let repo_cancel = repo.clone();
