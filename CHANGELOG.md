@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-04-30
+
 ### Fixed
 
 - **DAY-208:** Atlassian workspace URL fields now use a full
