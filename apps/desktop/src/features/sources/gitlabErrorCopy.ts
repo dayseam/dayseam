@@ -47,7 +47,7 @@ export const gitlabErrorCopy: Record<GitlabErrorCode, GitlabErrorCopy> = {
   },
   "gitlab.rate_limited": {
     title: "GitLab rate limit hit",
-    body: "GitLab asked Dayseam to slow down. The next sync will back off automatically — no action needed.",
+    body: "GitLab asked Dayseam to slow down. The next sync will back off automatically; no action needed.",
     action: "none",
   },
   "gitlab.upstream_5xx": {
@@ -62,7 +62,7 @@ export const gitlabErrorCopy: Record<GitlabErrorCode, GitlabErrorCopy> = {
   },
   "gitlab.resource_not_found": {
     title: "GitLab resource not found",
-    body: "GitLab returned 404 for a resource Dayseam expected to exist. The project, user, or event may have been deleted or moved — verify the source configuration and retry.",
+    body: "GitLab returned 404 for a resource Dayseam expected to exist. The project, user, or event may have been deleted or moved; verify the source configuration and retry.",
     action: "retry",
   },
   "gitlab.resource_gone": {

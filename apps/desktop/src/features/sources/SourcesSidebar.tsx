@@ -837,7 +837,7 @@ function SourceChip({
         data: {
           code: "gitlab.auth.invalid_token",
           message:
-            "No PAT on file for this GitLab source — reconnect to add one.",
+            "No PAT on file for this GitLab source. Reconnect to add one.",
           retryable: false,
           action_hint: "reconnect",
         },

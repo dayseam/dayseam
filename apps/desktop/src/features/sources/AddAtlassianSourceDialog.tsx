@@ -462,7 +462,7 @@ export function AddAtlassianSourceDialog({
       }
 
       if (accountId == null) {
-        throw new Error("Missing account_id — validate your credentials first.");
+        throw new Error("Missing account_id; validate your credentials first.");
       }
 
       const rows = await invoke("atlassian_sources_add", {
@@ -477,10 +477,10 @@ export function AddAtlassianSourceDialog({
       // DAY-127 #5b: if the user typed a label, rename each
       // inserted row post-hoc. `atlassian_sources_add` does not
       // take a label argument (the Rust side auto-derives
-      // `"<Kind> — <host>"`); rather than grow the IPC we apply a
+      // `"<Kind> - <host>"`); rather than grow the IPC we apply a
       // label-only `sources_update` per inserted row. When the
       // user enabled both products in Journey A the two siblings
-      // land with `"<label> — Jira"` / `"<label> — Confluence"` so
+      // land with `"<label> - Jira"` / `"<label> - Confluence"` so
       // they remain distinguishable in the sidebar. A failure
       // here does not roll back the add — the sources exist with
       // their auto-derived labels and the user can rename via the
@@ -493,7 +493,7 @@ export function AddAtlassianSourceDialog({
       if (trimmedLabel.length > 0) {
         await Promise.all(
           rows.map((row) => {
-            const suffix = rows.length > 1 ? ` — ${row.kind}` : "";
+            const suffix = rows.length > 1 ? ` - ${row.kind}` : "";
             return invoke("sources_update", {
               id: row.id,
               patch: { label: `${trimmedLabel}${suffix}`, config: null },
@@ -548,9 +548,9 @@ export function AddAtlassianSourceDialog({
       ? `Add ${existingKind === "Jira" ? "Confluence" : "Jira"}`
       : "Add Atlassian source";
   const description = isReconnect
-    ? "Rename the source and/or rotate its API token. Leave the token blank to keep the existing one. The workspace URL and account email are fixed — delete and re-add to change either one."
+    ? "Rename the source and/or rotate its API token. Leave the token blank to keep the existing one. The workspace URL and account email are fixed; delete and re-add to change either one."
     : existing
-      ? `You already have ${existingKind} connected. Add the other product with the same token — or use a different one.`
+      ? `You already have ${existingKind} connected. Add the other product with the same token, or use a different one.`
       : "Connect Jira, Confluence, or both with one Atlassian API token. Dayseam only needs read access.";
 
   return (
@@ -634,7 +634,7 @@ export function AddAtlassianSourceDialog({
             onChange={(e) => setWorkspaceUrlRaw(e.target.value)}
             readOnly={isReconnect}
             autoFocus={!isReconnect}
-            placeholder="yourcompany"
+            placeholder="https://yourcompany.atlassian.net"
             data-testid="add-atlassian-workspace-url"
             spellCheck={false}
             autoCapitalize="off"
@@ -648,8 +648,8 @@ export function AddAtlassianSourceDialog({
               className="text-[11px] text-amber-700 dark:text-amber-400"
             >
               This is a different workspace than your existing Atlassian
-              source. The "reuse token" option has been turned off —
-              paste a fresh API token for this workspace.
+              source. The "reuse token" option has been turned off; paste
+              a fresh API token for this workspace.
             </span>
           ) : null}
         </label>
@@ -657,7 +657,7 @@ export function AddAtlassianSourceDialog({
         {!isReconnect ? (
           // DAY-127 #5b: add flow now offers an optional label
           // input so the chip can be named at creation time
-          // instead of accepting the default `"<Kind> — <host>"`.
+          // instead of accepting the default `"<Kind> - <host>"`.
           // Leaving it blank preserves the pre-DAY-127 derived
           // label; filling it triggers a post-add `sources_update`
           // per inserted row (one row in Journey B/C, two in
@@ -680,7 +680,8 @@ export function AddAtlassianSourceDialog({
             />
             <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
               Leave blank to use the default label
-              (e.g. <code>Jira — yourcompany.atlassian.net</code>).
+              (e.g.{" "}
+              <code>Jira · https://yourcompany.atlassian.net</code>).
             </span>
           </label>
         ) : null}

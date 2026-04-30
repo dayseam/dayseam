@@ -297,7 +297,7 @@ export function AddGithubSourceDialog({
       title={isReconnect ? "Edit GitHub source" : "Add GitHub source"}
       description={
         isReconnect
-          ? "Rename the source and/or rotate its Personal Access Token. Leave the token blank to keep the existing one. The API base URL and bound GitHub account are preserved — delete and re-add to change either."
+          ? "Rename the source and/or rotate its Personal Access Token. Leave the token blank to keep the existing one. The API base URL and bound GitHub account are preserved; delete and re-add to change either."
           : "Connect a GitHub (or GitHub Enterprise) account with a Personal Access Token. Dayseam only needs read access."
       }
       testId="add-github-dialog"

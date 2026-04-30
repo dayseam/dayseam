@@ -407,7 +407,7 @@ export function AddGitlabSourceDialog({
             data-testid="add-gitlab-insecure-warning"
             className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
           >
-            Heads up — <code>http://</code> sends your token in cleartext.
+            Heads up: <code>http://</code> sends your token in cleartext.
             Use <code>https://</code> unless you're on a trusted local
             network.
           </p>

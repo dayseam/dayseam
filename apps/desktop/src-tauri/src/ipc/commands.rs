@@ -344,7 +344,7 @@ pub(crate) fn build_source_auth(
                 return Err(DayseamError::Auth {
                     code: error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS.to_string(),
                     message: format!(
-                        "no email on file for Atlassian source {} — reconnect to re-enter it",
+                        "no email on file for Atlassian source {}. Reconnect to re-enter it",
                         source.id
                     ),
                     retryable: false,
@@ -357,7 +357,7 @@ pub(crate) fn build_source_auth(
                 .ok_or_else(|| DayseamError::Auth {
                     code: error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS.to_string(),
                     message: format!(
-                        "no API token on file for Atlassian source {} — reconnect to add one",
+                        "no API token on file for Atlassian source {}. Reconnect to add one",
                         source.id
                     ),
                     retryable: false,
@@ -374,7 +374,7 @@ pub(crate) fn build_source_auth(
                 .ok_or_else(|| DayseamError::Auth {
                     code: error_codes::ATLASSIAN_AUTH_INVALID_CREDENTIALS.to_string(),
                     message: format!(
-                        "keychain slot {key} is empty for source {} — reconnect to restore the API token",
+                        "keychain slot {key} is empty for source {}. Reconnect to restore the API token",
                         source.id
                     ),
                     retryable: false,
@@ -394,7 +394,7 @@ pub(crate) fn build_source_auth(
                 .ok_or_else(|| DayseamError::Auth {
                     code: error_codes::GITLAB_AUTH_INVALID_TOKEN.to_string(),
                     message: format!(
-                        "no PAT on file for GitLab source {} — reconnect to add one",
+                        "no PAT on file for GitLab source {}. Reconnect to add one",
                         source.id
                     ),
                     retryable: false,
@@ -411,7 +411,7 @@ pub(crate) fn build_source_auth(
                 .ok_or_else(|| DayseamError::Auth {
                     code: error_codes::GITLAB_AUTH_INVALID_TOKEN.to_string(),
                     message: format!(
-                        "keychain slot {key} is empty for source {} — reconnect to restore the PAT",
+                        "keychain slot {key} is empty for source {}. Reconnect to restore the PAT",
                         source.id
                     ),
                     retryable: false,
@@ -440,7 +440,7 @@ pub(crate) fn build_source_auth(
                 .ok_or_else(|| DayseamError::Auth {
                     code: error_codes::GITHUB_AUTH_INVALID_CREDENTIALS.to_string(),
                     message: format!(
-                        "no PAT on file for GitHub source {} — reconnect to add one",
+                        "no PAT on file for GitHub source {}. Reconnect to add one",
                         source.id
                     ),
                     retryable: false,
@@ -457,7 +457,7 @@ pub(crate) fn build_source_auth(
                 .ok_or_else(|| DayseamError::Auth {
                     code: error_codes::GITHUB_AUTH_INVALID_CREDENTIALS.to_string(),
                     message: format!(
-                        "keychain slot {key} is empty for source {} — reconnect to restore the PAT",
+                        "keychain slot {key} is empty for source {}. Reconnect to restore the PAT",
                         source.id
                     ),
                     retryable: false,
@@ -513,7 +513,7 @@ pub(crate) fn build_source_auth(
             .ok_or_else(|| DayseamError::Auth {
                 code: error_codes::OUTLOOK_AUTH_INVALID_CREDENTIALS.to_string(),
                 message: format!(
-                    "keychain slot {} is empty for Outlook source {} — reconnect to re-authorize",
+                    "keychain slot {} is empty for Outlook source {}. Reconnect to re-authorize",
                     access_account, source.id
                 ),
                 retryable: false,
@@ -531,7 +531,7 @@ pub(crate) fn build_source_auth(
             .ok_or_else(|| DayseamError::Auth {
                 code: error_codes::OUTLOOK_AUTH_INVALID_CREDENTIALS.to_string(),
                 message: format!(
-                    "keychain slot {} is empty for Outlook source {} — reconnect to re-authorize",
+                    "keychain slot {} is empty for Outlook source {}. Reconnect to re-authorize",
                     refresh_account, source.id
                 ),
                 retryable: false,
@@ -667,7 +667,7 @@ fn validate_pat_arg(
         (SourceKind::GitLab, None, None) => Err(invalid_config(
             error_codes::IPC_GITLAB_PAT_MISSING,
             format!(
-                "GitLab source {} has no PAT on file and sources_update was called without one — the reconnect dialog must provide `pat` in the IPC payload",
+                "GitLab source {} has no PAT on file and sources_update was called without one. The reconnect dialog must provide `pat` in the IPC payload",
                 existing.id
             ),
         )),
@@ -1197,7 +1197,7 @@ pub async fn sources_update(
                 tracing::warn!(
                     source_id = %id,
                     source_kind = ?existing.kind,
-                    "sources_update: no AtlassianAccountId identity on file — self-filtering will \
+                    "sources_update: no AtlassianAccountId identity on file; self-filtering will \
                      silently skip this source's events until the user reconnects it",
                 );
             }
@@ -3164,7 +3164,7 @@ mod tests {
         Source {
             id,
             kind: SourceKind::Jira,
-            label: "Jira — acme".into(),
+            label: "Jira - acme".into(),
             config: SourceConfig::Jira {
                 workspace_url: "https://acme.atlassian.net".into(),
                 email: email.into(),
@@ -3180,7 +3180,7 @@ mod tests {
         Source {
             id,
             kind: SourceKind::Confluence,
-            label: "Confluence — acme".into(),
+            label: "Confluence - acme".into(),
             config: SourceConfig::Confluence {
                 workspace_url: "https://acme.atlassian.net".into(),
                 email: email.into(),

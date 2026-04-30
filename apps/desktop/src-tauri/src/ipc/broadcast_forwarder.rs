@@ -200,7 +200,7 @@ async fn write_lag_row(logs: &LogRepo, flush: LagFlush) {
             ts: Utc::now(),
             level: LogLevel::Warn,
             source_id: None,
-            message: format!("toast broadcast lagged — {missed} event(s) dropped; resubscribing"),
+            message: format!("toast broadcast lagged: {missed} event(s) dropped; resubscribing"),
             context: Some(json!({ "missed": missed, "channel": TOAST_EVENT })),
         })
         .await;

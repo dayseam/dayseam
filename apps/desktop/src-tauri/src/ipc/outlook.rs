@@ -411,7 +411,7 @@ pub async fn outlook_sources_add_impl(
         // Fall back to the UPN so the sources sidebar always has
         // something human-readable — matches the GitHub
         // dialog's host fallback.
-        format!("Outlook — {}", info.user_principal_name)
+        format!("Outlook - {}", info.user_principal_name)
     } else {
         trimmed_label
     };

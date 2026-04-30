@@ -297,7 +297,7 @@ async fn github_reconnect_self_heals_missing_login_row() {
     let source = Source {
         id: source_id,
         kind: SourceKind::GitHub,
-        label: "GitHub — wiremock".to_string(),
+        label: "GitHub - wiremock".to_string(),
         config: SourceConfig::GitHub { api_base_url },
         secret_ref: Some(secret_ref.clone()),
         created_at: Utc::now(),

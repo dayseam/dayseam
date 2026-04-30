@@ -84,12 +84,12 @@ export const outlookErrorCopy: Record<OutlookErrorCode, OutlookErrorCopy> = {
   },
   "outlook.rate_limited": {
     title: "Outlook rate limit hit",
-    body: "Microsoft Graph asked Dayseam to slow down. The next sync will back off automatically — no action needed.",
+    body: "Microsoft Graph asked Dayseam to slow down. The next sync will back off automatically; no action needed.",
     action: "none",
   },
   "outlook.upstream_5xx": {
     title: "Microsoft Graph is having trouble",
-    body: "Graph returned a server-side error (5xx). This is almost always a transient upstream outage — the next sync will retry automatically.",
+    body: "Graph returned a server-side error (5xx). This is almost always a transient upstream outage; the next sync will retry automatically.",
     action: "none",
   },
   "outlook.upstream_shape_changed": {
@@ -119,7 +119,7 @@ export const outlookErrorCopy: Record<OutlookErrorCode, OutlookErrorCopy> = {
   },
   "ipc.outlook.tenant_unresolved": {
     title: "Couldn't read tenant from the token",
-    body: "Microsoft returned a token whose payload Dayseam couldn't parse for a tenant id. This is almost always a transient sign-in issue — try signing in again.",
+    body: "Microsoft returned a token whose payload Dayseam couldn't parse for a tenant id. This is almost always a transient sign-in issue; try signing in again.",
     action: "retry",
   },
   "ipc.outlook.source_already_exists": {

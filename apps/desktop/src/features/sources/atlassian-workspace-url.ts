@@ -66,7 +66,8 @@ export function normaliseWorkspaceUrl(raw: string): WorkspaceUrlNormalisation {
   } else {
     return {
       kind: "invalid",
-      reason: "That doesn't look like a workspace. Try `yourcompany`.",
+      reason:
+        "That doesn't look like a workspace. Example: https://yourcompany.atlassian.net (slug only is OK too).",
     };
   }
 
@@ -91,7 +92,8 @@ export function normaliseWorkspaceUrl(raw: string): WorkspaceUrlNormalisation {
   if (parsed.hostname.length === 0) {
     return {
       kind: "invalid",
-      reason: "Missing host. Example: yourcompany.atlassian.net",
+      reason:
+        "Missing host. Example: https://yourcompany.atlassian.net",
     };
   }
 

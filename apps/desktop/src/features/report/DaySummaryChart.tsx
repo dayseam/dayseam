@@ -186,7 +186,7 @@ function formatPercent(count: number, total: number): string {
 }
 
 /** Build the screen-reader summary, e.g. "GitHub 7, Jira 3,
- *  Outlook 1 — 11 items today." Empty days get a different phrase
+ *  Outlook 1: 11 items today." Empty days get a different phrase
  *  so screen readers don't announce "0 items". */
 function buildAriaLabel(entries: readonly KindCount[]): string {
   if (entries.length === 0) return "Day summary: no activity recorded today.";
@@ -194,7 +194,7 @@ function buildAriaLabel(entries: readonly KindCount[]): string {
   const breakdown = entries
     .map((e) => `${KIND_LABEL[e.kind]} ${e.count}`)
     .join(", ");
-  return `Day summary: ${breakdown} — ${total} item${total === 1 ? "" : "s"} today.`;
+  return `Day summary: ${breakdown}: ${total} item${total === 1 ? "" : "s"} today.`;
 }
 
 /**
@@ -280,7 +280,7 @@ export function DaySummaryChart({
             const accent = connectorAccent(entry.kind);
             const d = paths[idx];
             if (!d) return null;
-            const tooltip = `${KIND_LABEL[entry.kind]} — ${entry.count} item${entry.count === 1 ? "" : "s"} (${formatPercent(entry.count, total)})`;
+            const tooltip = `${KIND_LABEL[entry.kind]}: ${entry.count} item${entry.count === 1 ? "" : "s"} (${formatPercent(entry.count, total)})`;
             return (
               <path
                 key={entry.kind}

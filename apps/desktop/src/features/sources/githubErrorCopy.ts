@@ -49,12 +49,12 @@ export const githubErrorCopy: Record<GithubErrorCode, GithubErrorCopy> = {
   },
   "github.rate_limited": {
     title: "GitHub rate limit hit",
-    body: "GitHub asked Dayseam to slow down. The next sync will back off automatically — no action needed.",
+    body: "GitHub asked Dayseam to slow down. The next sync will back off automatically; no action needed.",
     action: "none",
   },
   "github.upstream_5xx": {
     title: "GitHub is having trouble",
-    body: "GitHub returned a server-side error (5xx). This is almost always a transient upstream outage — the next sync will retry automatically.",
+    body: "GitHub returned a server-side error (5xx). This is almost always a transient upstream outage; the next sync will retry automatically.",
     action: "none",
   },
   "github.upstream_shape_changed": {

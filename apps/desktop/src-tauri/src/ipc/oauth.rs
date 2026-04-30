@@ -94,19 +94,19 @@ const SESSION_EVENT: &str = "oauth://session-updated";
 /// the Dayseam window. The success page keeps a zero-dependency,
 /// single-screen look — no external fonts or assets — so it loads
 /// instantly regardless of network conditions after a redirect.
-const SUCCESS_HTML: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Dayseam — \
+const SUCCESS_HTML: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Dayseam - \
      Signed in</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,\
      sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;\
      justify-content:center;min-height:100vh;margin:0}div{text-align:center;padding:2rem}\
      h1{margin:0 0 0.5rem}p{margin:0;opacity:0.8}</style></head><body><div>\
      <h1>You can close this tab</h1><p>Return to Dayseam to finish connecting.</p>\
      </div></body></html>";
-const FAILURE_HTML: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Dayseam — \
+const FAILURE_HTML: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Dayseam - \
      Sign-in failed</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,\
      sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;\
      justify-content:center;min-height:100vh;margin:0}div{text-align:center;padding:2rem}\
      h1{margin:0 0 0.5rem}p{margin:0;opacity:0.8}</style></head><body><div>\
-     <h1>Sign-in didn't complete</h1><p>Return to Dayseam — we kept the details for you.</p>\
+     <h1>Sign-in didn't complete</h1><p>Return to Dayseam; we kept the details for you.</p>\
      </div></body></html>";
 
 /// Seam the Tauri command uses to launch the user's default browser.
