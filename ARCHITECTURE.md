@@ -1456,6 +1456,11 @@ These are things we promise Dayseam will **not** become:
 
 ## 17. Related documents
 
+- [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md)
+  — **Phase 5 (MAS)** addendum: dual-SKU entitlements, Tauri capability
+  intent, security-scoped bookmark contract, coexistence/migration,
+  subprocess baseline, and App Store vs direct release skew (see
+  [`docs/plan/2026-phase-5-mas-app-store.md`](docs/plan/2026-phase-5-mas-app-store.md)).
 - [`docs/design/2026-04-17-v0.1-design.md`](docs/design/2026-04-17-v0.1-design.md)
   — full v0.1 design, including the SQLite schema, template format,
   error-code registry, and release process.

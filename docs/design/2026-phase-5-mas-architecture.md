@@ -1,24 +1,325 @@
 # Phase 5 (MAS): Architecture addendum
 
-> **Status:** stub until **MAS-0b** lands. Full technical design is **normative** in [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md); this file is the **checklist-shaped** addendum produced by task **[MAS-0b](../plan/2026-phase-5-mas-app-store.md#mas-block-0)**.
+> **Status:** normative for Mac App Store engineering on the **`0.13.x`** line. The implementation task catalogue and semver ladder live in [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md) (**#210**). This document answers the coexistence, bookmark, capability, JIT, subprocess, and release-skew questions the plan marks as **MAS-0b** outputs.
 
-## Sections (outline — expand each in MAS-0b PR)
+---
 
-1. **Goals & non-goals** — dual SKU; direct-download remains primary until explicitly otherwise.
-2. **Threat model delta** — App Sandbox vs current [`entitlements.md`](../../apps/desktop/src-tauri/entitlements.md) stance.
-3. **Packaging vs entitlement vs runtime vs UX** — four columns so “required by Apple” cannot smuggle behavioural `if mas` without landing in the right row.
-4. **Entitlement matrix** — `entitlements.plist` (direct) vs `entitlements.mas.plist` (MAS); **deny-list** for MAS.
-5. **Tauri capability matrix** — default JSON vs MAS JSON; rationale per capability; updater excluded on MAS; nothing broadened “by accident.”
-6. **JIT / executable memory** — exact keys; OS/arch scope; citations (Tauri / WebKit / Apple); **fallback** if App Review rejects.
-7. **Subprocesses & helper binaries** — enumerate every spawn and bundled binary; sandbox legality; signing / entitlement inheritance (**feeds MAS-9a**).
-8. **Filesystem** — security-scoped bookmarks: **granularity** (dir vs file for scan roots vs sinks; “save as new file” in permitted folder); **descendants** after restart; **symlink** policy (canonicalize vs reject); **stale bookmark** / rename-move recovery (**MAS-4f**); **RAII start/stop** lifetime (no session-wide retention unless justified).
-9. **Direct ↔ MAS coexistence** — matrix: bundle ID, app support / container, SQLite DB, lock files, Keychain service names, URL schemes / deep links; **concurrent install** supported / unsupported / blocked; corruption risk if misconfigured.
-10. **Migration (direct → MAS)** — what config survives; what breaks until re-consent; updater prefs; OAuth / browser state differences under sandbox.
-11. **Keychain** — service identifiers, access groups, sandbox behaviour (**ordering vs OAuth** per plan dependency graph).
-12. **Networking** — outbound client; connector endpoints.
-13. **OAuth** — loopback redirect constraints under sandbox; collision with second installed SKU.
-14. **Updater** — absent on MAS SKU; App Store updates only.
-15. **Privacy & third-party SDKs** — inventory table (**MAS-2b** output) mapping SDK → ships manifest? → gap → owner (**feeds MAS-7a**).
-16. **Dual-channel release & version skew** — same semver source of truth; review lag (**N** vs **N−k**); backward-compat window **K** for persisted data; rollback / phased release / direct-ahead hotfix policy.
-17. **Single codebase exit criteria** — allowed long-term `cfg` / packaging deltas vs **blocked** user-visible `mas` branches without removal issue + **MAS-9a** sign-off.
-18. **Testing strategy** — prefer **`cargo test`** / integration / Vitest; Playwright thin smoke only; **macOS CI** as authoritative for bookmark / Keychain tests.
+## 1. Goals and non-goals
+
+**Goals**
+
+- Ship a **second distribution SKU** of Dayseam for the **Mac App Store**: sandboxed, signed with a **Mac App Distribution** identity, updated **only** through App Store Connect (no Tauri in-app updater).
+- Keep **one Rust + TypeScript codebase**. Long-term divergence is limited to packaging, entitlements, capability JSON, store metadata, and narrowly scoped compile-time distribution profile (see §17).
+- Preserve the **direct-download** SKU (Developer ID / notarized DMG, GitHub Releases, in-app updater) with **no behavioural regression** unless a change is explicitly dual-SKU and reviewed.
+
+**Non-goals** (see plan for full list)
+
+- Replacing direct-download as the primary development or power-user channel.
+- Windows Store, App Store marketing assets, or click-by-click Apple portal runbooks (operators still own secrets and identifiers outside this repo).
+
+---
+
+## 2. Dual-SKU system picture
+
+One repository produces **two macOS app bundles** with different signing stories, entitlements, and update mechanics. Shared semver on `master` is the **version source of truth** for both channels; release **timing** may differ (§16).
+
+```mermaid
+flowchart LR
+  subgraph Source["Single `master`"]
+    M["Rust core + connectors + sinks"]
+    T["Tauri shell + React UI"]
+  end
+
+  subgraph Direct["Direct SKU"]
+    D1["`tauri.conf.json` defaults"]
+    D2["`entitlements.plist`\nno App Sandbox"]
+    D3["capabilities:\ndefault + updater"]
+    D4["GitHub Release +\n`latest.json` updater"]
+  end
+
+  subgraph MAS["MAS SKU"]
+    M1["Tauri config merge\n(`mas` / packaging)"]
+    M2["`entitlements.mas.plist`\nApp Sandbox + allow-list"]
+    M3["capabilities:\nMAS JSON\n(no updater)"]
+    M4["App Store Connect\nupload + review"]
+  end
+
+  Source --> Direct
+  Source --> MAS
+```
+
+---
+
+## 3. Packaging vs entitlement vs runtime vs UX
+
+Anything “Apple required” must land in the **correct column** so we do not accidentally justify **runtime `if (mas)`** business logic.
+
+| Column | Holds | Examples |
+|--------|--------|----------|
+| **Packaging** | Bundle id, product name suffix, targets (`dmg` vs `app` only), `createUpdaterArtifacts`, signing identity, export method. | MAS bundle id **distinct** from direct (§9); updater artifacts **off** on MAS. |
+| **Entitlements** | Keys in `entitlements.plist` vs `entitlements.mas.plist`. | Sandbox, network client/server, JIT-related keys (§6), user-selected file access. |
+| **Capability allow-lists** | Tauri v2 `capabilities/*.json` grants. | Strip `updater:*`, `process:allow-restart`, and any command not reachable under sandbox (MAS-3). |
+| **Store metadata** | Privacy manifest, export compliance prose, review notes. | `PrivacyInfo.xcprivacy` (**MAS-7a**), `MAS-EXPORT-COMPLIANCE.md` (**MAS-7b**). |
+| **UX** | User-visible differences tied to distribution. | No “Check for updates” on MAS; single `distribution_profile` enum preferred over scattered checks (plan: *Single codebase*). |
+
+**Runtime behaviour** (bookmarks, scoped FS, Keychain, OAuth) should stay **unified** across SKUs where feasible; the direct build may adopt the same security-scoped access patterns to reduce drift.
+
+---
+
+## 4. Threat model delta (direct vs MAS)
+
+Today’s direct macOS build **opts out of App Sandbox** and instead relies on hardened runtime + narrow IPC + CSP + explicit Tauri capabilities. Rationale is documented in [`apps/desktop/src-tauri/entitlements.md`](../../apps/desktop/src-tauri/entitlements.md) (user-selected read-write, JIT-style allowances for the WebView stack).
+
+**MAS** inverts the constraint: **App Sandbox is mandatory**. That implies:
+
+- **Default-deny filesystem** outside container and without **security-scoped bookmarks** (or picker-granted scope).
+- **Outbound network** is entitlement-gated; every connector host must be anticipated or user-driven (HTTPS).
+- **Child processes / Mach services** are heavily restricted; anything that today shells out must be audited (§7).
+- **Keychain** and **OAuth loopback** remain required but must be validated under sandbox (plan blocks **MAS-5**, **MAS-6**).
+
+---
+
+## 5. Entitlement matrix (direct vs MAS)
+
+**Direct** (`apps/desktop/src-tauri/entitlements.plist`) — current keys (see [`entitlements.md`](../../apps/desktop/src-tauri/entitlements.md) for prose):
+
+| Key | Direct | Notes |
+|-----|--------|--------|
+| `com.apple.security.files.user-selected.read-write` | **on** | TCC persistence for `dialog.open` grants. |
+| `com.apple.security.cs.allow-unsigned-executable-memory` | **on** | Hardened-runtime JIT-style allowance (Tauri / native deps). |
+| `com.apple.security.cs.allow-jit` | **on** | Same family as Electron/Tauri guidance. |
+| `com.apple.security.app-sandbox` | **off** | Explicit product decision today. |
+
+**MAS** (`entitlements.mas.plist` — introduced in **MAS-1b**, tightened in **MAS-2a+**):
+
+| Key | MAS (initial stub → target) | Notes |
+|-----|------------------------------|--------|
+| `com.apple.security.app-sandbox` | **on** (**MAS-2a**) | Store requirement. |
+| `com.apple.security.network.client` | **on** when needed (**MAS-2a** / **MAS-6a**) | All connectors are HTTPS clients. |
+| `com.apple.security.files.user-selected.read-write` | **TBD with bookmarks** | Under sandbox, picker + bookmark flow must match **MAS-4**; may differ from direct’s standalone key semantics — validate against Apple’s matrix for sandboxed apps. |
+| `com.apple.security.cs.allow-jit` / `…allow-unsigned-executable-memory` | **evidence-led** (**MAS-2c**) | WKWebView / Tauri may still require JIT-class allowances; App Review may challenge. Document exact binaries and justification in **MAS-7c**; keep a **fallback** plan (WebKit feature flags, Tauri upstream issue) if rejected. |
+
+**MAS deny-list (entitlements)**
+
+- No **hardened runtime–incompatible** “escape hatch” entitlements unless justified and declared for review (e.g. temporary exceptions Apple grants in writing).
+- No **debugging** entitlements in shipping store builds.
+- Anything that grants **unscoped filesystem** or **arbitrary IPC** to other apps is incompatible with store policy — if a feature needs it, the feature must be redesigned (not smuggled as entitlement).
+
+---
+
+## 6. Tauri capability matrix (direct vs MAS)
+
+**Direct production** merges:
+
+- [`apps/desktop/src-tauri/capabilities/default.json`](../../apps/desktop/src-tauri/capabilities/default.json) — IPC command allow-list + `dialog:allow-open` + `core:default`.
+- [`apps/desktop/src-tauri/capabilities/updater.json`](../../apps/desktop/src-tauri/capabilities/updater.json) — `updater:allow-check`, `updater:allow-download-and-install`, `process:allow-restart`.
+
+**MAS target** (concrete JSON delivered in **MAS-3a**; this subsection is the **intent matrix**):
+
+| Area | Direct | MAS |
+|------|--------|-----|
+| Core / IPC surface used by production UI | `default.json` as today | **Same command set** unless a command is provably unsandboxable — then gate or replace with scoped alternative. |
+| `dialog:allow-open` | allowed | **allowed** (required for folder pickers + bookmark seeding). |
+| Updater plugin permissions | `updater.json` merged | **omit entire file** — no `updater:*`, no `process:allow-restart`. |
+| Dev-only commands | `dev-commands` feature only | **never** in store bundle (already true for direct release builds). |
+
+**Deny-list summary for MAS bundle**
+
+- All `updater:*` permissions.
+- `process:allow-restart` (only used for post-update relaunch).
+- Any future permission that implies **unsandboxed** power (broad shell, arbitrary code load) without App Store narrative.
+
+Nothing in the MAS matrix should **widen** the attack surface “because MAS is safer” — CSP and IPC allow-list discipline stay identical where possible.
+
+---
+
+## 7. JIT / executable memory (evidence and fallback)
+
+**Current direct entitlements** already carry:
+
+- `com.apple.security.cs.allow-jit`
+- `com.apple.security.cs.allow-unsigned-executable-memory`
+
+**Evidence pack (to be collected in MAS-2c / recorded in MAS-7c)**
+
+- Exact **Tauri** / **WRY** / **WebKit** versions from `Cargo.lock` at release time.
+- Apple documentation / TN references for why a **renderer process** may require executable writable pages under hardened runtime.
+- `nm` / binary inspection notes for which dylibs pull in JIT (if required by compliance).
+
+**Fallback if App Review rejects**
+
+1. Reduce WebView features (e.g. disable specific accelerated paths) per Tauri/WebKit guidance.
+2. Escalate to **Tauri upstream** with a minimal repro; track vendored version bump.
+3. Last resort: **document blocker** and hold MAS SKU until resolved — do not silently widen entitlements.
+
+---
+
+## 8. Subprocesses and helper binaries (baseline for MAS-9a)
+
+This table is the **authoritative enumeration baseline** for capstone subprocess review. Update when adding spawns.
+
+| # | Mechanism | Call sites / crate | What it spawns | Sandbox notes |
+|---|-----------|--------------------|----------------|---------------|
+| 1 | `opener::open` | `shell_open` in [`commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | macOS: hand-off to **`/usr/bin/open`** (user-initiated; scheme allow-list includes `http`, `https`, `file`, …). | Must remain **user-driven**; no background open. URL policy unchanged. |
+| 2 | `opener::open_browser` | OAuth in [`oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) | Default browser for authorize URL. | Same as above; paired with loopback listener. |
+| 3 | `tokio::net::TcpListener` | `oauth.rs` — `127.0.0.1` loopback for OAuth redirect | No child process; **inbound localhost** socket. | Requires **network entitlement** analysis (**MAS-6a**); document loopback port pinning vs ephemeral tests. |
+| 4 | **libgit2** (vendored) | `connector-local-git` via `git2` crate with `vendored-libgit2` | **No** `git` CLI subprocess; native library inside Dayseam address space. | Sandboxed FS access must go through **security-scoped** paths from bookmarks (**MAS-4**), not arbitrary POSIX paths from persisted config. |
+| 5 | **Tests / dev only** | `MetadataCommand`, `Command::new("git")` in various `tests/` crates | `cargo test` helpers | Not shipped in production bundle. |
+
+**Bundled “binaries” inside `.app`**
+
+- Main executable `dayseam-desktop`, embedded WebView content, static assets — all covered by Tauri’s bundle.
+- No separate helper **agent** binaries in-repo today; if added later (e.g. standalone scheduler), each requires its own sandbox story + review row.
+
+---
+
+## 9. Security-scoped bookmarks (design contract for MAS-4)
+
+This section satisfies the plan’s **bookmark contract** checklist; implementation tasks are **MAS-4a–f**.
+
+### 9.1 Granularity
+
+- **Scan roots (local Git)** — persist a **directory** security-scoped bookmark per configured root (the directory the user chose in `dialog.open`). Nested repositories are discovered **under** that directory.
+- **Sink folders (markdown file / Obsidian)** — persist a **directory** bookmark for each sink root the user grants.
+- **Saving a new file inside an already-bookmarked sink folder** — **reuse the parent directory bookmark** for writes within that tree; do **not** require a per-file bookmark for routine report writes. If the user picks a **new** output path outside granted dirs, show picker again.
+
+### 9.2 Descendants and cold start
+
+After relaunch, the app must **resolve** each stored bookmark to a file URL before passing paths to `git2` or sink adapters. **Nested repos** under a bookmarked scan root are accessible **iff** they remain within the resolved directory subtree and the bookmark is still valid. Implementation must not assume POSIX access without `startAccessingSecurityScopedResource` (or RAII equivalent) around each batch of filesystem work (**MAS-4b**).
+
+### 9.3 Rename / move / stale bookmarks
+
+- Detect resolution failures and `ENOENT` after successful resolve as **stale bookmark**.
+- Map to **`DayseamError`** with stable **`error_codes`** (allocated in **MAS-4f**).
+- UX: toast + **“Reselect folder in Settings”** (or source/sink edit sheet) that reopens `dialog.open` and replaces the bookmark blob.
+
+### 9.4 Symlinks
+
+- **Policy:** when persisting a bookmark, resolve the user’s selection to a **canonical real path** (`std::fs::canonicalize` or equivalent) and store metadata indicating whether the path was symlinked.
+- **Scan roots:** follow symlinks **only** if the canonicalized path still lies under the user-selected root **after** canonicalization; otherwise **reject** with user-facing copy (“alias escapes the selected folder”).
+- Document edge cases (macOS **firmlinks**, `/private` prefixes) in **MAS-4** tests.
+
+### 9.5 Access lifetime (RAII)
+
+- **No session-wide blanket** `startAccessing…` for the whole app lifetime.
+- Use a **RAII guard** (or explicit `defer`-style scope) per **operation batch** (single sync walk, single report generation, single sink write).
+- **Long-running jobs** (scheduled catch-up, large repo walk): one guard spanning the **job lifecycle** only; release promptly on completion/cancel.
+
+---
+
+## 10. Direct ↔ MAS coexistence
+
+**Decision: concurrent installation is allowed** once the MAS bundle uses a **distinct bundle identifier** and **distinct on-disk state namespace**. Until the MAS bundle id is minted in App Store Connect, treat the literal string as **`TBD_MAS_BUNDLE_ID`** in engineering docs — the **implementation** must replace placeholders before shipping.
+
+| Concern | Direct (today) | MAS (required) |
+|---------|----------------|----------------|
+| **Bundle id** | `dev.dayseam.desktop` from [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) | **Distinct** App Store id (e.g. `dev.dayseam.mas` — final choice is operator-owned). |
+| **Application Support path** | `~/Library/Application Support/dev.dayseam.desktop/` via [`startup.rs`](../../apps/desktop/src-tauri/src/startup.rs) `DATA_SUBDIR` | **Must not** reuse `DATA_SUBDIR`; MAS profile uses a subdirectory keyed to **MAS bundle id** (or explicit `dev.dayseam.mas` constant) so SQLite + logs never collide. |
+| **SQLite `state.db`** | One file per install | **Two independent files** when both SKUs installed — **no** automatic merge. |
+| **Lock files** (e.g. markdown sink `.dayseam.lock`) | Per sink path | Same as SQLite — separate installs mean separate lock namespaces unless user points both apps at the **same** folder (advanced; see risk). |
+| **Keychain** | Rows keyed by `service::account` strings | **Distinct `service` prefix or suffix per SKU** (e.g. prefix `dayseam.mas.` for MAS-only rows, or embed bundle id in service) so **direct and MAS tokens never overwrite each other**. Today’s services: `dayseam.gitlab`, `dayseam.github`, `dayseam.atlassian`, `dayseam.outlook` (see `commands.rs`, `github.rs`, `atlassian.rs`, `outlook.rs`). |
+| **Custom URL schemes / deep links** | Minimal / none for OAuth (loopback HTTP) | If a **registered scheme** is added later, it **must not** collide between SKUs (Apple registers schemes per bundle id — still document for support). |
+
+**Risk:** user configures **both** apps to write into the **same** Obsidian vault without coordination — possible **write races**. Mitigation: support docs recommend one active writer per vault; not a code blocker for Phase 5.
+
+---
+
+## 11. Migration (direct → MAS)
+
+| Artifact | Behaviour |
+|----------|-------------|
+| **SQLite rows** (sources, sinks, settings) | **Logical migration** only: export/import or “fresh start” is acceptable for v1 MAS; absolute paths in rows may be **invalid** under sandbox until user re-picks via bookmark flow. |
+| **Absolute paths in config** | Likely **break** until user re-authorizes through security-scoped bookmarks — do not silently rewrite paths across different volume / sandbox semantics. |
+| **Keychain tokens** | **Not** auto-migrated between different service prefixes; user reconnects OAuth / PAT once per MAS install (or explicit migration tool in a future phase if product demands it). |
+| **Updater prefs / `latest.json` cache** | **Ignored** on MAS — no in-app updater UI or network calls (**MAS-3**). |
+| **Scheduler / background agent** | If enabled on direct, MAS build may need **different** entitlements or user education — track under **MAS-9a** if agent ships before MAS launch. |
+
+---
+
+## 12. Keychain
+
+- **Storage model:** `dayseam_secrets::KeychainStore` composes `service::account` keys (see [`keychain.rs`](../../crates/dayseam-secrets/src/keychain.rs)).
+- **SKU isolation:** MAS build uses **SKU-specific service names** (decision in §10) so Keychain Access shows two disjoint sets when both apps are installed.
+- **OAuth vs Keychain ordering:** OAuth loopback completes **before** persisting tokens to Keychain via normal `outlook_sources_add` / reconnect flows — no change to ordering intent; sandbox may require **network + loopback** validation before tokens persist (**MAS-5** / **MAS-6**).
+
+---
+
+## 13. Networking
+
+- **Outbound:** connectors use `reqwest` (HTTPS). MAS entitlements must allow **client TLS** to user-configured hosts (GitLab self-host, enterprise GitHub, etc.) — exact pattern in **MAS-6a** (broad client entitlement vs per-host plist keys is an Apple-policy choice).
+- **Inbound:** OAuth loopback listener on `127.0.0.1` (**MAS-6b** parity with direct; rate limits and retry behaviour unchanged unless a sandbox bug forces a delta).
+
+---
+
+## 14. OAuth
+
+- **Loopback redirect** is core to Outlook (and future OAuth) — documented in [`oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) module docs.
+- **Collision with two SKUs:** two apps → two independent loopback servers **only if** both run OAuth simultaneously; same `127.0.0.1` port conflicts are possible if Microsoft ever forces a **fixed** port collision — today production uses a pinned port constant (**DAY-205**); document test vs prod divergence and mitigation (serialize logins, ephemeral port where IdP allows).
+
+---
+
+## 15. Updater
+
+- **Direct:** Tauri updater + `updater.json` capability + `createUpdaterArtifacts: true` in [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json).
+- **MAS:** **No updater plugin surface**, no `latest.json` polling, no `process:allow-restart` for swap-and-relaunch — updates **only** via App Store (**MAS-3**).
+
+---
+
+## 16. Privacy and third-party SDK inventory (placeholder for MAS-2b → MAS-7a)
+
+**MAS-2b** must fill this table with versions and manifest linkage. Until then, rows are **known SDKs** to track.
+
+| SDK / component | Ships in app? | `PrivacyInfo.xcprivacy` today? | Gap owner |
+|-----------------|---------------|-------------------------------|-----------|
+| Tauri / WRY / WebView | yes | **MAS-7a** | Desktop |
+| `sqlx` / SQLite | yes | **MAS-7a** | Core |
+| `reqwest` / `rustls` | yes | **MAS-7a** | Connectors |
+| `libgit2` (vendored) | yes | **MAS-7a** | Local-git |
+| `opener` | yes (indirect) | **MAS-7a** | Desktop |
+| `keyring` | yes (macOS) | **MAS-7a** | Secrets |
+
+---
+
+## 17. Dual-channel release, version skew, rollback
+
+- **Same semver** on `master` for both channels; **GitHub tag** tracks direct channel artifact; **App Store Connect** tracks MAS binary after upload.
+- **Skew:** direct users may run **`v0.13.N`** while MAS users remain on **`v0.13.(N−k)`** due to review lag — **expected**.
+- **Backward compatibility window (`K`):** persisted SQLite schema + IPC must tolerate **at least `K = 3` patch releases** of skew (tune with product; never less than **2** without explicit decision). Migrations must **never strand** older MAS builds without a documented floor.
+- **Rollback / incident:** direct channel may ship a **hotfix patch** ahead of MAS; support must acknowledge two channels. Phased release / manual “hold” on Connect before “Release to App Store” is operator procedure (**MAS-8** / **MAS-9** docs).
+
+**MAS-8d** (automated upload) should use **`continue-on-error`** vs direct `release.yml` unless the team explicitly couples them (plan).
+
+---
+
+## 18. Single codebase exit criteria
+
+| Allowed long-term | **Blocked** without removal issue + **MAS-9a** sign-off |
+|-------------------|----------------------------------------------------------|
+| Packaging-only cfg (`bundle`, signing, targets) | User-visible business rules duplicated in `#[cfg(feature = "mas")]` |
+| Entitlement / plist / capability JSON differences | Scattershot `if (isMas)` in React for non-UX reasons |
+| Compile-time `distribution_profile` enum for updater visibility | “MAS special case” connectors that diverge from direct for the same `SourceKind` |
+
+---
+
+## 19. Testing strategy
+
+- **Unit / integration / Vitest** first; **Playwright** only for thin smoke where unavoidable (plan).
+- **macOS GitHub Actions** is **authoritative** for bookmark + Keychain + codesign entitlements checks (**MAS-1b+**); Linux jobs remain compile-only for non-desktop crates.
+- Do not weaken existing tests when adding MAS scaffolding — add **parallel** MAS-specific tests (**plan testing discipline**).
+
+---
+
+## 20. Open decisions checklist (pre-MAS-1a gate)
+
+- [ ] Final **MAS bundle identifier** + Team ID pairing registered in Apple Developer.
+- [ ] Confirm **`DATA_SUBDIR` / Keychain prefix** strings for MAS profile in code (today hardcoded to `dev.dayseam.desktop` in `startup.rs`).
+- [ ] Confirm **JIT entitlement** narrative with legal/compliance if Apple pushes back.
+- [ ] Confirm **network entitlement** shape for self-hosted connector domains.
+
+---
+
+## Document history
+
+| Date | Change |
+|------|--------|
+| 2026-04-30 | **MAS-0b:** initial full addendum (matrices, bookmarks, coexistence, subprocess baseline, skew, testing). |
