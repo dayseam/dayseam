@@ -47,6 +47,17 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-214 (saved report):** inline summary-chart legend and centre
+  numeral: Obsidian Reading view wraps raw HTML so **`color:
+  inherit`** on the SVG still resolved **`currentColor` to black**.
+  Bind vault text with **`style="color: var(--text-normal,
+  light-dark(#1f2937, #e5e7eb));"`** on the `<svg>` root (vars resolve
+  there reliably, unlike the SVG-internal stylesheet alone), keep
+  **`fill: currentColor`**, and set **`fill="currentColor"`** on `<text>`
+  when `<style>` is stripped. Re-save a daily note to refresh embedded charts.
+
 ### Documentation
 
 - **DAY-210:** Phase 5 (Mac App Store) plan + architecture stub (`docs/plan/2026-phase-5-mas-app-store.md`, `docs/design/2026-phase-5-mas-architecture.md`, `docs/plan/README.md`). Follow-up hardening: **`semver:minor`** on first app-code merge for **`v0.13.0`**; two exit bars (engineering complete vs **MAS-8d** automation); coexistence/migration/bookmark lifecycle; **MAS-4f**; **MAS-6c** folded into **MAS-6b**; codesign CI gates; capability matrix, subprocess/JIT, privacy inventory, version skew / rollback.

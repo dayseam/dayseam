@@ -269,12 +269,24 @@ fn render_headline(counts: &[(SourceKind, u32)], total: u32) -> String {
 ///
 /// Each slice is a single `<path>` with the slice's brand-accent
 /// `fill` attribute and a `<title>` child carrying the tooltip
-/// copy GitHub / Obsidian show on hover. A `<style>` block at the
-/// top layers a `prefers-color-scheme: dark` override for kinds
-/// whose default mark sits poorly on a dark canvas (notably the
-/// GitHub black). Viewers that strip `<style>` (some sandboxed
-/// pipelines do for safety) keep the inline fills and lose only
-/// the dark-mode adaptation.
+/// copy GitHub / Obsidian show on hover. Centre + legend `<text>`
+/// use **`fill: currentColor`** with root
+/// **`style="color: var(--text-normal, light-dark(…));"`**.
+/// **`color: inherit`** alone fails in Obsidian Reading view:
+/// embedded `<svg>` often sits under a wrapper that never sets an
+/// inherited `color`, so `currentColor` stays the UA default (~black).
+/// **`var(--text-normal)` on the SVG’s own inline `style`** resolves
+/// vault theme variables reliably; **`light-dark`** covers hosts
+/// without `--text-normal` but with OS light/dark chrome. A
+/// **`prefers-color-scheme: dark`** override remains only for
+/// **slice** fills where OS dark mode improves contrast against a
+/// dark canvas; slice colours may still be light-accented under a
+/// dark vault on a light OS until we have a viewer-agnostic cue.
+///
+/// Viewers that strip `<style>` (some sandboxed pipelines do for
+/// safety) keep the inline path fills and lose only slice
+/// adaptation; captions still honor root `color` via `currentColor`
+/// (`fill=\"currentColor\"` on `<text>` when `<style>` is stripped).
 fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
     let vb_h = view_box_height_px(counts.len());
     let display_h = display_height_px(vb_h);
@@ -285,7 +297,7 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
 
     let mut out = String::new();
     out.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {vbw} {vbh}\" width=\"{dw}\" height=\"{dh}\" role=\"img\" aria-label=\"{a}\">\n",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {vbw} {vbh}\" width=\"{dw}\" height=\"{dh}\" role=\"img\" aria-label=\"{a}\" style=\"color: var(--text-normal, light-dark(#1f2937, #e5e7eb));\">\n",
         vbw = VIEWBOX_W,
         vbh = vb_h,
         dw = DISPLAY_W,
@@ -295,7 +307,7 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
     out.push_str("  <style>\n");
     out.push_str("    .ds-centre-label,\n");
     out.push_str("    .ds-legend-text {\n");
-    out.push_str("      fill: var(--text-normal, #374151);\n");
+    out.push_str("      fill: currentColor;\n");
     out.push_str("    }\n");
     out.push_str("    @media (prefers-color-scheme: dark) {\n");
     for kind in counts.iter().map(|(k, _)| *k) {
@@ -309,10 +321,6 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
             ));
         }
     }
-    // Centre numeral and legend lines use the same dark-mode text
-    // colour as the app shell.
-    out.push_str("      .ds-centre-label,\n");
-    out.push_str("      .ds-legend-text { fill: var(--text-normal, #F9FAFB); }\n");
     out.push_str("    }\n");
     out.push_str("  </style>\n");
 
@@ -342,7 +350,7 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
     // matches the desktop app's default UI font so the rendered
     // markdown looks at home next to the prose around it.
     out.push_str(&format!(
-        "  <text class=\"ds-centre-label\" x=\"{CX}\" y=\"{CY}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"20\" font-weight=\"600\">{total}</text>\n"
+        "  <text class=\"ds-centre-label\" x=\"{CX}\" y=\"{CY}\" fill=\"currentColor\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"20\" font-weight=\"600\">{total}</text>\n"
     ));
 
     out.push_str("  <g class=\"ds-legend\" aria-hidden=\"true\">\n");
@@ -364,7 +372,7 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
             light = connector_accent_light(*kind),
         ));
         out.push_str(&format!(
-            "    <text class=\"ds-legend-text\" x=\"16\" y=\"{line_y}\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"7\">{cap}</text>\n",
+            "    <text class=\"ds-legend-text\" x=\"16\" y=\"{line_y}\" fill=\"currentColor\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"7\">{cap}</text>\n",
             line_y = line_y,
             cap = escape_xml_text(&caption),
         ));
@@ -942,21 +950,23 @@ mod tests {
             !svg.contains(".ds-gitlab { fill: #FC6D26; }"),
             "GitLab override should be elided when light==dark: {svg}"
         );
-        // Centre label gets a dark-mode override so it stays
-        // legible against either viewer background.
+        // Root inline `style` binds Obsidian/theme `--text-normal`;
+        // `color: inherit` alone leaves currentColor ~= black there.
         assert!(
-            svg.contains("fill: var(--text-normal, #374151);"),
-            "light-mode text fill missing: {svg}"
+            svg.contains("style=\"color: var(--text-normal, light-dark(#1f2937, #e5e7eb));\""),
+            "svg root must resolve vault text colour: {svg}"
+        );
+        assert!(
+            svg.contains("fill: currentColor;"),
+            "caption fill must use currentColor: {svg}"
+        );
+        assert!(
+            svg.contains("fill=\"currentColor\""),
+            "presentation fill on <text> survives stripped <style>: {svg}"
         );
         assert!(
             !svg.contains("fill=\"#404040\""),
             "inline grey text fill must not trump stylesheet in embeds: {svg}"
-        );
-        assert!(
-            svg.contains(
-                ".ds-centre-label,\n      .ds-legend-text { fill: var(--text-normal, #F9FAFB); }"
-            ),
-            "centre/legend dark override missing: {svg}"
         );
     }
 
