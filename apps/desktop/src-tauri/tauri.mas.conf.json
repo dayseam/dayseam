@@ -1,4 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "identifier": "dev.dayseam.mas"
+  "identifier": "dev.dayseam.mas",
+  "bundle": {
+    "macOS": {
+      "entitlements": "entitlements.mas.plist"
+    }
+  }
 }

@@ -318,14 +318,16 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ---
 
-## 21. Build profiles (**MAS-1a**)
+## 21. Build profiles (**MAS-1a** + **MAS-1b**)
 
-| Profile | Command | Cargo features | Tauri config |
-|---------|---------|----------------|--------------|
-| **Direct (default)** | `pnpm --filter @dayseam/desktop tauri build` | none (release) | [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) only |
-| **MAS (scaffold)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas`) |
+| Profile | Command | Cargo features | Tauri config | Entitlements plist |
+|---------|---------|----------------|--------------|-------------------|
+| **Direct (default)** | `pnpm --filter @dayseam/desktop tauri build` | none (release) | [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) only | [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) |
+| **MAS (scaffold)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas` and **`bundle.macOS.entitlements`** to [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)) | [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) — **stub** (no App Sandbox until **MAS-2a**; see [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)) |
 
 The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/src/lib.rs) (`"direct"` \| `"mas"`) for future compile-time gates — **no** user-visible behaviour branches yet.
+
+CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) and [`check-entitlements.sh`](../../scripts/ci/check-entitlements.sh) against both plists so merge regressions fail before release. Those bundle-only builds merge **`bundle.createUpdaterArtifacts: false`** so PR runners do not need **`TAURI_SIGNING_PRIVATE_KEY`** (release workflow still signs updater artifacts with the real secret).
 
 ---
 
@@ -335,3 +337,4 @@ The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/
 |------|--------|
 | 2026-04-30 | **MAS-0b:** initial full addendum (matrices, bookmarks, coexistence, subprocess baseline, skew, testing). |
 | 2026-04-30 | **MAS-1a:** §21 build profiles + open-decisions checkbox for scaffold bundle id. |
+| 2026-04-30 | **MAS-1b:** §21 entitlements column + CI script references. |

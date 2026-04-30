@@ -47,6 +47,73 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --all-features
 
+  # **MAS-1b.** Prove both Tauri merge profiles produce a signed `.app`
+  # and that `codesign` embeds the expected entitlement keys — separate
+  # from the `rust` job so `cargo test` stays the long pole and this job
+  # can use a tighter cache key for bundling only.
+  desktop-bundle-profiles:
+    name: desktop-bundle (direct + MAS)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (matches rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop frontend (Vite)
+        run: pnpm --filter @dayseam/desktop build
+
+      # `tauri.conf.json` sets `bundle.createUpdaterArtifacts: true` with a
+      # production `plugins.updater.pubkey`. The bundler then requires
+      # `TAURI_SIGNING_PRIVATE_KEY` (release-only secret). This job only
+      # needs a signed `.app` for entitlement smoke tests — merge off
+      # updater artifacts so PR CI does not depend on signing secrets.
+      - name: Tauri bundle — direct SKU (`app` only)
+        working-directory: apps/desktop
+        run: >-
+          pnpm exec tauri build --bundles app
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      # Bundles land under the **workspace** `target/` (see DAY-66 in
+      # `scripts/release/build-dmg.sh`), not `apps/desktop/src-tauri/target/`.
+      - name: Codesign entitlements — direct
+        run: |
+          TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
+          APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
+          test -d "$APP"
+          bash scripts/ci/verify-tauri-bundle-entitlements.sh "$APP" direct
+
+      - name: Tauri bundle — MAS merge profile (`app` only)
+        working-directory: apps/desktop
+        run: >-
+          pnpm exec tauri build --bundles app
+          --config src-tauri/tauri.mas.conf.json
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          --features mas
+
+      - name: Codesign entitlements — MAS stub
+        run: |
+          TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
+          APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
+          test -d "$APP"
+          bash scripts/ci/verify-tauri-bundle-entitlements.sh "$APP" mas
+
   # Cheap Linux build of every crate that does NOT depend on Tauri /
   # the desktop frontend bundle. macOS-only `rust` job above is the
   # source of truth for the full workspace, but most contributors
@@ -169,6 +236,14 @@ jobs:
       - name: test-check-entitlements.sh (gate self-test)
         run: bash scripts/ci/test-check-entitlements.sh
       - name: check-entitlements.sh (entitlements.plist validity)
+        run: bash scripts/ci/check-entitlements.sh
+      # **MAS-1b.** Same AMFI / plutil gate for the MAS plist (macOS
+      # only — `plutil` is absent on ubuntu-latest; the comment grep
+      # still runs when ENTITLEMENTS_FILE is overridden).
+      - name: check-entitlements.sh (entitlements.mas.plist validity)
+        if: matrix.os == 'macos-latest'
+        env:
+          ENTITLEMENTS_FILE: ${{ github.workspace }}/apps/desktop/src-tauri/entitlements.mas.plist
         run: bash scripts/ci/check-entitlements.sh
 
   # DAY-195: same extract-release-notes preflight release.yml runs,

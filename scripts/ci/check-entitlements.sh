@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # check-entitlements.sh — DAY-122 / T-3 CI gate.
 #
-# Fails the build if `apps/desktop/src-tauri/entitlements.plist` is
+# Optional: set **ENTITLEMENTS_FILE** to lint another plist (e.g.
+# `apps/desktop/src-tauri/entitlements.mas.plist` for **MAS-1b**).
+# Defaults to `apps/desktop/src-tauri/entitlements.plist`.
+#
+# Fails the build if the target entitlements file is
 # missing, fails `plutil -lint`, or contains an XML comment
 # (`<!-- … -->`). Extracted verbatim from `scripts/release/build-dmg.sh`
 # (DAY-120) so the same checks run at PR time on `ci.yml` rather than
