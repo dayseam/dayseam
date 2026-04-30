@@ -49,7 +49,9 @@ release's chore commit from master's linear history; v0.8.1's
 
 ### Added
 
-- **DAY-210 / MAS-1b:** MAS **stub entitlements** [`entitlements.mas.plist`](apps/desktop/src-tauri/entitlements.mas.plist) wired through `tauri.mas.conf.json`, documented in [`entitlements.mas.md`](apps/desktop/src-tauri/entitlements.mas.md), and verified in CI: new macOS job **`desktop-bundle (direct + MAS)`** runs two `tauri build --bundles app` passes (default + MAS merge) then [`verify-tauri-bundle-entitlements.sh`](scripts/ci/verify-tauri-bundle-entitlements.sh); `shell-scripts` on macOS also runs [`check-entitlements.sh`](scripts/ci/check-entitlements.sh) against the MAS plist via **`ENTITLEMENTS_FILE`**.
+- **DAY-210 / MAS-2a:** Mac App Store merge profile [`entitlements.mas.plist`](apps/desktop/src-tauri/entitlements.mas.plist) now enables **`com.apple.security.app-sandbox`** and **`com.apple.security.network.client`** (HTTPS connectors, OAuth, WebView); direct [`entitlements.plist`](apps/desktop/src-tauri/entitlements.plist) unchanged. [`verify-tauri-bundle-entitlements.sh`](scripts/ci/verify-tauri-bundle-entitlements.sh) **`mas`** mode requires those keys in the signed bundle; **`direct`** mode fails if either appears (defense against wrong entitlements wiring) ([`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §5 / §21).
+
+- **DAY-210 / MAS-1b:** MAS merge entitlements path [`entitlements.mas.plist`](apps/desktop/src-tauri/entitlements.mas.plist) via `tauri.mas.conf.json`, [`entitlements.mas.md`](apps/desktop/src-tauri/entitlements.mas.md), and CI: **`desktop-bundle (direct + MAS)`** runs two `tauri build --bundles app` passes plus [`verify-tauri-bundle-entitlements.sh`](scripts/ci/verify-tauri-bundle-entitlements.sh); macOS **`shell-scripts`** runs [`check-entitlements.sh`](scripts/ci/check-entitlements.sh) with **`ENTITLEMENTS_FILE`** for the MAS plist.
 
 ### Fixed
 

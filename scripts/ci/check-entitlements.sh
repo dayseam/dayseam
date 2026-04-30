@@ -2,7 +2,7 @@
 # check-entitlements.sh — DAY-122 / T-3 CI gate.
 #
 # Optional: set **ENTITLEMENTS_FILE** to lint another plist (e.g.
-# `apps/desktop/src-tauri/entitlements.mas.plist` for **MAS-1b**).
+# `apps/desktop/src-tauri/entitlements.mas.plist` for the MAS merge profile).
 # Defaults to `apps/desktop/src-tauri/entitlements.plist`.
 #
 # Fails the build if the target entitlements file is

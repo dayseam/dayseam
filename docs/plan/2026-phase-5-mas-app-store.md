@@ -348,3 +348,5 @@ MAS-9a ──► MAS-9c
 | 2026-04-30 | **MAS-0b:** full architecture addendum merged (matrices, bookmarks, coexistence, subprocess baseline, skew, open decisions). |
 | 2026-04-30 | **MAS-1a:** Cargo `mas` feature + `tauri.mas.conf.json` merge profile + `tauri:build:mas`; `DISTRIBUTION_PROFILE` in desktop crate. |
 | 2026-04-30 | **MAS-1b:** `entitlements.mas.plist` stub + `verify-tauri-bundle-entitlements.sh` + `desktop-bundle (direct + MAS)` CI; `check-entitlements.sh` for MAS plist on macOS matrix leg. |
+| 2026-04-30 | **MAS-1c:** skipped — GitHub-hosted `macos-latest` + `desktop-bundle` timeout proved sufficient; no self-hosted runner (documented here per optional row). |
+| 2026-04-30 | **MAS-2a:** `com.apple.security.app-sandbox` + `com.apple.security.network.client` in `entitlements.mas.plist` only; CI gate requires embedded keys on MAS bundle. |
