@@ -66,7 +66,7 @@ export const atlassianErrorCopy: Record<
   },
   "jira.walk.rate_limited": {
     title: "Jira rate limit hit",
-    body: "Jira asked Dayseam to slow down. The next sync will back off automatically — no action needed.",
+    body: "Jira asked Dayseam to slow down. The next sync will back off automatically; no action needed.",
     action: "none",
   },
   "confluence.walk.upstream_shape_changed": {
@@ -76,12 +76,12 @@ export const atlassianErrorCopy: Record<
   },
   "confluence.walk.rate_limited": {
     title: "Confluence rate limit hit",
-    body: "Confluence asked Dayseam to slow down. The next sync will back off automatically — no action needed.",
+    body: "Confluence asked Dayseam to slow down. The next sync will back off automatically; no action needed.",
     action: "none",
   },
   "jira.upstream_5xx": {
     title: "Jira is having trouble",
-    body: "Jira returned a server-side error (5xx). This is almost always a transient upstream outage — the next sync will retry automatically.",
+    body: "Jira returned a server-side error (5xx). This is almost always a transient upstream outage; the next sync will retry automatically.",
     action: "none",
   },
   "jira.resource_gone": {
@@ -91,7 +91,7 @@ export const atlassianErrorCopy: Record<
   },
   "confluence.upstream_5xx": {
     title: "Confluence is having trouble",
-    body: "Confluence returned a server-side error (5xx). This is almost always a transient upstream outage — the next sync will retry automatically.",
+    body: "Confluence returned a server-side error (5xx). This is almost always a transient upstream outage; the next sync will retry automatically.",
     action: "none",
   },
   "confluence.resource_gone": {

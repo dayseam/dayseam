@@ -421,7 +421,7 @@ export function PreferencesDialog({ open, onClose }: PreferencesDialogProps) {
                     data-testid="preferences-scheduler-sink"
                     className="rounded border border-neutral-300 bg-white px-2 py-0.5 text-xs text-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
                   >
-                    <option value="">— Pick a sink —</option>
+                    <option value="">Pick a sink</option>
                     {eligibleSinks.map((sink) => (
                       <option key={sink.id} value={sink.id}>
                         {sink.label}

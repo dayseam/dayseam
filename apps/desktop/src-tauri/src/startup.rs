@@ -349,7 +349,7 @@ async fn backfill_atlassian_self_identities(pool: &SqlitePool) {
             tracing::warn!(
                 %source_id,
                 ?kind,
-                "backfill(atlassian): no AtlassianAccountId identity on file — reports will \
+                "backfill(atlassian): no AtlassianAccountId identity on file; reports will \
                  silently skip this source's events until the user reconnects it",
             );
             continue;
@@ -722,7 +722,7 @@ async fn audit_orphan_secrets(pool: &SqlitePool, secrets: &dyn SecretStore) -> u
                         service = %service,
                         account = %account,
                         "orphan-secret audit: source row references a keychain slot the \
-                         store can't read — source will fail to authenticate until the \
+                         store can't read; source will fail to authenticate until the \
                          user reconnects"
                     );
                 }
@@ -826,7 +826,7 @@ mod tests {
             .insert(&Source {
                 id: jira_id,
                 kind: SourceKind::Jira,
-                label: "Jira — acme".into(),
+                label: "Jira - acme".into(),
                 config: SourceConfig::Jira {
                     workspace_url: "https://acme.atlassian.net".into(),
                     email: "me@acme.com".into(),
@@ -844,7 +844,7 @@ mod tests {
             .insert(&Source {
                 id: conf_id,
                 kind: SourceKind::Confluence,
-                label: "Confluence — acme".into(),
+                label: "Confluence - acme".into(),
                 config: SourceConfig::Confluence {
                     workspace_url: "https://acme.atlassian.net".into(),
                     email: "me@acme.com".into(),
@@ -903,7 +903,7 @@ mod tests {
             .insert(&Source {
                 id: good_id,
                 kind: SourceKind::Jira,
-                label: "Jira — acme".into(),
+                label: "Jira - acme".into(),
                 config: SourceConfig::Jira {
                     workspace_url: "https://acme.atlassian.net".into(),
                     email: "me@acme.com".into(),
@@ -1500,7 +1500,7 @@ mod tests {
         )
         .bind(conf_id.to_string())
         .bind("Confluence")
-        .bind("Acme — Confluence")
+        .bind("Acme - Confluence")
         .bind(v020_config_json)
         .bind(sr_json)
         .bind(Utc::now().to_rfc3339())

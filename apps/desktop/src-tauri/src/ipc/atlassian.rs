@@ -470,7 +470,7 @@ pub async fn atlassian_sources_add_impl(
             id: source_id,
             kind: SourceKind::Jira,
             label: format!(
-                "Jira — {}",
+                "Jira - {}",
                 parsed_url.host_str().unwrap_or(canonical_url.as_str())
             ),
             config: SourceConfig::Jira {
@@ -535,7 +535,7 @@ pub async fn atlassian_sources_add_impl(
             id: source_id,
             kind: SourceKind::Confluence,
             label: format!(
-                "Confluence — {}",
+                "Confluence - {}",
                 parsed_url.host_str().unwrap_or(canonical_url.as_str())
             ),
             config: SourceConfig::Confluence {
@@ -1366,7 +1366,7 @@ mod tests {
         let ghost = Source {
             id: Uuid::new_v4(),
             kind: SourceKind::Jira,
-            label: "Jira — ghost".into(),
+            label: "Jira - ghost".into(),
             config: SourceConfig::Jira {
                 workspace_url: "https://acme.atlassian.net".into(),
                 email: "user@acme.com".into(),
@@ -1403,7 +1403,7 @@ mod tests {
         let row = Source {
             id: Uuid::new_v4(),
             kind: SourceKind::Confluence,
-            label: "Confluence — backfill".into(),
+            label: "Confluence - backfill".into(),
             config: SourceConfig::Confluence {
                 workspace_url: "https://acme.atlassian.net".into(),
                 email: "".into(),

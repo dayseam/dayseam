@@ -105,7 +105,7 @@ function DownloadingRow({
   const label =
     status.percent === null
       ? `Downloading Dayseam ${status.version}…`
-      : `Downloading Dayseam ${status.version} — ${status.percent}%`;
+      : `Downloading Dayseam ${status.version} (${status.percent}%)`;
   return (
     <StatusBar tone="info" testId="updater-banner-downloading">
       <span className="flex-1">{label}</span>

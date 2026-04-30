@@ -477,7 +477,7 @@ describe("AddAtlassianSourceDialog", () => {
   // regression here is user-visible: the label silently doesn't
   // stick, or the two shared-PAT rows collide under the same
   // string.
-  it("Journey A + custom label: inserts then renames each row with a ' — Jira' / ' — Confluence' suffix", async () => {
+  it("Journey A + custom label: inserts then renames each row with a ' - Jira' / ' - Confluence' suffix", async () => {
     registerInvokeHandler("atlassian_validate_credentials", async () => ({
       account_id: "acct-42",
       display_name: "Vedanth V",
@@ -527,7 +527,7 @@ describe("AddAtlassianSourceDialog", () => {
         "sources_update",
         expect.objectContaining({
           id: "jira-new",
-          patch: expect.objectContaining({ label: "Work — Jira" }),
+          patch: expect.objectContaining({ label: "Work - Jira" }),
         }),
       ),
     );
@@ -536,7 +536,7 @@ describe("AddAtlassianSourceDialog", () => {
         "sources_update",
         expect.objectContaining({
           id: "confluence-new",
-          patch: expect.objectContaining({ label: "Work — Confluence" }),
+          patch: expect.objectContaining({ label: "Work - Confluence" }),
         }),
       ),
     );
@@ -546,7 +546,7 @@ describe("AddAtlassianSourceDialog", () => {
   // that one row to the exact user-supplied label — no suffix.
   // The suffix is a Journey-A-only disambiguator; applying it to
   // a single-product add would look like gratuitous editorialising
-  // ("Work — Jira" when the user typed "Work").
+  // ("Work - Jira" when the user typed "Work").
   it("Journey B + custom label: single row is renamed to the exact label without a product suffix", async () => {
     registerInvokeHandler("atlassian_validate_credentials", async () => ({
       account_id: "acct-42",

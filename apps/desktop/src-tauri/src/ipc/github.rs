@@ -332,7 +332,7 @@ pub async fn github_sources_add_impl(
         // never unlabelled. `host_str` is safe here because
         // `parse_api_base_url` already rejected URLs without a host.
         format!(
-            "GitHub — {}",
+            "GitHub - {}",
             parsed_url.host_str().unwrap_or(canonical_url.as_str())
         )
     } else {
@@ -758,7 +758,7 @@ mod tests {
         let source = github_sources_add_impl(
             &state,
             "https://api.github.com".into(),
-            "GitHub — vedanth".into(),
+            "GitHub - vedanth".into(),
             pat(),
             17,
             "vedanth".into(),
@@ -838,7 +838,7 @@ mod tests {
         )
         .await
         .expect("add with blank label");
-        assert_eq!(source.label, "GitHub — api.github.com");
+        assert_eq!(source.label, "GitHub - api.github.com");
     }
 
     #[tokio::test]

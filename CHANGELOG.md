@@ -49,6 +49,12 @@ release's chore commit from master's linear history; v0.8.1's
 
 ### Fixed
 
+- **DAY-208:** Atlassian workspace URL fields now use a full
+  `https://yourcompany.atlassian.net` style placeholder and help text so
+  users are not nudged toward pasting a bare site name. User-facing copy
+  across the desktop app and shell no longer uses Unicode em dashes;
+  punctuation uses colons, semicolons, or ASCII hyphens instead.
+
 - **DAY-201:** Reports surface per-source sync failures inline (e.g. GitLab
   unreachable without VPN) instead of silently rendering as “No tracked
   activity”, while still generating other sources’ sections.
