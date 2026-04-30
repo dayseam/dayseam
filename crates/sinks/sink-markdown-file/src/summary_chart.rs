@@ -292,6 +292,10 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
         a = escape_xml_attr(&aria),
     ));
     out.push_str("  <style>\n");
+    out.push_str("    .ds-centre-label,\n");
+    out.push_str("    .ds-legend-text {\n");
+    out.push_str("      fill: var(--text-normal, #374151);\n");
+    out.push_str("    }\n");
     out.push_str("    @media (prefers-color-scheme: dark) {\n");
     for kind in counts.iter().map(|(k, _)| *k) {
         let dark = connector_accent_dark(kind);
@@ -307,7 +311,7 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
     // Centre numeral and legend lines use the same dark-mode text
     // colour as the app shell.
     out.push_str("      .ds-centre-label,\n");
-    out.push_str("      .ds-legend-text { fill: #E5E7EB; }\n");
+    out.push_str("      .ds-legend-text { fill: var(--text-normal, #F9FAFB); }\n");
     out.push_str("    }\n");
     out.push_str("  </style>\n");
 
@@ -337,7 +341,7 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
     // matches the desktop app's default UI font so the rendered
     // markdown looks at home next to the prose around it.
     out.push_str(&format!(
-        "  <text class=\"ds-centre-label\" x=\"{CX}\" y=\"{CY}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"20\" font-weight=\"600\" fill=\"#404040\">{total}</text>\n"
+        "  <text class=\"ds-centre-label\" x=\"{CX}\" y=\"{CY}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"20\" font-weight=\"600\">{total}</text>\n"
     ));
 
     out.push_str("  <g class=\"ds-legend\" aria-hidden=\"true\">\n");
@@ -359,7 +363,7 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
             light = connector_accent_light(*kind),
         ));
         out.push_str(&format!(
-            "    <text class=\"ds-legend-text\" x=\"16\" y=\"{line_y}\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"7\" fill=\"#404040\">{cap}</text>\n",
+            "    <text class=\"ds-legend-text\" x=\"16\" y=\"{line_y}\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"7\">{cap}</text>\n",
             line_y = line_y,
             cap = escape_xml_text(&caption),
         ));
@@ -920,7 +924,17 @@ mod tests {
         // Centre label gets a dark-mode override so it stays
         // legible against either viewer background.
         assert!(
-            svg.contains(".ds-centre-label,\n      .ds-legend-text { fill: #E5E7EB; }"),
+            svg.contains("fill: var(--text-normal, #374151);"),
+            "light-mode text fill missing: {svg}"
+        );
+        assert!(
+            !svg.contains("fill=\"#404040\""),
+            "inline grey text fill must not trump stylesheet in embeds: {svg}"
+        );
+        assert!(
+            svg.contains(
+                ".ds-centre-label,\n      .ds-legend-text { fill: var(--text-normal, #F9FAFB); }"
+            ),
             "centre/legend dark override missing: {svg}"
         );
     }
