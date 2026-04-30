@@ -346,3 +346,4 @@ MAS-9a ──► MAS-9c
 | 2026-04-30 | Testing / flags / dual-channel / review fixes / #210. |
 | 2026-04-30 | **Hardening pass:** locked semver (**minor** → `v0.13.0`); two exit bars; coexistence + migration + bookmark contract; **MAS-4f**; **MAS-6c** merged into **MAS-6b**; real-shell **MAS-2b**; early privacy inventory; codesign CI gates; **MAS-1c** optional; capability full audit; skew/rollback; **MAS-8b** disposable note; graph dependencies; **MAS-0b** expanded obligations. |
 | 2026-04-30 | **MAS-0b:** full architecture addendum merged (matrices, bookmarks, coexistence, subprocess baseline, skew, open decisions). |
+| 2026-04-30 | **MAS-1a:** Cargo `mas` feature + `tauri.mas.conf.json` merge profile + `tauri:build:mas`; `DISTRIBUTION_PROFILE` in desktop crate. |

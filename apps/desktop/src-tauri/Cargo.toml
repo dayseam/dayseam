@@ -224,6 +224,13 @@ dev-commands = []
 # relaxed URL check nor the test constructor reaches a release build.
 # `cargo test --workspace --all-features` flips it on for CI.
 test-helpers = []
+# **MAS-1a.** Mac App Store packaging scaffold: enable with
+# `cargo build -p dayseam-desktop --features mas` or
+# `pnpm --filter @dayseam/desktop tauri:build:mas` (merges
+# `tauri.mas.conf.json` for a distinct bundle identifier). Runtime
+# behaviour stays unified until later MAS tasks gate sandbox-only
+# paths — see [`docs/design/2026-phase-5-mas-architecture.md`](../../../docs/design/2026-phase-5-mas-architecture.md).
+mas = []
 default = []
 
 # DAY-111 / TST-v0.4-04. `reconnect_rebind.rs` only compiles when the

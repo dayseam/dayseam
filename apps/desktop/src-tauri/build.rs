@@ -53,6 +53,12 @@ fn main() {
     let manifest_dir = PathBuf::from(
         std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set by cargo"),
     );
+    // **MAS-1a.** `tauri build --config tauri.mas.conf.json` merges this
+    // file; keep rebuilds deterministic when it changes.
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("tauri.mas.conf.json").display()
+    );
     let dev_capability = manifest_dir
         .join("capabilities")
         .join(DEV_CAPABILITY_FILENAME);
