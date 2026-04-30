@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-04-30
+
 ### Added
 
 - **DAY-210 / MAS-1a:** Mac App Store **packaging scaffold** on the desktop shell: Cargo feature **`mas`**, merge config [`apps/desktop/src-tauri/tauri.mas.conf.json`](apps/desktop/src-tauri/tauri.mas.conf.json) (distinct bundle identifier `dev.dayseam.mas` for the MAS profile), `tauri:build:mas` script on `@dayseam/desktop`, and a compile-time **`DISTRIBUTION_PROFILE`** constant (`direct` \| `mas`) for later SKU gates. Default `tauri build` / direct SKU unchanged ([`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §21).
