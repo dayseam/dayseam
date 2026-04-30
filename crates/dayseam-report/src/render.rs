@@ -22,9 +22,9 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use dayseam_core::{
-    ActivityEvent, ArtifactId, ArtifactPayload, Evidence, MergeRequestProvider, Privacy,
-    RenderedBullet, RenderedSection, ReportDraft, SourceId, SourceIdentity, SourceIdentityKind,
-    SourceKind,
+    error_codes, ActivityEvent, ArtifactId, ArtifactPayload, DayseamError, Evidence,
+    MergeRequestProvider, Privacy, RenderedBullet, RenderedSection, ReportDraft, RunStatus,
+    SourceId, SourceIdentity, SourceIdentityKind, SourceKind,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -50,7 +50,9 @@ pub(crate) fn render(input: ReportInput) -> Result<ReportDraft, ReportError> {
     let filtered_events = filter_events_by_self(&input);
     let groups = roll_up(&filtered_events, &input.artifacts, input.date);
 
-    let (sections, evidence) = if groups.is_empty() {
+    let sync_issues = render_sync_issues(&input);
+
+    let (mut sections, evidence) = if groups.is_empty() {
         (vec![empty_section(input.date)], Vec::new())
     } else {
         build_sections(
@@ -63,6 +65,10 @@ pub(crate) fn render(input: ReportInput) -> Result<ReportDraft, ReportError> {
         )?
     };
 
+    if let Some(issue_section) = sync_issues {
+        sections.insert(0, issue_section);
+    }
+
     Ok(ReportDraft {
         id: input.id,
         date: input.date,
@@ -74,6 +80,100 @@ pub(crate) fn render(input: ReportInput) -> Result<ReportDraft, ReportError> {
         verbose_mode: input.verbose_mode,
         generated_at: input.generated_at,
     })
+}
+
+#[must_use]
+fn render_sync_issues(input: &ReportInput) -> Option<RenderedSection> {
+    let mut failures: Vec<(Option<SourceKind>, SourceId, DayseamError)> = input
+        .per_source_state
+        .iter()
+        .filter_map(|(source_id, state)| {
+            if state.status != RunStatus::Failed {
+                return None;
+            }
+            let err = state
+                .error
+                .clone()
+                .unwrap_or_else(|| DayseamError::Internal {
+                    code: error_codes::ORCHESTRATOR_RUN_FAILED.to_string(),
+                    message:
+                        "Sync failed without an attached error; try reconnecting or running again."
+                            .to_string(),
+                });
+            Some((input.source_kinds.get(source_id).copied(), *source_id, err))
+        })
+        .collect();
+
+    if failures.is_empty() {
+        return None;
+    }
+
+    let order = SourceKind::render_order();
+    failures.sort_by(|(ka, ida, _), (kb, idb, _)| {
+        let ia = ka
+            .and_then(|k| order.iter().position(|ord| ord == &k))
+            .unwrap_or(usize::MAX);
+        let ib = kb
+            .and_then(|k| order.iter().position(|ord| ord == &k))
+            .unwrap_or(usize::MAX);
+        ia.cmp(&ib).then_with(|| ida.cmp(idb))
+    });
+
+    let bullets: Vec<RenderedBullet> = failures
+        .into_iter()
+        .map(|(kind, source_id, err)| {
+            let label = kind.map_or_else(
+                || {
+                    let hex = source_id.simple().to_string();
+                    format!("Source `{}`", &hex[..8])
+                },
+                |k| k.display_label().to_string(),
+            );
+            RenderedBullet {
+                id: sync_issue_bullet_id(&input.template_id, source_id, err.code()),
+                text: format!("**{}** sync failed: {}", label, sync_issue_message(&err)),
+                // Omit `source_kind` so DAY-214 chart / saved SVG counts only activity
+                // bullets, not sync-failure diagnostics (code review #202).
+                source_kind: None,
+            }
+        })
+        .collect();
+
+    Some(RenderedSection {
+        id: "sync_issues".to_string(),
+        title: "Sync issues".to_string(),
+        bullets,
+    })
+}
+
+#[must_use]
+fn sync_issue_message(err: &DayseamError) -> String {
+    match err {
+        DayseamError::Auth { message, .. }
+        | DayseamError::Network { message, .. }
+        | DayseamError::UpstreamChanged { message, .. }
+        | DayseamError::InvalidConfig { message, .. }
+        | DayseamError::Io { message, .. }
+        | DayseamError::Internal { message, .. }
+        | DayseamError::Cancelled { message, .. }
+        | DayseamError::Unsupported { message, .. } => message.clone(),
+        DayseamError::RateLimited {
+            retry_after_secs, ..
+        } => format!("rate limited; retry after {retry_after_secs}s"),
+    }
+}
+
+#[must_use]
+fn sync_issue_bullet_id(template_id: &str, source_id: SourceId, error_code: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(template_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(b"sync_issues\0");
+    hasher.update(source_id.to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(error_code.as_bytes());
+    let bytes = hasher.finalize();
+    format!("b_{}", hex_encode_short(&bytes[..8]))
 }
 
 // ---- event filtering ------------------------------------------------------
