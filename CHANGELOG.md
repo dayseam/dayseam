@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.9] - 2026-05-01
+
 ### Changed
 
 - **DAY-210 / MAS-5b2:** Mac App Store builds (`--features mas`) now use distinct Keychain **service** names (`dayseam.mas.gitlab`, `dayseam.mas.github`, `dayseam.mas.atlassian`, `dayseam.mas.outlook`) so entries are clearly separated from the direct-download SKU in Keychain Access when both apps are installed. Centralized in [`keychain_profile.rs`](apps/desktop/src-tauri/src/keychain_profile.rs); existing pre-release MAS testers may need to reconnect sources once so SQLite `SecretRef` rows align with the new service strings.
