@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-210 / MAS-6b:** Mac App Store builds (`--features mas`) now declare **`com.apple.security.network.server`** alongside **`com.apple.security.network.client`** in [`entitlements.mas.plist`](apps/desktop/src-tauri/entitlements.mas.plist). Apple’s App Sandbox treats OAuth PKCE **loopback** `TcpListener` **bind/accept** on `127.0.0.1` as **incoming** TCP; without **`network.server`**, Outlook sign-in could fail under the store profile even though outbound HTTPS worked (**MAS-6a**). CI’s [`verify-tauri-bundle-entitlements.sh`](scripts/ci/verify-tauri-bundle-entitlements.sh) now requires the key on signed **`mas`** bundles and forbids it on direct. Rationale: [`entitlements.mas.md`](apps/desktop/src-tauri/entitlements.mas.md) (**OAuth loopback**), [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §13–§14.
+
 ## [0.13.9] - 2026-05-01
 
 ### Changed

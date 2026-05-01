@@ -5,10 +5,14 @@
 # signed bundle (outbound HTTPS to user-configured hosts — see
 # `apps/desktop/src-tauri/entitlements.mas.md` Outbound HTTPS + architecture §13).
 #
+# **MAS-6b:** For `mas`, also requires **`com.apple.security.network.server`**
+# (OAuth PKCE loopback `TcpListener` bind/accept on 127.0.0.1 — Apple documents
+# TCP listen as “incoming”; see `entitlements.mas.md` OAuth loopback + §14).
+#
 # After `pnpm exec tauri build --bundles app`, assert the built `.app`
 # carries the entitlement keys we require for CI (`direct`: same three
 # keys as `entitlements.plist`; `mas`: those plus App Sandbox + network
-# client per `entitlements.mas.plist`; JIT keys justified in
+# client + network server per `entitlements.mas.plist`; JIT keys justified in
 # docs/compliance/MAS-JIT-ENTITLEMENTS.md). This goes
 # beyond `plutil -lint` on the source file: it exercises what `codesign`
 # actually embedded.
@@ -76,19 +80,22 @@ require_key "com.apple.security.cs.allow-jit"
 
 if [[ "$MODE" == "direct" ]]; then
   # Direct SKU matches [`entitlements.plist`]: no App Sandbox, no
-  # outbound-network entitlement (connectors use unsandboxed paths).
+  # App Sandbox network entitlements (connectors + OAuth use unsandboxed paths).
   forbid_key "com.apple.security.app-sandbox"
   forbid_key "com.apple.security.network.client"
+  forbid_key "com.apple.security.network.server"
 fi
 
 if [[ "$MODE" == "mas" ]]; then
   # **MAS-2a:** store-bound SKU must ship App Sandbox + outbound TLS
-  # (connectors, OAuth, WKWebView). JIT-class keys are asserted here and
+  # (connectors, OAuth token HTTPS, WKWebView) + **MAS-6b** inbound loopback
+  # (`network.server`). JIT-class keys are asserted here and
   # justified under **MAS-2c** in docs/compliance/MAS-JIT-ENTITLEMENTS.md
   # (feeds **MAS-7c**). Updater **removal** is **MAS-3** (capabilities / main.rs),
   # not an entitlement assertion in this script — see architecture §6 / §15.
   require_key "com.apple.security.app-sandbox"
   require_key "com.apple.security.network.client"
+  require_key "com.apple.security.network.server"
 fi
 
 echo "verify-tauri-bundle-entitlements.sh: ${APP} (${MODE}) embeds expected entitlements."

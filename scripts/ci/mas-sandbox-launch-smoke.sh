@@ -2,8 +2,8 @@
 # mas-sandbox-launch-smoke.sh — **MAS-2b** (sandboxed real shell smoke).
 #
 # Runs **after** `verify-tauri-bundle-entitlements.sh` in CI — entitlement
-# embedding (**MAS-6a** `network.client` among others) is proven before this
-# launch smoke.
+# embedding (**MAS-6a** `network.client`, **MAS-6b** `network.server`, …) is
+# proven before this launch smoke.
 #
 # Starts the **production** Dayseam bundle executable for a short window
 # so CI proves the MAS-signed `.app` stays alive past native bootstrap +
