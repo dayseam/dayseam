@@ -10,13 +10,14 @@ use dayseam_core::{
     ActivityEvent, ActivityKind, Actor, Artifact, ArtifactId, ArtifactKind, ArtifactPayload,
     EntityKind, EntityRef, Evidence, Identity, Link, LocalRepo, LogLevel, PerSourceState, Person,
     Privacy, RawRef, RenderedBullet, RenderedSection, ReportDraft, RunId, RunStatus, SecretRef,
-    Source, SourceConfig, SourceHealth, SourceIdentity, SourceIdentityKind, SourceKind,
-    SourceRunState, SyncRun, SyncRunCancelReason, SyncRunStatus, SyncRunTrigger,
+    Sink, SinkConfig, SinkKind, Source, SourceConfig, SourceHealth, SourceIdentity,
+    SourceIdentityKind, SourceKind, SourceRunState, SyncRun, SyncRunCancelReason, SyncRunStatus,
+    SyncRunTrigger,
 };
 use dayseam_db::{
     open, ActivityRepo, ArtifactRepo, DbError, DraftRepo, IdentityRepo, LocalRepoRepo, LogRepo,
-    LogRow, PersonRepo, RawPayload, RawPayloadRepo, SettingsRepo, SourceIdentityRepo, SourceRepo,
-    SyncRunRepo,
+    LogRow, PersonRepo, RawPayload, RawPayloadRepo, SettingsRepo, SinkRepo, SourceIdentityRepo,
+    SourceRepo, SyncRunRepo,
 };
 use sqlx::SqlitePool;
 use tempfile::TempDir;
@@ -1867,4 +1868,139 @@ async fn opening_pool_creates_secret_ref_partial_index() {
         "second open on the same file must be idempotent — did the \
          migration lose its `IF NOT EXISTS` guard?",
     );
+}
+
+/// **MAS-4a.** `security_scoped_bookmarks` must exist, enforce the
+/// role/owner `CHECK`, cascade with `sources`, and block duplicate
+/// paths per owner.
+#[tokio::test]
+async fn security_scoped_bookmarks_foreign_keys_and_checks() {
+    let (pool, _dir) = test_pool().await;
+    let ts = fixed_now().to_rfc3339();
+
+    let src = fixture_local_source();
+    let path = match &src.config {
+        SourceConfig::LocalGit { scan_roots, .. } => scan_roots[0].to_string_lossy().into_owned(),
+        _ => panic!("expected LocalGit fixture"),
+    };
+
+    SourceRepo::new(pool.clone()).insert(&src).await.unwrap();
+
+    let bid = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"INSERT INTO security_scoped_bookmarks
+             (id, owner_source_id, owner_sink_id, role, logical_path,
+              bookmark_blob, meta_json, created_at, updated_at)
+           VALUES (?, ?, NULL, 'local_git_scan_root', ?, NULL, NULL, ?, ?)"#,
+    )
+    .bind(&bid)
+    .bind(src.id.to_string())
+    .bind(&path)
+    .bind(&ts)
+    .bind(&ts)
+    .execute(&pool)
+    .await
+    .expect("insert local_git_scan_root bookmark");
+
+    let err = sqlx::query(
+        r#"INSERT INTO security_scoped_bookmarks
+             (id, owner_source_id, owner_sink_id, role, logical_path,
+              bookmark_blob, meta_json, created_at, updated_at)
+           VALUES (?, ?, NULL, 'markdown_sink_dest', ?, NULL, NULL, ?, ?)"#,
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(src.id.to_string())
+    .bind(&path)
+    .bind(&ts)
+    .bind(&ts)
+    .execute(&pool)
+    .await
+    .expect_err("role must not mismatch owner_source_id");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("CHECK") || msg.contains("constraint"),
+        "unexpected error: {msg}"
+    );
+
+    let err = sqlx::query(
+        r#"INSERT INTO security_scoped_bookmarks
+             (id, owner_source_id, owner_sink_id, role, logical_path,
+              bookmark_blob, meta_json, created_at, updated_at)
+           VALUES (?, ?, NULL, 'local_git_scan_root', ?, NULL, NULL, ?, ?)"#,
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(src.id.to_string())
+    .bind(&path)
+    .bind(&ts)
+    .bind(&ts)
+    .execute(&pool)
+    .await
+    .expect_err("duplicate logical_path for same source must fail");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("UNIQUE") || msg.contains("unique"),
+        "unexpected error: {msg}"
+    );
+
+    SourceRepo::new(pool.clone()).delete(&src.id).await.unwrap();
+
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM security_scoped_bookmarks WHERE id = ?")
+            .bind(&bid)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(remaining, 0, "bookmark row must CASCADE with source delete");
+}
+
+#[tokio::test]
+async fn security_scoped_bookmarks_sink_cascade() {
+    let (pool, _dir) = test_pool().await;
+    let ts = fixed_now().to_rfc3339();
+
+    let sink_id = Uuid::new_v4();
+    let dest = PathBuf::from("/tmp/dayseam-mas-4a-sink-proof");
+    let sink = Sink {
+        id: sink_id,
+        kind: SinkKind::MarkdownFile,
+        label: "mas-4a proof".into(),
+        config: SinkConfig::MarkdownFile {
+            config_version: 1,
+            dest_dirs: vec![dest.clone()],
+            frontmatter: false,
+        },
+        created_at: fixed_now(),
+        last_write_at: None,
+    };
+
+    SinkRepo::new(pool.clone()).insert(&sink).await.unwrap();
+
+    let bid = Uuid::new_v4().to_string();
+    let logical = dest.to_string_lossy().into_owned();
+    sqlx::query(
+        r#"INSERT INTO security_scoped_bookmarks
+             (id, owner_source_id, owner_sink_id, role, logical_path,
+              bookmark_blob, meta_json, created_at, updated_at)
+           VALUES (?, NULL, ?, 'markdown_sink_dest', ?, NULL, NULL, ?, ?)"#,
+    )
+    .bind(&bid)
+    .bind(sink_id.to_string())
+    .bind(&logical)
+    .bind(&ts)
+    .bind(&ts)
+    .execute(&pool)
+    .await
+    .expect("insert markdown_sink_dest bookmark");
+
+    SinkRepo::new(pool.clone()).delete(&sink_id).await.unwrap();
+
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM security_scoped_bookmarks WHERE id = ?")
+            .bind(&bid)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(remaining, 0, "bookmark row must CASCADE with sink delete");
 }

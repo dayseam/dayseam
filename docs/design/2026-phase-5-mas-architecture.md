@@ -194,6 +194,13 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 - Use a **RAII guard** (or explicit `defer`-style scope) per **operation batch** (single sync walk, single report generation, single sink write).
 - **Long-running jobs** (scheduled catch-up, large repo walk): one guard spanning the **job lifecycle** only; release promptly on completion/cancel.
 
+### 9.6 Persistent storage (**MAS-4a**)
+
+- **Table:** `security_scoped_bookmarks` — migration [`0007_security_scoped_bookmarks.sql`](../../crates/dayseam-db/migrations/0007_security_scoped_bookmarks.sql) in [`dayseam-db`](../../crates/dayseam-db/).
+- **Owner shape:** exactly one of `owner_source_id` (**`role = local_git_scan_root`**) or `owner_sink_id` (**`role = markdown_sink_dest`**), enforced with `CHECK` constraints; both FKs **`ON DELETE CASCADE`**.
+- **`logical_path`:** must match the corresponding path string in `sources.config_json` (`LocalGit.scan_roots`) or `sinks.config_json` (`MarkdownFile.dest_dirs`); partial **`UNIQUE`** indexes block duplicate grants per owner + path.
+- **`bookmark_blob`:** opaque macOS bookmark bytes — populated by **MAS-4b** after `dialog.open`; may stay **NULL** until then. **`meta_json`:** optional §9.4 metadata (canonical path, symlink policy).
+
 ---
 
 ## 10. Direct ↔ MAS coexistence
@@ -342,3 +349,4 @@ CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-ta
 | 2026-04-30 | **MAS-2a review:** §5 footnote — `user-selected.read-write` on at MAS-2a vs bookmark semantics in **MAS-4**. |
 | 2026-04-30 | **MAS-2b:** §16 privacy/SDK inventory (versions + `PrivacyInfo.xcprivacy` gaps); §21 CI — [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) on MAS bundle after codesign verification. |
 | 2026-05-01 | **MAS-2c:** §5 JIT matrix row + §7 pointer to [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md); §21 MAS column cites compliance doc. |
+| 2026-05-01 | **MAS-4a:** §9.6 **`security_scoped_bookmarks`** SQLite mapping + crate [`build.rs`](../../crates/dayseam-db/build.rs) rerun hints for migrations. |
