@@ -43,7 +43,10 @@
     "macOS": {
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-",
-      "entitlements": "entitlements.plist"
+      "entitlements": "entitlements.plist",
+      "files": {
+        "Resources/PrivacyInfo.xcprivacy": "./PrivacyInfo.xcprivacy"
+      }
     }
   },
   "plugins": {

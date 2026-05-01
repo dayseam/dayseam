@@ -262,7 +262,7 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
-| **MAS-7a** | Wire **`PrivacyInfo.xcprivacy`** | **`v0.13.18`** | Consumes **MAS-2b** inventory; no surprises at packaging. |
+| **MAS-7a** | Wire **`PrivacyInfo.xcprivacy`** | **`v0.13.18`** | App-level manifest + **`bundle.macOS.files`** (**done:** [`PrivacyInfo.xcprivacy`](../../apps/desktop/src-tauri/PrivacyInfo.xcprivacy), [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh), architecture §16). |
 | **MAS-7b** | **`MAS-EXPORT-COMPLIANCE.md`** | **`v0.13.19`** | **Explicit linkage** to **MAS-8d** upload metadata answers. |
 | **MAS-7c** | **`MAS-APP-REVIEW-NOTES.md`** | **`v0.13.20`** | JIT justification, sandbox, local-first, subprocess list pointer. |
 
