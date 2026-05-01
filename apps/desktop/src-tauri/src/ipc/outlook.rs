@@ -22,8 +22,9 @@
 //!      `/me` response projects into.
 //!
 //! Keychain keying mirrors the GitLab / GitHub per-source pattern:
-//! one Outlook source owns two Keychain rows, both under the
-//! `dayseam.outlook` service, with accounts
+//! one Outlook source owns two Keychain rows, both under the connector
+//! service from [`crate::keychain_profile`] (`dayseam.outlook` on direct;
+//! **`dayseam.mas.outlook`** with **`mas`** — **MAS-5b2**), with accounts
 //! `source:{source_id}.oauth.access` and
 //! `source:{source_id}.oauth.refresh`. The `secret_ref` persisted on
 //! the `sources` row carries the access account; the refresh
@@ -63,12 +64,10 @@ use crate::ipc::outlook_jwt::extract_tid;
 use crate::oauth_config::{OAuthProviderConfig, PROVIDER_MICROSOFT_OUTLOOK};
 use crate::state::AppState;
 
-/// Keychain `service` half for every Outlook OAuth token pair this
-/// app stores. Matches the GitHub / GitLab constant-per-connector
-/// pattern so Keychain Access renders all `dayseam.outlook` entries
-/// under a single heading and the boot-time orphan audit walks the
-/// same key shape the IPC layer writes.
-pub const OUTLOOK_KEYCHAIN_SERVICE: &str = "dayseam.outlook";
+/// Re-export for callers that reference Outlook's Keychain service name.
+/// Direct SKU uses `dayseam.outlook`; **`mas`** builds use **`dayseam.mas.outlook`**
+/// ([`crate::keychain_profile`] — **MAS-5b2**).
+pub use crate::keychain_profile::OUTLOOK_KEYCHAIN_SERVICE;
 
 /// Suffix appended to `source:{id}` to compose the access-token
 /// keychain account. Kept `pub(crate)` so `build_source_auth` and

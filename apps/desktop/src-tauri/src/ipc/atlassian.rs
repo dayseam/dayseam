@@ -30,8 +30,11 @@
 //!
 //! | GitLab (DAY-70)                    | Atlassian (this file)                    |
 //! |------------------------------------|------------------------------------------|
-//! | `service = dayseam.gitlab`         | `service = dayseam.atlassian`            |
+//! | `service = dayseam.gitlab` (`dayseam.mas.gitlab` with **`mas`**) | `service = dayseam.atlassian` (`dayseam.mas.atlassian` with **`mas`**) |
 //! | `account = source:<source_id>`     | `account = slot:<uuid>`                  |
+//!
+//! **MAS-5b2:** The `service` string for **`mas`** builds is defined in
+//! [`crate::keychain_profile`]; account shapes are unchanged.
 //!
 //! GitLab keys by `source_id` because one GitLab source owns exactly
 //! one PAT. Atlassian keys by an opaque UUID slot because the
@@ -64,13 +67,8 @@ use crate::ipc::commands::{
     SELF_DEFAULT_DISPLAY_NAME,
 };
 use crate::ipc::secret::IpcSecretString;
+use crate::keychain_profile;
 use crate::state::AppState;
-
-/// Keychain `service` half for every Atlassian API token this app
-/// stores. Matches the "Keychain Access readability" rationale that
-/// all `dayseam.atlassian` entries live under one heading and is
-/// the shape DAY-81's orphan-secret audit on boot walks.
-const ATLASSIAN_KEYCHAIN_SERVICE: &str = "dayseam.atlassian";
 
 /// Build a fresh [`SecretRef`] for an Atlassian PAT. Unlike the
 /// GitLab variant, the `account` half is a brand-new UUID rather
@@ -79,7 +77,7 @@ const ATLASSIAN_KEYCHAIN_SERVICE: &str = "dayseam.atlassian";
 /// "canonical".
 fn new_atlassian_secret_ref() -> SecretRef {
     SecretRef {
-        keychain_service: ATLASSIAN_KEYCHAIN_SERVICE.to_string(),
+        keychain_service: keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE.to_string(),
         keychain_account: format!("slot:{}", Uuid::new_v4()),
     }
 }
@@ -269,7 +267,7 @@ pub async fn atlassian_validate_credentials_impl(
     let auth = BasicAuth::atlassian(
         email.as_str(),
         api_token.expose(),
-        ATLASSIAN_KEYCHAIN_SERVICE,
+        keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE,
         "probe",
     );
     let cloud =
@@ -763,7 +761,7 @@ pub async fn atlassian_sources_reconnect_impl(
     let auth = BasicAuth::atlassian(
         email.as_str(),
         api_token.expose(),
-        ATLASSIAN_KEYCHAIN_SERVICE,
+        keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE,
         "probe",
     );
     let cloud = discover_cloud(
@@ -977,8 +975,14 @@ mod tests {
     fn new_atlassian_secret_ref_is_unique_per_call() {
         let a = new_atlassian_secret_ref();
         let b = new_atlassian_secret_ref();
-        assert_eq!(a.keychain_service, ATLASSIAN_KEYCHAIN_SERVICE);
-        assert_eq!(b.keychain_service, ATLASSIAN_KEYCHAIN_SERVICE);
+        assert_eq!(
+            a.keychain_service,
+            keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE
+        );
+        assert_eq!(
+            b.keychain_service,
+            keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE
+        );
         assert_ne!(a.keychain_account, b.keychain_account);
         assert!(a.keychain_account.starts_with("slot:"));
     }
@@ -1022,7 +1026,10 @@ mod tests {
             "shared-PAT journey must write one SecretRef, reused across rows"
         );
         let sr = jira.secret_ref.clone().unwrap();
-        assert_eq!(sr.keychain_service, ATLASSIAN_KEYCHAIN_SERVICE);
+        assert_eq!(
+            sr.keychain_service,
+            keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE
+        );
         assert!(sr.keychain_account.starts_with("slot:"));
 
         // Exactly one keychain row, and it holds the token we sent.
@@ -1180,7 +1187,7 @@ mod tests {
         // missing key.
         let (state, _dir) = make_state().await;
         let stale = SecretRef {
-            keychain_service: ATLASSIAN_KEYCHAIN_SERVICE.into(),
+            keychain_service: keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE.into(),
             keychain_account: "slot:deadbeef".into(),
         };
         let err = atlassian_sources_add_impl(

@@ -15,6 +15,7 @@ pub const DISTRIBUTION_PROFILE: &str = "mas";
 pub const DISTRIBUTION_PROFILE: &str = "direct";
 
 pub mod ipc;
+pub mod keychain_profile;
 pub mod local_git_scan;
 pub mod oauth_config;
 pub mod oauth_persister;

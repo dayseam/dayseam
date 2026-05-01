@@ -1038,7 +1038,7 @@ mod tests {
 
     fn gitlab_secret_ref_for(source_id: Uuid) -> dayseam_core::SecretRef {
         dayseam_core::SecretRef {
-            keychain_service: "dayseam.gitlab".into(),
+            keychain_service: crate::keychain_profile::GITLAB_KEYCHAIN_SERVICE.into(),
             keychain_account: format!("source:{source_id}"),
         }
     }
@@ -1335,7 +1335,7 @@ mod tests {
 
     fn shared_secret_ref() -> dayseam_core::SecretRef {
         dayseam_core::SecretRef {
-            keychain_service: "dayseam.atlassian".into(),
+            keychain_service: crate::keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE.into(),
             keychain_account: "slot:shared".into(),
         }
     }
@@ -1591,7 +1591,7 @@ mod tests {
                 email: "jira-only@acme.com".into(),
             },
             Some(dayseam_core::SecretRef {
-                keychain_service: "dayseam.atlassian".into(),
+                keychain_service: crate::keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE.into(),
                 keychain_account: "slot:jira".into(),
             }),
         )
@@ -1604,7 +1604,7 @@ mod tests {
                 email: String::new(),
             },
             Some(dayseam_core::SecretRef {
-                keychain_service: "dayseam.atlassian".into(),
+                keychain_service: crate::keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE.into(),
                 keychain_account: "slot:conf".into(),
             }),
         )
