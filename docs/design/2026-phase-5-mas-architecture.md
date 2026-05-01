@@ -193,6 +193,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 - **No session-wide blanket** `startAccessing…` for the whole app lifetime.
 - Use a **RAII guard** (or explicit `defer`-style scope) per **operation batch** (single sync walk, single report generation, single sink write).
 - **Long-running jobs** (scheduled catch-up, large repo walk): one guard spanning the **job lifecycle** only; release promptly on completion/cancel.
+- **Implementation (MAS-4b):** Rust helpers live in [`security_scoped/mod.rs`](../../apps/desktop/src-tauri/src/security_scoped/mod.rs) (`create_directory_bookmark`, `resolve_bookmark`, `SecurityScopedGuard`). Prefer **`SecurityScopedGuard::from_bookmark`** after rehydrating stored bytes so `startAccessing…` runs on the resolved `NSURL`, not only a reconstituted file path.
 
 ### 9.6 Persistent storage (**MAS-4a**)
 
@@ -350,3 +351,4 @@ CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-ta
 | 2026-04-30 | **MAS-2b:** §16 privacy/SDK inventory (versions + `PrivacyInfo.xcprivacy` gaps); §21 CI — [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) on MAS bundle after codesign verification. |
 | 2026-05-01 | **MAS-2c:** §5 JIT matrix row + §7 pointer to [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md); §21 MAS column cites compliance doc. |
 | 2026-05-01 | **MAS-4a:** §9.6 **`security_scoped_bookmarks`** SQLite mapping + crate [`build.rs`](../../crates/dayseam-db/build.rs) rerun hints for migrations. |
+| 2026-05-01 | **MAS-4b:** §9.5 pointer to desktop [`security_scoped`](../../apps/desktop/src-tauri/src/security_scoped/mod.rs) module. |

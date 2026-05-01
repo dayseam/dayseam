@@ -19,6 +19,7 @@ pub mod oauth_config;
 pub mod oauth_persister;
 pub mod oauth_session;
 pub mod scheduler_task;
+pub mod security_scoped;
 pub mod startup;
 pub mod state;
 pub mod tracing_init;
