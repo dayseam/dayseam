@@ -211,7 +211,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 | Concern | Direct (today) | MAS (required) |
 |---------|----------------|----------------|
 | **Bundle id** | `dev.dayseam.desktop` from [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) | **Distinct** App Store id (e.g. `dev.dayseam.mas` — final choice is operator-owned). |
-| **Application Support path** | `~/Library/Application Support/dev.dayseam.desktop/` via [`startup.rs`](../../apps/desktop/src-tauri/src/startup.rs) `DATA_SUBDIR` | **Must not** reuse `DATA_SUBDIR`; MAS profile uses a subdirectory keyed to **MAS bundle id** (or explicit `dev.dayseam.mas` constant) so SQLite + logs never collide. |
+| **Application Support path** | `~/Library/Application Support/dev.dayseam.desktop/` via [`startup.rs`](../../apps/desktop/src-tauri/src/startup.rs) `DATA_SUBDIR` (direct SKU, default features) | `~/Library/Application Support/dev.dayseam.mas/` when built with **`mas`** (**MAS-5b1**): same source file selects `DATA_SUBDIR` via `#[cfg(feature = "mas")]`, matching [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) **`identifier`**. SQLite + logs never share a directory with direct when both SKUs are installed. |
 | **SQLite `state.db`** | One file per install | **Two independent files** when both SKUs installed — **no** automatic merge. |
 | **Lock files** (e.g. markdown sink `.dayseam.lock`) | Per sink path | Same as SQLite — separate installs mean separate lock namespaces unless user points both apps at the **same** folder (advanced; see risk). |
 | **Keychain** | Rows keyed by `service::account` strings | **Preferred policy:** distinct `service` prefix per SKU (e.g. `dayseam.mas.*`) for clarity in Keychain Access. **MAS-5a:** Rust still uses the **same** `dayseam.gitlab` / `dayseam.github` / `dayseam.atlassian` / `dayseam.outlook` strings on **both** SKUs — isolation relies primarily on **different bundle ids / signing** (§12); optional prefix implementation → **MAS-5b2**. |
@@ -358,7 +358,7 @@ These literals are **shared across direct and `mas` builds** today — there is 
 ## 20. Open decisions checklist (pre–App Store submission)
 
 - [x] **MAS bundle identifier (scaffold)** — `tauri.mas.conf.json` sets **`dev.dayseam.mas`** for merge builds (**MAS-1a**). Replace with the final App Store Connect bundle id when registered.
-- [ ] Confirm **`DATA_SUBDIR`** for the MAS profile in Rust (`startup.rs`) so Application Support / `state.db` paths do not collide with direct when both SKUs are installed (§10).
+- [x] Confirm **`DATA_SUBDIR`** for the MAS profile in Rust (`startup.rs`) so Application Support / `state.db` paths do not collide with direct when both SKUs are installed (§10) — **MAS-5b1**.
 - [x] **Keychain (MAS-5a):** audit documented in §12 — service strings are currently **shared** across SKUs; bundle-id isolation is expected; optional **`dayseam.mas.*` prefix** remains **MAS-5b2** if required.
 - [ ] Confirm **JIT entitlement** narrative with legal/compliance if Apple pushes back.
 - [ ] Confirm **network entitlement** shape for self-hosted connector domains.

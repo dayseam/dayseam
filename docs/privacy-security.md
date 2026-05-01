@@ -16,7 +16,11 @@ mandatory account.
 ## What Dayseam stores on your machine
 
 Dayseam keeps one SQLite database per user profile in the macOS app
-data directory (`~/Library/Application Support/dev.dayseam.desktop/`).
+data directory. The direct-download build uses
+`~/Library/Application Support/dev.dayseam.desktop/`; the Mac App Store
+build (distinct bundle id) uses
+`~/Library/Application Support/dev.dayseam.mas/` so the two SKUs never
+share the same database file when both are installed.
 The tables are defined by the migrations in
 [`crates/dayseam-db/migrations/`](../crates/dayseam-db/migrations/)
 and cover, in plain terms:

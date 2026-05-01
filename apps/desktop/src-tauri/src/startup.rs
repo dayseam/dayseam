@@ -33,9 +33,16 @@ use uuid::Uuid;
 use crate::state::AppState;
 
 /// Fixed subdirectory inside the OS "app data" dir that Dayseam owns.
-/// Matches the Tauri bundle identifier prefix so multiple installs
-/// (stable, alpha, custom) can coexist without stepping on one
-/// another.
+/// Matches the active Tauri bundle identifier so multiple installs
+/// (stable, alpha, direct vs Mac App Store) can coexist without
+/// sharing `state.db`.
+///
+/// **MAS-5b1:** `mas` builds use the MAS bundle id leaf (`dev.dayseam.mas`
+/// from [`tauri.mas.conf.json`](../tauri.mas.conf.json)); direct SKU
+/// builds keep `dev.dayseam.desktop`.
+#[cfg(feature = "mas")]
+const DATA_SUBDIR: &str = "dev.dayseam.mas";
+#[cfg(not(feature = "mas"))]
 const DATA_SUBDIR: &str = "dev.dayseam.desktop";
 const DB_FILENAME: &str = "state.db";
 
@@ -779,6 +786,15 @@ mod tests {
     use chrono::Utc;
     use dayseam_core::{Source, SourceHealth};
     use tempfile::TempDir;
+
+    #[test]
+    fn default_data_dir_leaf_matches_bundle_sku() {
+        assert_eq!(
+            default_data_dir().file_name().and_then(|s| s.to_str()),
+            Some(DATA_SUBDIR),
+            "direct vs MAS must use distinct Application Support leaves (MAS-5b1 / §10)"
+        );
+    }
 
     #[tokio::test]
     async fn build_app_state_writes_the_startup_log_entry() {
