@@ -53,6 +53,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 - **DAY-210 / MAS-5b2:** Mac App Store builds (`--features mas`) now use distinct Keychain **service** names (`dayseam.mas.gitlab`, `dayseam.mas.github`, `dayseam.mas.atlassian`, `dayseam.mas.outlook`) so entries are clearly separated from the direct-download SKU in Keychain Access when both apps are installed. Centralized in [`keychain_profile.rs`](apps/desktop/src-tauri/src/keychain_profile.rs); existing pre-release MAS testers may need to reconnect sources once so SQLite `SecretRef` rows align with the new service strings.
 
+### Documentation
+
+- **DAY-210 / MAS-6a:** Documented the Mac App Store outbound networking model: **`com.apple.security.network.client`** in [`entitlements.mas.plist`](apps/desktop/src-tauri/entitlements.mas.plist) covers **HTTPS** connectors to **user-configured** hosts (including self-hosted GitLab / enterprise GitHub) without per-domain plist entries—see [`entitlements.mas.md`](apps/desktop/src-tauri/entitlements.mas.md) (**Outbound HTTPS**) and [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §13. Existing CI already embeds and verifies the entitlement on signed MAS bundles via [`verify-tauri-bundle-entitlements.sh`](scripts/ci/verify-tauri-bundle-entitlements.sh).
+
 ## [0.13.8] - 2026-05-01
 
 ### Changed

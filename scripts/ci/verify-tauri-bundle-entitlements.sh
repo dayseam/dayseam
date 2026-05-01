@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# verify-tauri-bundle-entitlements.sh — **MAS-1b** + **MAS-2a** + **MAS-2c** codesign gate.
+# verify-tauri-bundle-entitlements.sh — **MAS-1b** + **MAS-2a** + **MAS-2c** + **MAS-6a** codesign gate.
+#
+# **MAS-6a:** For `mas`, requires **`com.apple.security.network.client`** on the
+# signed bundle (outbound HTTPS to user-configured hosts — see
+# `apps/desktop/src-tauri/entitlements.mas.md` Outbound HTTPS + architecture §13).
 #
 # After `pnpm exec tauri build --bundles app`, assert the built `.app`
 # carries the entitlement keys we require for CI (`direct`: same three

@@ -39,7 +39,7 @@ flowchart LR
 
   subgraph MAS["MAS SKU"]
     M1["Tauri config merge\n(`mas` / packaging)"]
-    M2["`entitlements.mas.plist`\nApp Sandbox + allow-list"]
+    M2["`entitlements.mas.plist`\nApp Sandbox +\noutbound HTTPS (MAS-6a)"]
     M3["capabilities:\nMAS JSON\n(no updater)"]
     M4["App Store Connect\nupload + review"]
   end
@@ -73,7 +73,7 @@ Today’s direct macOS build **opts out of App Sandbox** and instead relies on h
 **MAS** inverts the constraint: **App Sandbox is mandatory**. That implies:
 
 - **Default-deny filesystem** outside container and without **security-scoped bookmarks** (or picker-granted scope).
-- **Outbound network** is entitlement-gated; every connector host must be anticipated or user-driven (HTTPS).
+- **Outbound network** is entitlement-gated; **`com.apple.security.network.client`** covers **HTTPS clients** to **user-configured** hosts without per-domain plist entries (**MAS-6a**, §13).
 - **Child processes / Mach services** are heavily restricted; anything that today shells out must be audited (§7).
 - **Keychain** and **OAuth loopback** remain required but must be validated under sandbox (plan blocks **MAS-5**, **MAS-6**).
 
@@ -95,7 +95,7 @@ Today’s direct macOS build **opts out of App Sandbox** and instead relies on h
 | Key | MAS (initial stub → target) | Notes |
 |-----|------------------------------|--------|
 | `com.apple.security.app-sandbox` | **on** (**MAS-2a**) | Store requirement. |
-| `com.apple.security.network.client` | **on** when needed (**MAS-2a** / **MAS-6a**) | All connectors are HTTPS clients. |
+| `com.apple.security.network.client` | **on** (**MAS-2a** + **MAS-6a**) | Outbound **HTTPS** to user-configured hosts (self-hosted GitLab, enterprise GitHub, …); broad client entitlement—see §13 / [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md). |
 | `com.apple.security.files.user-selected.read-write` | **TBD with bookmarks** | Under sandbox, picker + bookmark flow must match **MAS-4**; may differ from direct’s standalone key semantics — validate against Apple’s matrix for sandboxed apps. |
 | `com.apple.security.cs.allow-jit` / `…allow-unsigned-executable-memory` | **on** (**MAS-2c**) | Same keys as direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist); justified for WKWebView + in-process native deps — canonical text in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) (feeds **MAS-7c**). **Fallback** if App Review rejects: WebKit/Tauri narrowing → upstream issue → hold SKU (see that doc). |
 
@@ -151,7 +151,7 @@ This table is the **authoritative enumeration baseline** for capstone subprocess
 |---|-----------|--------------------|----------------|---------------|
 | 1 | `opener::open` | `shell_open` in [`commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | macOS: hand-off to **`/usr/bin/open`** (user-initiated; scheme allow-list includes `http`, `https`, `file`, …). | Must remain **user-driven**; no background open. URL policy unchanged. |
 | 2 | `opener::open_browser` | OAuth in [`oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) | Default browser for authorize URL. | Same as above; paired with loopback listener. |
-| 3 | `tokio::net::TcpListener` | `oauth.rs` — `127.0.0.1` loopback for OAuth redirect | No child process; **inbound localhost** socket. | Requires **network entitlement** analysis (**MAS-6a**); document loopback port pinning vs ephemeral tests. |
+| 3 | `tokio::net::TcpListener` | `oauth.rs` — `127.0.0.1` loopback for OAuth redirect | No child process; **inbound localhost** socket. | **MAS-6a:** outbound **`network.client`** documented for HTTPS connectors; **loopback listener** parity / entitlement detail → **MAS-6b** (document port pinning vs ephemeral tests). |
 | 4 | **libgit2** (vendored) | `connector-local-git` via `git2` crate with `vendored-libgit2` | **No** `git` CLI subprocess; native library inside Dayseam address space. | Sandboxed FS access must go through **security-scoped** paths from bookmarks (**MAS-4**), not arbitrary POSIX paths from persisted config. |
 | 5 | **Tests / dev only** | `MetadataCommand`, `Command::new("git")` in various `tests/` crates | `cargo test` helpers | Not shipped in production bundle. |
 
@@ -283,7 +283,8 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ## 13. Networking
 
-- **Outbound:** connectors use `reqwest` (HTTPS). MAS entitlements must allow **client TLS** to user-configured hosts (GitLab self-host, enterprise GitHub, etc.) — exact pattern in **MAS-6a** (broad client entitlement vs per-host plist keys is an Apple-policy choice).
+**MAS-6a (closed):** Outbound connector traffic uses **`reqwest`** over **HTTPS** to URLs the user configures (GitLab self-host, GitHub Enterprise, Atlassian cloud or DC, Microsoft Graph, …). The Mac App Store SKU enables **`com.apple.security.network.client`** in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)—the standard App Sandbox pattern for **generic outbound TLS clients** without embedding destination hostnames in the plist. Full rationale (including trade-offs vs per-host keys) lives in [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) (**Outbound HTTPS**). CI asserts the entitlement on signed bundles via [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh).
+
 - **Inbound:** OAuth loopback listener on `127.0.0.1` (**MAS-6b** parity with direct; rate limits and retry behaviour unchanged unless a sandbox bug forces a delta).
 
 ---
@@ -362,7 +363,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 - [x] **Keychain (MAS-5a):** audit documented in §12 — bundle-id isolation expected.
 - [x] **Keychain service SKU prefix (MAS-5b2):** [`keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) — `dayseam.mas.*` when built with **`mas`**.
 - [ ] Confirm **JIT entitlement** narrative with legal/compliance if Apple pushes back.
-- [ ] Confirm **network entitlement** shape for self-hosted connector domains.
+- [x] **Outbound network entitlement (MAS-6a):** **`com.apple.security.network.client`** documented for user-configured HTTPS / self-hosted SaaS ([`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); CI verifies embedded entitlement ([`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh)).
 
 ---
 
@@ -391,6 +392,7 @@ CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-ta
 | 2026-04-30 | **MAS-2a:** §21 MAS row — App Sandbox + `network.client` in `entitlements.mas.plist`; verify script requires those keys on `mas` profile. |
 | 2026-04-30 | **MAS-2a review:** §5 footnote — `user-selected.read-write` on at MAS-2a vs bookmark semantics in **MAS-4**. |
 | 2026-04-30 | **MAS-2b:** §16 privacy/SDK inventory (versions + `PrivacyInfo.xcprivacy` gaps); §21 CI — [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) on MAS bundle after codesign verification. |
+| 2026-04-30 | **MAS-6a:** §4 outbound-network bullet; §5 `network.client` row; §8 subprocess row 3; §13 networking — document **`com.apple.security.network.client`** for HTTPS to user-configured hosts; §20 checklist item closed; §2 diagram — MAS node no longer says **allow-list** (misleading vs **`network.client`** / §3 capability column). |
 | 2026-05-01 | **MAS-2c:** §5 JIT matrix row + §7 pointer to [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md); §21 MAS column cites compliance doc. |
 | 2026-05-01 | **MAS-4a:** §9.6 **`security_scoped_bookmarks`** SQLite mapping + crate [`build.rs`](../../crates/dayseam-db/build.rs) rerun hints for migrations. |
 | 2026-05-01 | **MAS-4b:** §9.5 pointer to desktop [`security_scoped`](../../apps/desktop/src-tauri/src/security_scoped/mod.rs) module. |
