@@ -46,6 +46,7 @@ use uuid::Uuid;
 
 use crate::ipc::run_forwarder;
 use crate::ipc::secret::IpcSecretString;
+use crate::keychain_profile;
 use crate::state::{spawn_run_reaper, AppState, RunHandle};
 
 /// Settings key used by [`settings_get`] / [`settings_update`]. One
@@ -266,20 +267,15 @@ pub(crate) fn persist_restart_required_toast(state: &AppState) {
     publish_restart_required_toast(state);
 }
 
-/// Keychain `service` half for every GitLab PAT this app stores.
-///
-/// Picking a constant here — rather than threading the bundle id through
-/// each call site — keeps Keychain Access readable ("all `dayseam.gitlab`
-/// entries") and makes the `sources_delete` sweep trivial to audit.
-const GITLAB_KEYCHAIN_SERVICE: &str = "dayseam.gitlab";
-
 /// Compute the stable [`SecretRef`] for a GitLab source's PAT. Each
 /// configured GitLab source owns one keychain row keyed by its
 /// [`SourceId`]. The `account` half embeds the UUID so two sources
-/// targeting the same host cannot clobber each other's tokens.
+/// targeting the same host cannot clobber each other's tokens. The
+/// `keychain_service` string is [`crate::keychain_profile::GITLAB_KEYCHAIN_SERVICE`]
+/// (direct vs MAS per **MAS-5b2**).
 fn gitlab_secret_ref(source_id: SourceId) -> SecretRef {
     SecretRef {
-        keychain_service: GITLAB_KEYCHAIN_SERVICE.to_string(),
+        keychain_service: keychain_profile::GITLAB_KEYCHAIN_SERVICE.to_string(),
         keychain_account: format!("source:{source_id}"),
     }
 }
@@ -478,7 +474,8 @@ pub(crate) fn build_source_auth(
             )))
         }
         // DAY-203. Outlook reads *two* keychain rows — access and
-        // refresh — both under `dayseam.outlook`. We don't persist
+        // refresh — both under the same Outlook Keychain service name
+        // (`crate::ipc::outlook::OUTLOOK_KEYCHAIN_SERVICE`, **MAS-5b2**). We don't persist
         // the exact account strings on the `sources` row (there's
         // no dedicated column for a second keychain slot); instead
         // the two accounts are derived from the stable source id
@@ -955,7 +952,8 @@ pub async fn sources_list(state: State<'_, AppState>) -> Result<Vec<Source>, Day
 ///
 ///   1. Insert the source row (with `secret_ref = None`).
 ///   2. For GitLab: write the PAT to the Keychain under
-///      `dayseam.gitlab::source:<uuid>`, then update the row's
+///      [`crate::keychain_profile::GITLAB_KEYCHAIN_SERVICE`] at account
+///      `source:<uuid>` (**MAS-5b2:** `mas` builds use `dayseam.mas.gitlab`), then update the row's
 ///      `secret_ref` to point at that slot.
 ///   3. For LocalGit: discover repos underneath `scan_roots` and
 ///      upsert them into `local_repos`.
@@ -2904,7 +2902,10 @@ mod tests {
         // again. That's exactly the bug we just fixed.
         let id = uuid::uuid!("11111111-2222-3333-4444-555555555555");
         let sr = gitlab_secret_ref(id);
-        assert_eq!(sr.keychain_service, "dayseam.gitlab");
+        assert_eq!(
+            sr.keychain_service,
+            crate::keychain_profile::GITLAB_KEYCHAIN_SERVICE
+        );
         assert_eq!(
             sr.keychain_account,
             format!("source:{id}"),
@@ -2912,7 +2913,10 @@ mod tests {
         );
         assert_eq!(
             secret_store_key(&sr),
-            "dayseam.gitlab::source:11111111-2222-3333-4444-555555555555"
+            format!(
+                "{}::source:11111111-2222-3333-4444-555555555555",
+                crate::keychain_profile::GITLAB_KEYCHAIN_SERVICE
+            )
         );
     }
 
@@ -3355,7 +3359,7 @@ mod tests {
 
     fn atlassian_secret_ref() -> SecretRef {
         SecretRef {
-            keychain_service: "dayseam.atlassian".into(),
+            keychain_service: crate::keychain_profile::ATLASSIAN_KEYCHAIN_SERVICE.into(),
             keychain_account: "workspace:acme".into(),
         }
     }

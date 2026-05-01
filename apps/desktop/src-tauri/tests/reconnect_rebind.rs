@@ -60,6 +60,7 @@ use dayseam_desktop::ipc::github::{
     github_sources_reconnect_impl, github_validate_credentials_impl,
 };
 use dayseam_desktop::ipc::secret::IpcSecretString;
+use dayseam_desktop::keychain_profile::GITHUB_KEYCHAIN_SERVICE;
 use dayseam_desktop::AppState;
 use dayseam_events::AppBus;
 use dayseam_orchestrator::{ConnectorRegistry, OrchestratorBuilder, SinkRegistry};
@@ -291,7 +292,7 @@ async fn github_reconnect_self_heals_missing_login_row() {
     let source_id = Uuid::new_v4();
     let api_base_url = format!("{}/", server.uri());
     let secret_ref = dayseam_core::SecretRef {
-        keychain_service: "dayseam.github".to_string(),
+        keychain_service: GITHUB_KEYCHAIN_SERVICE.to_string(),
         keychain_account: format!("source:{source_id}"),
     };
     let source = Source {

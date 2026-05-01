@@ -29,9 +29,12 @@
 //!
 //! | connector | service              | account                    |
 //! |-----------|----------------------|----------------------------|
-//! | GitLab    | `dayseam.gitlab`     | `source:<source_id>`       |
-//! | Atlassian | `dayseam.atlassian`  | `slot:<uuid>`              |
-//! | GitHub    | `dayseam.github`     | `source:<source_id>`       |
+//! | GitLab    | `dayseam.gitlab` (`dayseam.mas.gitlab` with **`mas`**) | `source:<source_id>`       |
+//! | Atlassian | `dayseam.atlassian` (`dayseam.mas.atlassian` with **`mas`**) | `slot:<uuid>`              |
+//! | GitHub    | `dayseam.github` (`dayseam.mas.github` with **`mas`**)     | `source:<source_id>`       |
+//!
+//! **MAS-5b2:** Service names for the Mac App Store build come from
+//! [`crate::keychain_profile`]; the `account` column is unchanged.
 //!
 //! The GitLab shape is right for GitHub because no flow in v0.4 lets
 //! two GitHub `Source` rows share a credential — GitHub is one PAT
@@ -64,14 +67,8 @@ use crate::ipc::commands::{
     SELF_DEFAULT_DISPLAY_NAME,
 };
 use crate::ipc::secret::IpcSecretString;
+use crate::keychain_profile;
 use crate::state::AppState;
-
-/// Keychain `service` half for every GitHub PAT this app stores.
-/// Matches the "Keychain Access readability" rationale the sibling
-/// GitLab and Atlassian modules use — all `dayseam.github` entries
-/// live under one heading and are the shape DAY-81's orphan-secret
-/// audit on boot walks.
-const GITHUB_KEYCHAIN_SERVICE: &str = "dayseam.github";
 
 /// Stable [`SecretRef`] for a GitHub source's PAT. Each configured
 /// GitHub source owns one keychain row keyed by its [`SourceId`];
@@ -80,7 +77,7 @@ const GITHUB_KEYCHAIN_SERVICE: &str = "dayseam.github";
 /// refcount scan.
 fn github_secret_ref(source_id: SourceId) -> SecretRef {
     SecretRef {
-        keychain_service: GITHUB_KEYCHAIN_SERVICE.to_string(),
+        keychain_service: keychain_profile::GITHUB_KEYCHAIN_SERVICE.to_string(),
         keychain_account: format!("source:{source_id}"),
     }
 }
@@ -222,7 +219,11 @@ pub async fn github_validate_credentials_impl(
     require_nonempty_pat(pat.expose())?;
     let parsed = parse_api_base_url(&api_base_url)?;
 
-    let auth = PatAuth::github(pat.expose(), GITHUB_KEYCHAIN_SERVICE, "probe");
+    let auth = PatAuth::github(
+        pat.expose(),
+        keychain_profile::GITHUB_KEYCHAIN_SERVICE,
+        "probe",
+    );
     let info = validate_auth(&state.http, &auth, &parsed, &CancellationToken::new(), None).await?;
 
     Ok(GithubValidationResult {
@@ -540,7 +541,11 @@ pub async fn github_sources_reconnect_impl(
     // same host and `tests/reconnect_rebind.rs` can route this probe
     // through a wiremock server.
     let parsed_url = parse_api_base_url(&api_base_url)?;
-    let auth = PatAuth::github(pat.expose(), GITHUB_KEYCHAIN_SERVICE, "probe");
+    let auth = PatAuth::github(
+        pat.expose(),
+        keychain_profile::GITHUB_KEYCHAIN_SERVICE,
+        "probe",
+    );
     let info = validate_auth(
         &state.http,
         &auth,
@@ -729,7 +734,10 @@ mod tests {
         let a = github_secret_ref(id);
         let b = github_secret_ref(id);
         assert_eq!(a, b, "same source_id must produce the same SecretRef");
-        assert_eq!(a.keychain_service, GITHUB_KEYCHAIN_SERVICE);
+        assert_eq!(
+            a.keychain_service,
+            keychain_profile::GITHUB_KEYCHAIN_SERVICE
+        );
         assert!(a.keychain_account.starts_with("source:"));
     }
 
@@ -769,7 +777,10 @@ mod tests {
         assert_eq!(source.kind, SourceKind::GitHub);
         assert!(matches!(source.config, SourceConfig::GitHub { .. }));
         let sr = source.secret_ref.clone().expect("secret_ref present");
-        assert_eq!(sr.keychain_service, GITHUB_KEYCHAIN_SERVICE);
+        assert_eq!(
+            sr.keychain_service,
+            keychain_profile::GITHUB_KEYCHAIN_SERVICE
+        );
         assert_eq!(sr.keychain_account, format!("source:{}", source.id));
 
         let value = state

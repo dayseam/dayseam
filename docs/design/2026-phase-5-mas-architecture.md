@@ -214,7 +214,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 | **Application Support path** | `~/Library/Application Support/dev.dayseam.desktop/` via [`startup.rs`](../../apps/desktop/src-tauri/src/startup.rs) `DATA_SUBDIR` (direct SKU, default features) | `~/Library/Application Support/dev.dayseam.mas/` when built with **`mas`** (**MAS-5b1**): same source file selects `DATA_SUBDIR` via `#[cfg(feature = "mas")]`, matching [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) **`identifier`**. SQLite + logs never share a directory with direct when both SKUs are installed. |
 | **SQLite `state.db`** | One file per install | **Two independent files** when both SKUs installed — **no** automatic merge. |
 | **Lock files** (e.g. markdown sink `.dayseam.lock`) | Per sink path | Same as SQLite — separate installs mean separate lock namespaces unless user points both apps at the **same** folder (advanced; see risk). |
-| **Keychain** | Rows keyed by `service::account` strings | **Preferred policy:** distinct `service` prefix per SKU (e.g. `dayseam.mas.*`) for clarity in Keychain Access. **MAS-5a:** Rust still uses the **same** `dayseam.gitlab` / `dayseam.github` / `dayseam.atlassian` / `dayseam.outlook` strings on **both** SKUs — isolation relies primarily on **different bundle ids / signing** (§12); optional prefix implementation → **MAS-5b2**. |
+| **Keychain** | Rows keyed by `service::account` strings; service names `dayseam.<connector>` via [`keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) | **MAS-5b2:** `mas` builds use `dayseam.mas.<connector>` (same module). **MAS-5a:** bundle-id isolation still applies; prefixes are for Keychain Access clarity when both SKUs are installed. |
 | **Custom URL schemes / deep links** | Minimal / none for OAuth (loopback HTTP) | If a **registered scheme** is added later, it **must not** collide between SKUs (Apple registers schemes per bundle id — still document for support). |
 
 **Risk:** user configures **both** apps to write into the **same** Obsidian vault without coordination — possible **write races**. Mitigation: support docs recommend one active writer per vault; not a code blocker for Phase 5.
@@ -242,14 +242,14 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ### 12.2 Service / account matrix (production)
 
-These literals are **shared across direct and `mas` builds** today — there is **no** `#[cfg(feature = "mas")]` or `DISTRIBUTION_PROFILE` branch that changes `keychain_service`.
+**MAS-5b2:** [`keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) defines connector service literals per SKU — direct builds keep `dayseam.<connector>`; **`mas`** builds use **`dayseam.mas.<connector>`**. Account shapes are unchanged.
 
-| Integration | `keychain_service` | Account shape | Primary Rust source |
+| Integration | `keychain_service` (direct / **`mas`**) | Account shape | Primary Rust source |
 |-------------|-------------------|---------------|---------------------|
-| GitLab PAT | `dayseam.gitlab` | `source:{SourceId}` | [`commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) (`gitlab_secret_ref`) |
-| GitHub PAT | `dayseam.github` | `source:{SourceId}` | [`github.rs`](../../apps/desktop/src-tauri/src/ipc/github.rs) |
-| Atlassian PAT | `dayseam.atlassian` | `slot:{Uuid}` | [`atlassian.rs`](../../apps/desktop/src-tauri/src/ipc/atlassian.rs) |
-| Outlook OAuth | `dayseam.outlook` | `source:{SourceId}.oauth.access` / `.oauth.refresh` | [`outlook.rs`](../../apps/desktop/src-tauri/src/ipc/outlook.rs) |
+| GitLab PAT | `dayseam.gitlab` / **`dayseam.mas.gitlab`** | `source:{SourceId}` | [`commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) (`gitlab_secret_ref`) |
+| GitHub PAT | `dayseam.github` / **`dayseam.mas.github`** | `source:{SourceId}` | [`github.rs`](../../apps/desktop/src-tauri/src/ipc/github.rs) |
+| Atlassian PAT | `dayseam.atlassian` / **`dayseam.mas.atlassian`** | `slot:{Uuid}` | [`atlassian.rs`](../../apps/desktop/src-tauri/src/ipc/atlassian.rs) |
+| Outlook OAuth | `dayseam.outlook` / **`dayseam.mas.outlook`** | `source:{SourceId}.oauth.access` / `.oauth.refresh` | [`outlook.rs`](../../apps/desktop/src-tauri/src/ipc/outlook.rs) |
 
 ### 12.3 App Sandbox + entitlements
 
@@ -258,9 +258,9 @@ These literals are **shared across direct and `mas` builds** today — there is 
 
 ### 12.4 Coexistence (direct + MAS installed)
 
-- **§10 optional policy** proposed **distinct `service` prefixes per SKU** (e.g. `dayseam.mas.gitlab`) so Keychain Access labels stay unambiguous. **Implementation status:** not present in Rust as of **MAS-5a** — all services remain `dayseam.*` on both SKUs.
+- **§10 optional policy** — distinct `service` prefixes per SKU (**MAS-5b2**, [`keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs)): **`mas`** builds use `dayseam.mas.*`; direct unchanged.
 - **Platform isolation:** macOS ties Keychain items to the **app’s code signing identity / bundle**. The direct bundle (`dev.dayseam.desktop`) and MAS bundle (`dev.dayseam.mas`) are **different apps**; tokens created by one SKU should **not** overwrite rows belonging to the other **even when service + account strings match**. The prefix policy is therefore **defensive / UX clarity**, not the only isolation mechanism.
-- **SQLite `SecretRef` rows** remain per-database-file; co-installed apps use **different** Application Support paths once **`DATA_SUBDIR`** is MAS-specific (see §10 — still an open implementation item).
+- **SQLite `SecretRef` rows** remain per-database-file; co-installed apps use **different** Application Support paths (**MAS-5b1**, §10) and **distinct `keychain_service` strings on `mas`** (**MAS-5b2**).
 
 ### 12.5 Boot-time behaviour + tests
 
@@ -276,7 +276,7 @@ These literals are **shared across direct and `mas` builds** today — there is 
 | Item | Plan ID | Notes |
 |------|---------|--------|
 | **`DATA_SUBDIR` / Application Support** | **MAS-5b1** | MAS-specific Application Support / `state.db` path in [`startup.rs`](../../apps/desktop/src-tauri/src/startup.rs) (§10 / §20); orthogonal to Keychain `service` strings. |
-| **Optional SKU-specific `keychain_service` prefix** + fixes from **MAS-5a** | **MAS-5b2** | Touch every `*_KEYCHAIN_SERVICE` / `SecretRef` factory + migration / reconnect story if existing MAS installs already shipped; regression tests. |
+| **SKU-specific `keychain_service` prefix** (`dayseam.mas.*` when **`mas`**) | **MAS-5b2** | [`keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs); regression tests; pre-release MAS testers reconnect once if `SecretRef` rows still reference unprefixed services. |
 | **Sandbox smoke** | Evidence in **MAS-9c** / manual passes | Connect each connector once on a signed MAS `.app`, quit, relaunch, verify token read. |
 
 ---
@@ -359,7 +359,8 @@ These literals are **shared across direct and `mas` builds** today — there is 
 
 - [x] **MAS bundle identifier (scaffold)** — `tauri.mas.conf.json` sets **`dev.dayseam.mas`** for merge builds (**MAS-1a**). Replace with the final App Store Connect bundle id when registered.
 - [x] Confirm **`DATA_SUBDIR`** for the MAS profile in Rust (`startup.rs`) so Application Support / `state.db` paths do not collide with direct when both SKUs are installed (§10) — **MAS-5b1**.
-- [x] **Keychain (MAS-5a):** audit documented in §12 — service strings are currently **shared** across SKUs; bundle-id isolation is expected; optional **`dayseam.mas.*` prefix** remains **MAS-5b2** if required.
+- [x] **Keychain (MAS-5a):** audit documented in §12 — bundle-id isolation expected.
+- [x] **Keychain service SKU prefix (MAS-5b2):** [`keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) — `dayseam.mas.*` when built with **`mas`**.
 - [ ] Confirm **JIT entitlement** narrative with legal/compliance if Apple pushes back.
 - [ ] Confirm **network entitlement** shape for self-hosted connector domains.
 

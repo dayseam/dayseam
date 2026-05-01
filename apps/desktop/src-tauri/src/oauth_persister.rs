@@ -126,7 +126,7 @@ mod tests {
         let store: Arc<dyn SecretStore> = Arc::new(InMemoryStore::new());
         let persister = KeychainTokenPersister::new(
             Arc::clone(&store),
-            "dayseam.outlook",
+            crate::keychain_profile::OUTLOOK_KEYCHAIN_SERVICE,
             "source:abc.oauth.access",
             "source:abc.oauth.refresh",
         );
@@ -138,7 +138,7 @@ mod tests {
 
         let access = oauth_secrets::get_access_token(
             store.as_ref(),
-            "dayseam.outlook",
+            crate::keychain_profile::OUTLOOK_KEYCHAIN_SERVICE,
             "source:abc.oauth.access",
         )
         .expect("get access ok")
@@ -147,7 +147,7 @@ mod tests {
 
         let refresh = oauth_secrets::get_refresh_token(
             store.as_ref(),
-            "dayseam.outlook",
+            crate::keychain_profile::OUTLOOK_KEYCHAIN_SERVICE,
             "source:abc.oauth.refresh",
         )
         .expect("get refresh ok")
@@ -160,7 +160,7 @@ mod tests {
         let store: Arc<dyn SecretStore> = Arc::new(InMemoryStore::new());
         let persister = KeychainTokenPersister::new(
             Arc::clone(&store),
-            "dayseam.outlook",
+            crate::keychain_profile::OUTLOOK_KEYCHAIN_SERVICE,
             "source:abc.oauth.access",
             "source:abc.oauth.refresh",
         );
@@ -176,7 +176,7 @@ mod tests {
 
         let access = oauth_secrets::get_access_token(
             store.as_ref(),
-            "dayseam.outlook",
+            crate::keychain_profile::OUTLOOK_KEYCHAIN_SERVICE,
             "source:abc.oauth.access",
         )
         .unwrap()

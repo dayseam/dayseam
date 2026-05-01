@@ -69,7 +69,10 @@ using the `keyring` crate. Each secret is addressed by a
 `service::account` pair (see
 [`crates/dayseam-secrets/src/keychain.rs`](../crates/dayseam-secrets/src/keychain.rs))
 so you can audit Dayseam's entries in **Keychain Access.app** under
-the Dayseam service name.
+recognisable service names. The direct-download build uses the
+`dayseam.<connector>` pattern; the Mac App Store build uses
+`dayseam.mas.<connector>` so tokens never share the same Keychain
+service label as the other SKU when both are installed.
 
 When you paste a token into the Add/Edit Source dialog, the token
 crosses the WebView → Rust IPC boundary exactly once on the way to
