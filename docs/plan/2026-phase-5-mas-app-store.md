@@ -351,3 +351,4 @@ MAS-9a ──► MAS-9c
 | 2026-04-30 | **MAS-1c:** skipped — GitHub-hosted `macos-latest` + `desktop-bundle` timeout proved sufficient; no self-hosted runner (documented here per optional row). |
 | 2026-04-30 | **MAS-2a:** `com.apple.security.app-sandbox` + `com.apple.security.network.client` in `entitlements.mas.plist` only; CI gate requires embedded keys on MAS bundle. |
 | 2026-04-30 | **MAS-2b:** `mas-sandbox-launch-smoke.sh` in `desktop-bundle` MAS leg; §16 inventory in architecture addendum. |
+| 2026-05-01 | **MAS-2c:** `docs/compliance/MAS-JIT-ENTITLEMENTS.md` + architecture §5/§7/§21 pointers (JIT keys unchanged). |

@@ -97,7 +97,7 @@ Today’s direct macOS build **opts out of App Sandbox** and instead relies on h
 | `com.apple.security.app-sandbox` | **on** (**MAS-2a**) | Store requirement. |
 | `com.apple.security.network.client` | **on** when needed (**MAS-2a** / **MAS-6a**) | All connectors are HTTPS clients. |
 | `com.apple.security.files.user-selected.read-write` | **TBD with bookmarks** | Under sandbox, picker + bookmark flow must match **MAS-4**; may differ from direct’s standalone key semantics — validate against Apple’s matrix for sandboxed apps. |
-| `com.apple.security.cs.allow-jit` / `…allow-unsigned-executable-memory` | **evidence-led** (**MAS-2c**) | WKWebView / Tauri may still require JIT-class allowances; App Review may challenge. Document exact binaries and justification in **MAS-7c**; keep a **fallback** plan (WebKit feature flags, Tauri upstream issue) if rejected. |
+| `com.apple.security.cs.allow-jit` / `…allow-unsigned-executable-memory` | **on** (**MAS-2c**) | Same keys as direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist); justified for WKWebView + in-process native deps — canonical text in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) (feeds **MAS-7c**). **Fallback** if App Review rejects: WebKit/Tauri narrowing → upstream issue → hold SKU (see that doc). |
 
 **Footnote (MAS-2a vs MAS-4):** `user-selected.read-write` stays **on** in `entitlements.mas.plist` at **MAS-2a** for parity with the direct picker story; **MAS-4** defines the security-scoped bookmark contract that makes that key meaningful under sandbox — the matrix “TBD” row is about *semantics*, not “key absent”.
 
@@ -137,22 +137,9 @@ Nothing in the MAS matrix should **widen** the attack surface “because MAS is 
 
 ## 7. JIT / executable memory (evidence and fallback)
 
-**Current direct entitlements** already carry:
+**MAS-2c** is documented in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md): exact entitlement keys, macOS **arm64 / x86_64** scope, engineering rationale, an **App Review–ready prose seed** for **MAS-7c**, and the **fallback** ladder (**maintain the numbered steps only in that file** so App Review copy and engineering narrative stay one source of truth).
 
-- `com.apple.security.cs.allow-jit`
-- `com.apple.security.cs.allow-unsigned-executable-memory`
-
-**Evidence pack (to be collected in MAS-2c / recorded in MAS-7c)**
-
-- Exact **Tauri** / **WRY** / **WebKit** versions from `Cargo.lock` at release time.
-- Apple documentation / TN references for why a **renderer process** may require executable writable pages under hardened runtime.
-- `nm` / binary inspection notes for which dylibs pull in JIT (if required by compliance).
-
-**Fallback if App Review rejects**
-
-1. Reduce WebView features (e.g. disable specific accelerated paths) per Tauri/WebKit guidance.
-2. Escalate to **Tauri upstream** with a minimal repro; track vendored version bump.
-3. Last resort: **document blocker** and hold MAS SKU until resolved — do not silently widen entitlements.
+**Version inventory** for compliance lives in **§16** (`Cargo.lock` snapshot). Optional deep evidence (`nm` / dylib maps) is **on demand** for App Review or legal — not a standing gate for every patch.
 
 ---
 
@@ -329,12 +316,12 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ---
 
-## 21. Build profiles (**MAS-1a** + **MAS-1b** + **MAS-2a** + **MAS-2b**)
+## 21. Build profiles (**MAS-1a** + **MAS-1b** + **MAS-2a** + **MAS-2b** + **MAS-2c**)
 
 | Profile | Command | Cargo features | Tauri config | Entitlements plist |
 |---------|---------|----------------|--------------|-------------------|
 | **Direct (default)** | `pnpm --filter @dayseam/desktop tauri build` | none (release) | [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) only | [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) |
-| **MAS (sandbox plist)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas` and **`bundle.macOS.entitlements`** to [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)) | [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) — **MAS-2a:** App Sandbox + **`network.client`** + user-selected + JIT-class keys (see [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) stays **without** App Sandbox |
+| **MAS (sandbox plist)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas` and **`bundle.macOS.entitlements`** to [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)) | [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) — **MAS-2a:** App Sandbox + **`network.client`** + user-selected + JIT-class keys; **MAS-2c:** JIT justification in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) ([`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) stays **without** App Sandbox |
 
 The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/src/lib.rs) (`"direct"` \| `"mas"`) for future compile-time gates — **no** user-visible behaviour branches yet.
 
@@ -354,3 +341,4 @@ CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-ta
 | 2026-04-30 | **MAS-2a:** §21 MAS row — App Sandbox + `network.client` in `entitlements.mas.plist`; verify script requires those keys on `mas` profile. |
 | 2026-04-30 | **MAS-2a review:** §5 footnote — `user-selected.read-write` on at MAS-2a vs bookmark semantics in **MAS-4**. |
 | 2026-04-30 | **MAS-2b:** §16 privacy/SDK inventory (versions + `PrivacyInfo.xcprivacy` gaps); §21 CI — [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) on MAS bundle after codesign verification. |
+| 2026-05-01 | **MAS-2c:** §5 JIT matrix row + §7 pointer to [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md); §21 MAS column cites compliance doc. |

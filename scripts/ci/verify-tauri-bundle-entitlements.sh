@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# verify-tauri-bundle-entitlements.sh — **MAS-1b** + **MAS-2a** codesign gate.
+# verify-tauri-bundle-entitlements.sh — **MAS-1b** + **MAS-2a** + **MAS-2c** codesign gate.
 #
 # After `pnpm exec tauri build --bundles app`, assert the built `.app`
 # carries the entitlement keys we require for CI (`direct`: same three
 # keys as `entitlements.plist`; `mas`: those plus App Sandbox + network
-# client per `entitlements.mas.plist`). This goes
+# client per `entitlements.mas.plist`; JIT keys justified in
+# docs/compliance/MAS-JIT-ENTITLEMENTS.md). This goes
 # beyond `plutil -lint` on the source file: it exercises what `codesign`
 # actually embedded.
 #
@@ -78,9 +79,10 @@ fi
 
 if [[ "$MODE" == "mas" ]]; then
   # **MAS-2a:** store-bound SKU must ship App Sandbox + outbound TLS
-  # (connectors, OAuth, WKWebView). JIT-class keys stay until **MAS-2c**
-  # narrows them with review evidence. (In-app updater is **off** on MAS;
-  # see architecture §6.)
+  # (connectors, OAuth, WKWebView). JIT-class keys are asserted here and
+  # justified under **MAS-2c** in docs/compliance/MAS-JIT-ENTITLEMENTS.md
+  # (feeds **MAS-7c**). Updater **removal** is **MAS-3** (capabilities / main.rs),
+  # not an entitlement assertion in this script — see architecture §6 / §15.
   require_key "com.apple.security.app-sandbox"
   require_key "com.apple.security.network.client"
 fi
