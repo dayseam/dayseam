@@ -1064,6 +1064,13 @@ pub async fn sources_add(
             let _ = source_repo.delete(&source_id).await;
             return Err(e);
         }
+        #[cfg(all(feature = "mas", target_os = "macos"))]
+        if let Err(e) =
+            materialize_local_git_bookmarks_from_paths(&state.pool, &source_id, scan_roots).await
+        {
+            let _ = source_repo.delete(&source_id).await;
+            return Err(e);
+        }
         upsert_discovered_repos(&state, &source.id, scan_roots).await?;
     }
 
@@ -1221,6 +1228,8 @@ pub async fn sources_update(
     if let Some(roots) = new_scan_roots {
         #[cfg(feature = "mas")]
         sync_local_git_security_scoped_rows(&state.pool, &id, &roots).await?;
+        #[cfg(all(feature = "mas", target_os = "macos"))]
+        materialize_local_git_bookmarks_from_paths(&state.pool, &id, &roots).await?;
         upsert_discovered_repos(&state, &id, &roots).await?;
     }
 
@@ -1496,6 +1505,88 @@ async fn sync_markdown_sink_security_scoped_rows(
         .map_err(|e| internal("security_scoped_bookmarks.sync_markdown_sink", e))
 }
 
+/// Map [`dayseam_db::DbError`] from MAS-4e transactional bookmark writes to [`DayseamError`].
+#[cfg(all(feature = "mas", target_os = "macos"))]
+fn map_bookmark_materialize_db_error(ctx: &'static str, e: dayseam_db::DbError) -> DayseamError {
+    match e {
+        dayseam_db::DbError::InvalidData { message, .. } => invalid_config(
+            error_codes::IPC_SECURITY_SCOPED_BOOKMARK_ROW_MISSING,
+            message,
+        ),
+        _ => internal(ctx, e),
+    }
+}
+
+/// **MAS-4e.** Fill `bookmark_blob` from Foundation after placeholder sync (`dialog.open` grant window).
+#[cfg(all(feature = "mas", target_os = "macos"))]
+async fn materialize_local_git_bookmarks_from_paths(
+    pool: &sqlx::SqlitePool,
+    source_id: &SourceId,
+    roots: &[std::path::PathBuf],
+) -> Result<(), DayseamError> {
+    use dayseam_db::{local_git_scan_root_logical_path, SecurityScopedBookmarkRepo};
+
+    // Build every bookmark in memory first, then persist in one transaction so
+    // `sources_update` never leaves some roots with blobs and others without.
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::with_capacity(roots.len());
+    for root in roots {
+        let logical = local_git_scan_root_logical_path(root.as_path()).map_err(|e| {
+            invalid_config(
+                error_codes::IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED,
+                e.to_string(),
+            )
+        })?;
+        let blob =
+            crate::security_scoped::create_directory_bookmark(root.as_path()).map_err(|e| {
+                invalid_config(
+                    error_codes::IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED,
+                    e.to_string(),
+                )
+            })?;
+        entries.push((logical, blob));
+    }
+    SecurityScopedBookmarkRepo::new(pool.clone())
+        .replace_local_git_scan_root_bookmark_blobs(source_id, &entries)
+        .await
+        .map_err(|e| {
+            map_bookmark_materialize_db_error("security_scoped_bookmarks.replace_scan_blobs", e)
+        })
+}
+
+/// **MAS-4e.** Same as [`materialize_local_git_bookmarks_from_paths`] for Markdown sink destinations.
+#[cfg(all(feature = "mas", target_os = "macos"))]
+async fn materialize_markdown_sink_bookmarks_from_paths(
+    pool: &sqlx::SqlitePool,
+    sink_id: &Uuid,
+    dest_dirs: &[std::path::PathBuf],
+) -> Result<(), DayseamError> {
+    use dayseam_db::{markdown_sink_dest_logical_path, SecurityScopedBookmarkRepo};
+
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::with_capacity(dest_dirs.len());
+    for dir in dest_dirs {
+        let logical = markdown_sink_dest_logical_path(dir.as_path()).map_err(|e| {
+            invalid_config(
+                error_codes::IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED,
+                e.to_string(),
+            )
+        })?;
+        let blob =
+            crate::security_scoped::create_directory_bookmark(dir.as_path()).map_err(|e| {
+                invalid_config(
+                    error_codes::IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED,
+                    e.to_string(),
+                )
+            })?;
+        entries.push((logical, blob));
+    }
+    SecurityScopedBookmarkRepo::new(pool.clone())
+        .replace_markdown_sink_dest_bookmark_blobs(sink_id, &entries)
+        .await
+        .map_err(|e| {
+            map_bookmark_materialize_db_error("security_scoped_bookmarks.replace_sink_blobs", e)
+        })
+}
+
 async fn upsert_discovered_repos(
     state: &AppState,
     source_id: &SourceId,
@@ -1765,6 +1856,13 @@ pub async fn sinks_add(
         let SinkConfig::MarkdownFile { dest_dirs, .. } = &sink.config;
         if let Err(e) =
             sync_markdown_sink_security_scoped_rows(&state.pool, &sink.id, dest_dirs).await
+        {
+            let _ = sink_repo.delete(&sink.id).await;
+            return Err(e);
+        }
+        #[cfg(target_os = "macos")]
+        if let Err(e) =
+            materialize_markdown_sink_bookmarks_from_paths(&state.pool, &sink.id, dest_dirs).await
         {
             let _ = sink_repo.delete(&sink.id).await;
             return Err(e);

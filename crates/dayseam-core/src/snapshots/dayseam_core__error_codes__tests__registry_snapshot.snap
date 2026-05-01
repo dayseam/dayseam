@@ -1,5 +1,6 @@
 ---
 source: crates/dayseam-core/src/error_codes.rs
+assertion_line: 957
 expression: ALL
 ---
 - gitlab.auth.invalid_token
@@ -71,6 +72,8 @@ expression: ALL
 - ipc.outlook.tenant_unresolved
 - ipc.outlook.source_already_exists
 - ipc.sink.invalid_config
+- ipc.security_scoped_bookmark.materialize_failed
+- ipc.security_scoped_bookmark.row_missing
 - ipc.persons.invalid_display_name
 - ipc.shell.url_disallowed
 - ipc.shell.url_invalid

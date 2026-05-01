@@ -1,5 +1,5 @@
 //! `security_scoped_bookmarks` — MAS-4a table; **MAS-4c** sync for Local Git scan roots,
-//! **MAS-4d** sync for Markdown-file sink `dest_dirs`.
+//! **MAS-4d** sync for Markdown-file sink `dest_dirs`; **MAS-4e** blob updates via `set_*_bookmark_blob`.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -252,6 +252,136 @@ impl SecurityScopedBookmarkRepo {
             }
         }
 
+        Ok(())
+    }
+
+    /// Persist macOS security-scoped bookmark bytes for one Local Git scan root row.
+    ///
+    /// Returns the number of rows updated (0 or 1).
+    pub async fn set_local_git_scan_root_bookmark_blob(
+        &self,
+        source_id: &SourceId,
+        logical_path: &str,
+        bookmark_blob: &[u8],
+    ) -> DbResult<u64> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let res = sqlx::query(
+            "UPDATE security_scoped_bookmarks
+             SET bookmark_blob = ?, updated_at = ?
+             WHERE owner_source_id = ? AND role = 'local_git_scan_root' AND logical_path = ?",
+        )
+        .bind(bookmark_blob)
+        .bind(&now)
+        .bind(source_id.to_string())
+        .bind(logical_path)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| DbError::classify_sqlx(e, "security_scoped_bookmarks.update_blob_scan"))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Persist macOS security-scoped bookmark bytes for one Markdown sink destination row.
+    ///
+    /// Returns the number of rows updated (0 or 1).
+    pub async fn set_markdown_sink_dest_bookmark_blob(
+        &self,
+        sink_id: &Uuid,
+        logical_path: &str,
+        bookmark_blob: &[u8],
+    ) -> DbResult<u64> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let sid = sink_id.to_string();
+        let res = sqlx::query(
+            "UPDATE security_scoped_bookmarks
+             SET bookmark_blob = ?, updated_at = ?
+             WHERE owner_sink_id = ? AND role = 'markdown_sink_dest' AND logical_path = ?",
+        )
+        .bind(bookmark_blob)
+        .bind(&now)
+        .bind(&sid)
+        .bind(logical_path)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| DbError::classify_sqlx(e, "security_scoped_bookmarks.update_blob_sink"))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Atomically set `bookmark_blob` for every Local Git scan-root placeholder (MAS-4e).
+    ///
+    /// Runs in a single SQLite transaction so `sources_update` never ends up with only some
+    /// roots materialized when a later path fails the row match or `UPDATE`.
+    pub async fn replace_local_git_scan_root_bookmark_blobs(
+        &self,
+        source_id: &SourceId,
+        entries: &[(String, Vec<u8>)],
+    ) -> DbResult<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let sid = source_id.to_string();
+        for (logical, blob) in entries {
+            let res = sqlx::query(
+                "UPDATE security_scoped_bookmarks SET bookmark_blob = ?, updated_at = ?
+                 WHERE owner_source_id = ? AND role = 'local_git_scan_root' AND logical_path = ?",
+            )
+            .bind(blob.as_slice())
+            .bind(&now)
+            .bind(&sid)
+            .bind(logical)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                DbError::classify_sqlx(e, "security_scoped_bookmarks.update_blob_scan_tx")
+            })?;
+            if res.rows_affected() == 0 {
+                let _ = tx.rollback().await;
+                return Err(DbError::InvalidData {
+                    column: "security_scoped_bookmarks.logical_path".into(),
+                    message: format!("no placeholder row for scan root `{logical}`"),
+                });
+            }
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Atomically set `bookmark_blob` for every Markdown sink destination placeholder (MAS-4e).
+    pub async fn replace_markdown_sink_dest_bookmark_blobs(
+        &self,
+        sink_id: &Uuid,
+        entries: &[(String, Vec<u8>)],
+    ) -> DbResult<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let sid = sink_id.to_string();
+        for (logical, blob) in entries {
+            let res = sqlx::query(
+                "UPDATE security_scoped_bookmarks SET bookmark_blob = ?, updated_at = ?
+                 WHERE owner_sink_id = ? AND role = 'markdown_sink_dest' AND logical_path = ?",
+            )
+            .bind(blob.as_slice())
+            .bind(&now)
+            .bind(&sid)
+            .bind(logical)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                DbError::classify_sqlx(e, "security_scoped_bookmarks.update_blob_sink_tx")
+            })?;
+            if res.rows_affected() == 0 {
+                let _ = tx.rollback().await;
+                return Err(DbError::InvalidData {
+                    column: "security_scoped_bookmarks.logical_path".into(),
+                    message: format!("no placeholder row for sink dest `{logical}`"),
+                });
+            }
+        }
+        tx.commit().await?;
         Ok(())
     }
 }
