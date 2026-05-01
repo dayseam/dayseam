@@ -39,7 +39,7 @@ flowchart LR
 
   subgraph MAS["MAS SKU"]
     M1["Tauri config merge\n(`mas` / packaging)"]
-    M2["`entitlements.mas.plist`\nApp Sandbox +\noutbound HTTPS (MAS-6a)"]
+    M2["`entitlements.mas.plist`\nApp Sandbox +\nHTTPS + OAuth loopback\n(MAS-6a / 6b)"]
     M3["capabilities:\nMAS JSON\n(no updater)"]
     M4["App Store Connect\nupload + review"]
   end
@@ -96,6 +96,7 @@ Today’s direct macOS build **opts out of App Sandbox** and instead relies on h
 |-----|------------------------------|--------|
 | `com.apple.security.app-sandbox` | **on** (**MAS-2a**) | Store requirement. |
 | `com.apple.security.network.client` | **on** (**MAS-2a** + **MAS-6a**) | Outbound **HTTPS** to user-configured hosts (self-hosted GitLab, enterprise GitHub, …); broad client entitlement—see §13 / [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md). |
+| `com.apple.security.network.server` | **on** (**MAS-6b**) | OAuth PKCE **loopback** `TcpListener` on **`127.0.0.1`** (`accept` counts as **incoming** TCP per Apple—[`com.apple.security.network.server`](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.server)); production pins **DAY-205** port. **Not** a public WAN listener—see §14 / [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) (**OAuth loopback**). |
 | `com.apple.security.files.user-selected.read-write` | **TBD with bookmarks** | Under sandbox, picker + bookmark flow must match **MAS-4**; may differ from direct’s standalone key semantics — validate against Apple’s matrix for sandboxed apps. |
 | `com.apple.security.cs.allow-jit` / `…allow-unsigned-executable-memory` | **on** (**MAS-2c**) | Same keys as direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist); justified for WKWebView + in-process native deps — canonical text in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) (feeds **MAS-7c**). **Fallback** if App Review rejects: WebKit/Tauri narrowing → upstream issue → hold SKU (see that doc). |
 
@@ -151,7 +152,7 @@ This table is the **authoritative enumeration baseline** for capstone subprocess
 |---|-----------|--------------------|----------------|---------------|
 | 1 | `opener::open` | `shell_open` in [`commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | macOS: hand-off to **`/usr/bin/open`** (user-initiated; scheme allow-list includes `http`, `https`, `file`, …). | Must remain **user-driven**; no background open. URL policy unchanged. |
 | 2 | `opener::open_browser` | OAuth in [`oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) | Default browser for authorize URL. | Same as above; paired with loopback listener. |
-| 3 | `tokio::net::TcpListener` | `oauth.rs` — `127.0.0.1` loopback for OAuth redirect | No child process; **inbound localhost** socket. | **MAS-6a:** outbound **`network.client`** documented for HTTPS connectors; **loopback listener** parity / entitlement detail → **MAS-6b** (document port pinning vs ephemeral tests). |
+| 3 | `tokio::net::TcpListener` | `oauth.rs` — `127.0.0.1` loopback for OAuth redirect | No child process; **inbound localhost** socket. | **MAS-6b (closed):** **`network.server`** on MAS plist + CI verify; **`network.client`** for IdP HTTPS (**MAS-6a**). Production **DAY-205** fixed port; tests use ephemeral **`127.0.0.1:0`**. |
 | 4 | **libgit2** (vendored) | `connector-local-git` via `git2` crate with `vendored-libgit2` | **No** `git` CLI subprocess; native library inside Dayseam address space. | Sandboxed FS access must go through **security-scoped** paths from bookmarks (**MAS-4**), not arbitrary POSIX paths from persisted config. |
 | 5 | **Tests / dev only** | `MetadataCommand`, `Command::new("git")` in various `tests/` crates | `cargo test` helpers | Not shipped in production bundle. |
 
@@ -269,7 +270,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ### 12.6 Ordering vs OAuth
 
-- OAuth loopback completes **before** persisting tokens via `outlook_sources_add` / reconnect — unchanged intent. Network + loopback parity under sandbox is **MAS-6b**; Keychain write failures after OAuth remain surfaced as today.
+- OAuth loopback completes **before** persisting tokens via `outlook_sources_add` / reconnect — unchanged intent. **MAS-6b** adds **`com.apple.security.network.server`** for sandbox **bind/accept** parity with direct; Keychain write failures after OAuth remain surfaced as today.
 
 ### 12.7 Follow-ups → **MAS-5b1** / **MAS-5b2** (plan)
 
@@ -285,13 +286,14 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 **MAS-6a (closed):** Outbound connector traffic uses **`reqwest`** over **HTTPS** to URLs the user configures (GitLab self-host, GitHub Enterprise, Atlassian cloud or DC, Microsoft Graph, …). The Mac App Store SKU enables **`com.apple.security.network.client`** in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)—the standard App Sandbox pattern for **generic outbound TLS clients** without embedding destination hostnames in the plist. Full rationale (including trade-offs vs per-host keys) lives in [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) (**Outbound HTTPS**). CI asserts the entitlement on signed bundles via [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh).
 
-- **Inbound:** OAuth loopback listener on `127.0.0.1` (**MAS-6b** parity with direct; rate limits and retry behaviour unchanged unless a sandbox bug forces a delta).
+**MAS-6b (closed):** OAuth PKCE **loopback** uses **`tokio::net::TcpListener`** on **`127.0.0.1`** ([`oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs)). Under App Sandbox, Apple documents TCP **listen/accept** as requiring **`com.apple.security.network.server`** in addition to **`network.client`** for the subsequent token **HTTPS** POST. [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) enables both; prose in [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) (**OAuth loopback**) covers **DAY-205** fixed port vs test ephemeral port **`0`**. **Rate-limit / retry:** token exchange and connector HTTP share the same **`reqwest`** paths on direct and **`mas`** builds—no SKU fork in retry policy today; if a sandbox-only divergence appears, add a regression test per plan **MAS-6b** sub-tasks.
 
 ---
 
 ## 14. OAuth
 
 - **Loopback redirect** is core to Outlook (and future OAuth) — documented in [`oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) module docs.
+- **MAS-6b entitlements:** Mac App Store builds declare **`com.apple.security.network.server`** alongside **`network.client`** in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) so the loopback listener can **bind** and **accept** under App Sandbox—see [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) (**OAuth loopback**). Direct SKU stays **without** App Sandbox; [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) **`direct`** mode **`forbid_key`**-s both network entitlements so a mis-merged MAS plist cannot ship on the Developer ID bundle.
 - **Collision with two SKUs:** two apps → two independent loopback servers **only if** both run OAuth simultaneously; same `127.0.0.1` port conflicts are possible if Microsoft ever forces a **fixed** port collision — today production uses a pinned port constant (**DAY-205**); document test vs prod divergence and mitigation (serialize logins, ephemeral port where IdP allows).
 
 ---
@@ -364,6 +366,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 - [x] **Keychain service SKU prefix (MAS-5b2):** [`keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) — `dayseam.mas.*` when built with **`mas`**.
 - [ ] Confirm **JIT entitlement** narrative with legal/compliance if Apple pushes back.
 - [x] **Outbound network entitlement (MAS-6a):** **`com.apple.security.network.client`** documented for user-configured HTTPS / self-hosted SaaS ([`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); CI verifies embedded entitlement ([`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh)).
+- [x] **OAuth loopback + network parity (MAS-6b):** **`com.apple.security.network.server`** in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) for localhost **bind/accept**; **`network.client`** for IdP HTTPS; documented in [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) + §14; CI verifies both keys on signed **`mas`** bundles.
 
 ---
 
@@ -372,7 +375,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 | Profile | Command | Cargo features | Tauri config | Entitlements plist |
 |---------|---------|----------------|--------------|-------------------|
 | **Direct (default)** | `pnpm --filter @dayseam/desktop tauri build` | none (release) | [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) only | [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) |
-| **MAS (sandbox plist)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas` and **`bundle.macOS.entitlements`** to [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)) | [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) — **MAS-2a:** App Sandbox + **`network.client`** + user-selected + JIT-class keys; **MAS-2c:** JIT justification in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) ([`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) stays **without** App Sandbox |
+| **MAS (sandbox plist)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas` and **`bundle.macOS.entitlements`** to [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)) | [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) — **MAS-2a:** App Sandbox + **`network.client`** + user-selected + JIT-class keys; **MAS-6b:** **`network.server`** for OAuth loopback **accept**; **MAS-2c:** JIT justification in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) ([`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) stays **without** App Sandbox |
 
 The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/src/lib.rs) (`"direct"` \| `"mas"`). **`distribution_profile`** IPC (**MAS-3b**) exposes it to the webview so updater UX gates without a second bundle.
 
@@ -393,6 +396,7 @@ CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-ta
 | 2026-04-30 | **MAS-2a review:** §5 footnote — `user-selected.read-write` on at MAS-2a vs bookmark semantics in **MAS-4**. |
 | 2026-04-30 | **MAS-2b:** §16 privacy/SDK inventory (versions + `PrivacyInfo.xcprivacy` gaps); §21 CI — [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) on MAS bundle after codesign verification. |
 | 2026-04-30 | **MAS-6a:** §4 outbound-network bullet; §5 `network.client` row; §8 subprocess row 3; §13 networking — document **`com.apple.security.network.client`** for HTTPS to user-configured hosts; §20 checklist item closed; §2 diagram — MAS node no longer says **allow-list** (misleading vs **`network.client`** / §3 capability column). |
+| 2026-04-30 | **MAS-6b:** **`com.apple.security.network.server`** in `entitlements.mas.plist` + CI verify; §5 / §8 / §12.6 / §13 / §14 / §20 / §21; [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) OAuth loopback section. |
 | 2026-05-01 | **MAS-2c:** §5 JIT matrix row + §7 pointer to [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md); §21 MAS column cites compliance doc. |
 | 2026-05-01 | **MAS-4a:** §9.6 **`security_scoped_bookmarks`** SQLite mapping + crate [`build.rs`](../../crates/dayseam-db/build.rs) rerun hints for migrations. |
 | 2026-05-01 | **MAS-4b:** §9.5 pointer to desktop [`security_scoped`](../../apps/desktop/src-tauri/src/security_scoped/mod.rs) module. |

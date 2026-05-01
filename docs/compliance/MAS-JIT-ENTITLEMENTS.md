@@ -10,13 +10,13 @@ Normative engineering record for the Mac App Store SKU. It satisfies the **MAS-2
 
 - **OS:** **macOS App Store bundle only** — this document does not describe Windows / Linux WebView stacks (other channels use different engines).
 - **CPU:** **arm64** (Apple Silicon) and **x86_64** use the **same** entitlement keys below; there is no arch-specific plist fork today.
-- **Runtime:** The main executable is hardened; **App Sandbox** is enabled for MAS (`com.apple.security.app-sandbox` in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)). JIT-class keys are **additive** on top of sandbox + network client + user-selected file access (**MAS-2a**).
+- **Runtime:** The main executable is hardened; **App Sandbox** is enabled for MAS (`com.apple.security.app-sandbox` in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)). JIT-class keys are **additive** on top of sandbox + **`network.client`** + **`network.server`** (OAuth loopback; **MAS-6b**) + user-selected file access (**MAS-2a**).
 
 ---
 
 ## Entitlement keys (exact)
 
-These keys are **`true`** in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) and are **asserted** on the signed bundle by [`scripts/ci/verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) in **`mas`** mode (alongside sandbox, `network.client`, and `user-selected.read-write`).
+The two **JIT / executable-memory** keys in the table below are **`true`** in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist). [`scripts/ci/verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) **`mas`** mode asserts them **on the signed bundle together with** App Sandbox, `network.client`, `network.server`, and `user-selected.read-write` — the network keys are **MAS-2a** / **MAS-6a** / **MAS-6b** (see [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) and architecture §5), not part of this JIT compliance narrative beyond the shared CI gate.
 
 | Key | Role |
 |-----|------|
