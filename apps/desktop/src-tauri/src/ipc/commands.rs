@@ -840,6 +840,38 @@ fn publish_restart_required_toast(state: &AppState) {
     state.app_bus.publish_toast(event);
 }
 
+/// **MAS-4f.** Local Git discovery used a persisted bookmark that is stale or
+/// could not grant security-scoped access; the user should re-pick scan roots.
+fn publish_stale_local_git_bookmark_toast(state: &AppState, roots: &[std::path::PathBuf]) {
+    if roots.is_empty() {
+        return;
+    }
+    let body = if roots.len() == 1 {
+        format!(
+            "Saved access for \"{}\" is no longer valid (folder moved or permission expired). \
+             Open Settings -> Sources, edit this Local Git source, and re-select the scan folder. \
+             Reference: {}.",
+            roots[0].display(),
+            error_codes::IPC_SECURITY_SCOPED_BOOKMARK_STALE_OR_UNUSABLE_SCAN_ROOT
+        )
+    } else {
+        format!(
+            "{} Local Git scan folders no longer have valid saved security access. \
+             Open Settings -> Sources, edit the source, and re-select each affected folder. \
+             Reference: {}.",
+            roots.len(),
+            error_codes::IPC_SECURITY_SCOPED_BOOKMARK_STALE_OR_UNUSABLE_SCAN_ROOT
+        )
+    };
+    state.app_bus.publish_toast(ToastEvent {
+        id: Uuid::new_v4(),
+        severity: ToastSeverity::Warning,
+        title: "Local Git folder access needs refresh".into(),
+        body: Some(body),
+        emitted_at: Utc::now(),
+    });
+}
+
 // ---- Persons --------------------------------------------------------------
 
 /// Resolve the canonical "self" [`Person`] row, creating it on first
@@ -1595,19 +1627,26 @@ async fn upsert_discovered_repos(
     if scan_roots.is_empty() {
         return Ok(());
     }
-    let outcome = match crate::local_git_scan::discover_scan_roots_with_optional_mas_access(
+    let crate::local_git_scan::LocalGitDiscoveryResult {
+        outcome,
+        stale_bookmarked_scan_roots,
+    } = match crate::local_git_scan::discover_scan_roots_with_optional_mas_access(
         state.pool.clone(),
         source_id,
         scan_roots,
     )
     .await
     {
-        Ok(o) => o,
-        Err(e) => {
+        Ok(result) => result,
+        Err(scan_err) => {
             // A missing scan root surfaces as `Io`; rather than fail
             // the whole `sources_add` we log it and let the user fix
             // the configuration via `sources_update`.
-            tracing::warn!(error = %e, "discover_repos failed during sources_add");
+            publish_stale_local_git_bookmark_toast(state, &scan_err.stale_bookmarked_scan_roots);
+            tracing::warn!(
+                error = %scan_err.source,
+                "discover_repos failed during sources_add"
+            );
             return Ok(());
         }
     };
@@ -1651,6 +1690,7 @@ async fn upsert_discovered_repos(
                 .await
                 .map_err(|e| internal("local_repos.upsert", e))?;
         }
+        publish_stale_local_git_bookmark_toast(state, &stale_bookmarked_scan_roots);
         return Ok(());
     }
 
@@ -1676,6 +1716,7 @@ async fn upsert_discovered_repos(
                  skipping reconcile (data-loss guard). Run rescan after verifying scan roots.",
                 prior = prior.len(),
             );
+            publish_stale_local_git_bookmark_toast(state, &stale_bookmarked_scan_roots);
             return Ok(());
         }
     }
@@ -1692,6 +1733,7 @@ async fn upsert_discovered_repos(
             "reconciled local_repos table against fresh discovery pass"
         );
     }
+    publish_stale_local_git_bookmark_toast(state, &stale_bookmarked_scan_roots);
     Ok(())
 }
 
