@@ -47,9 +47,10 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --all-features
 
-  # **MAS-1b / MAS-2a.** Prove both Tauri merge profiles produce a signed `.app`
-  # and that `codesign` embeds the expected entitlement keys — separate
-  # from the `rust` job so `cargo test` stays the long pole and this job
+  # **MAS-1b / MAS-2a / MAS-2b.** Prove both Tauri merge profiles produce a signed `.app`,
+  # that `codesign` embeds the expected entitlement keys, and that the
+  # **MAS** bundle’s real binary stays alive briefly under App Sandbox (**MAS-2b**).
+  # Separate from the `rust` job so `cargo test` stays the long pole and this job
   # can use a tighter cache key for bundling only.
   desktop-bundle-profiles:
     name: desktop-bundle (direct + MAS)
@@ -113,6 +114,15 @@ jobs:
           APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
           test -d "$APP"
           bash scripts/ci/verify-tauri-bundle-entitlements.sh "$APP" mas
+
+      # **MAS-2b.** Real `main` + WebView shell — launch the MAS bundle binary
+      # for a bounded interval so regressions that crash under sandbox fail here.
+      - name: MAS sandbox launch smoke (real shell)
+        run: |
+          TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
+          APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
+          test -d "$APP"
+          bash scripts/ci/mas-sandbox-launch-smoke.sh "$APP" 22
 
   # Cheap Linux build of every crate that does NOT depend on Tauri /
   # the desktop frontend bundle. macOS-only `rust` job above is the
@@ -245,6 +255,8 @@ jobs:
         env:
           ENTITLEMENTS_FILE: ${{ github.workspace }}/apps/desktop/src-tauri/entitlements.mas.plist
         run: bash scripts/ci/check-entitlements.sh
+      - name: bash -n mas-sandbox-launch-smoke.sh (syntax)
+        run: bash -n scripts/ci/mas-sandbox-launch-smoke.sh
 
   # DAY-195: same extract-release-notes preflight release.yml runs,
   # but at PR time — empty [Unreleased] used to fail only post-merge.

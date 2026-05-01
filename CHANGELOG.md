@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Added
+
+- **DAY-210 / MAS-2b:** CI runs [`mas-sandbox-launch-smoke.sh`](scripts/ci/mas-sandbox-launch-smoke.sh) on the signed MAS **`Dayseam.app`** after entitlement verification so the real sandboxed shell stays up through bootstrap; [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §16 now lists third-party stack versions and **`PrivacyInfo.xcprivacy`** gaps for **MAS-7a**.
+
 ## [0.13.1] - 2026-04-30
 
 ### Added

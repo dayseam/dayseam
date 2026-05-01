@@ -263,22 +263,31 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 ## 15. Updater
 
 - **Direct:** Tauri updater + `updater.json` capability + `createUpdaterArtifacts: true` in [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json).
-- **MAS:** **No updater plugin surface**, no `latest.json` polling, no `process:allow-restart` for swap-and-relaunch — updates **only** via App Store (**MAS-3**).
+- **MAS:** **MAS-3** target — no in-app auto-update, no `latest.json` polling, no swap-and-relaunch — updates **only** via App Store. **MAS-2b reality:** [`main.rs`](../../apps/desktop/src-tauri/src/main.rs) still registers **`tauri-plugin-updater`** (and **`tauri-plugin-process`**) for `--features mas` until that task cfg-gates them; see §16 for the linked stack.
 
 ---
 
-## 16. Privacy and third-party SDK inventory (placeholder for MAS-2b → MAS-7a)
+## 16. Privacy and third-party SDK inventory (**MAS-2b** → **MAS-7a**)
 
-**MAS-2b** must fill this table with versions and manifest linkage. Until then, rows are **known SDKs** to track.
+**MAS-2b** (this table) inventories embedded / linked behaviour the App Store privacy manifest must eventually describe (**MAS-7a**). **`PrivacyInfo.xcprivacy` is absent** in-tree today — every row’s manifest column is **no (MAS-7a)** until that task lands.
 
-| SDK / component | Ships in app? | `PrivacyInfo.xcprivacy` today? | Gap owner |
-|-----------------|---------------|-------------------------------|-----------|
-| Tauri / WRY / WebView | yes | **MAS-7a** | Desktop |
-| `sqlx` / SQLite | yes | **MAS-7a** | Core |
-| `reqwest` / `rustls` | yes | **MAS-7a** | Connectors |
-| `libgit2` (vendored) | yes | **MAS-7a** | Local-git |
-| `opener` | yes (indirect) | **MAS-7a** | Desktop |
-| `keyring` | yes (macOS) | **MAS-7a** | Secrets |
+**Version source:** `Cargo.lock` at **2026-04-30** on `master` (refresh rows when upgrading these crates).
+
+| SDK / component | Version(s) in tree | Ships in MAS bundle? | `PrivacyInfo.xcprivacy`? | Gap / owner |
+|-----------------|-------------------|----------------------|--------------------------|-------------|
+| **Tauri** (shell, IPC, bundler) | `tauri` **2.10.3** | yes | no (MAS-7a) | Required-use APIs + any declared data types — Desktop |
+| **WRY** (WebView host) | `wry` **0.54.4** | yes | no (MAS-7a) | WebKit / file URL / drag-drop — Desktop |
+| **TAO** (windowing) | `tao` **0.34.8** | yes | no (MAS-7a) | Native window / menu / tray integration — Desktop |
+| **WebKit** (system) | OS-provided WKWebView | yes | no (MAS-7a) | Apple-supplied framework; manifest must align with actual WebView usage — Desktop |
+| **`sqlx` + SQLite** | `sqlx` **0.8.6** (`libsqlite3-sys` **0.30.1**) | yes | no (MAS-7a) | Disk persistence, migrations — Core |
+| **`reqwest` + TLS** | `reqwest` **0.12.28** / **0.13.2**; `rustls` **0.23.38**; `webpki-roots` **1.0.7** | yes | no (MAS-7a) | Outbound HTTPS to user-configured hosts — Connectors |
+| **`git2` / libgit2** | `git2` **0.20.4**; `libgit2-sys` **0.18.3+1.9.2** | yes | no (MAS-7a) | Local repo read/write — Local-git |
+| **`opener`** | **0.7.2** | yes | no (MAS-7a) | Opens URLs / paths in user’s default apps — Desktop |
+| **`keyring`** | **2.3.3** | yes (macOS) | no (MAS-7a) | OS credential storage — Secrets |
+| **`minisign-verify`** (via `tauri-plugin-updater`) | **0.2.5** | yes | no (MAS-7a) | Ed25519 verify path inside the updater plugin — Desktop |
+| **`minisign`** (test helper crate) | **0.9.1** | **no** (dev-dependency only; not in `cargo tree -p dayseam-desktop -e normal`) | n/a | Updater signature tests only — Desktop |
+| **`tauri-plugin-updater`** | **2.10.1** | yes (**both** profiles today — [`main.rs`](../../apps/desktop/src-tauri/src/main.rs) registers the plugin unconditionally) | no (MAS-7a) | **MAS-3** must stop registering / strip capability for App Store policy; `mas` Cargo feature does **not** remove this crate yet — Desktop |
+| **`tray-icon`** | **0.21.3** | yes | no (MAS-7a) | Status-item / menu bar — Desktop |
 
 ---
 
@@ -320,7 +329,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ---
 
-## 21. Build profiles (**MAS-1a** + **MAS-1b** + **MAS-2a**)
+## 21. Build profiles (**MAS-1a** + **MAS-1b** + **MAS-2a** + **MAS-2b**)
 
 | Profile | Command | Cargo features | Tauri config | Entitlements plist |
 |---------|---------|----------------|--------------|-------------------|
@@ -330,6 +339,8 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/src/lib.rs) (`"direct"` \| `"mas"`) for future compile-time gates — **no** user-visible behaviour branches yet.
 
 CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) and [`check-entitlements.sh`](../../scripts/ci/check-entitlements.sh) against both plists so merge regressions fail before release. Those bundle-only builds merge **`bundle.createUpdaterArtifacts: false`** so PR runners do not need **`TAURI_SIGNING_PRIVATE_KEY`** (release workflow still signs updater artifacts with the real secret).
+
+**MAS-2b:** after the MAS bundle passes entitlement verification, CI runs [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) against the signed **`Dayseam.app`** — the **real** `CFBundleExecutable` stays alive for a bounded interval so crashes during sandboxed bootstrap / WebView init fail the job (not a plist-only or stub-binary gate).
 
 ---
 
@@ -342,3 +353,4 @@ CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-ta
 | 2026-04-30 | **MAS-1b:** §21 entitlements column + CI script references. |
 | 2026-04-30 | **MAS-2a:** §21 MAS row — App Sandbox + `network.client` in `entitlements.mas.plist`; verify script requires those keys on `mas` profile. |
 | 2026-04-30 | **MAS-2a review:** §5 footnote — `user-selected.read-write` on at MAS-2a vs bookmark semantics in **MAS-4**. |
+| 2026-04-30 | **MAS-2b:** §16 privacy/SDK inventory (versions + `PrivacyInfo.xcprivacy` gaps); §21 CI — [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) on MAS bundle after codesign verification. |
