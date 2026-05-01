@@ -253,7 +253,7 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
-| **MAS-6a** | Network entitlements + smoke | **`v0.13.16`** | Document HTTPS domains pattern. |
+| **MAS-6a** | Network entitlements + smoke | **`v0.13.16`** | Document HTTPS / self-hosted connector pattern (**done:** [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) Outbound HTTPS, architecture §13; CI: [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh)). |
 | **MAS-6b** | **OAuth loopback** + **rate-limit / retry parity** vs direct | **`v0.13.17`** | Merges old **MAS-6c** scope: no behaviour change unless bug found; if found, add regression test. Manual + automated where possible. |
 
 ---
