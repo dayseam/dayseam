@@ -157,6 +157,12 @@ tauri-plugin-updater = "2"
 # Paired with `process:allow-relaunch` in `capabilities/updater.json`.
 tauri-plugin-process = "2"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# MAS-4b: `NSURL` security-scoped bookmark + access APIs via `objc2-foundation`
+# (transitively in the lockfile from Tauri; direct dep keeps the surface explicit).
+objc2 = "0.6.4"
+objc2-foundation = "0.3.2"
+
 [dev-dependencies]
 tempfile = "3"
 tauri = { version = "2", features = ["test"] }
