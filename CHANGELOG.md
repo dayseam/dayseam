@@ -51,6 +51,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 - **DAY-210 / MAS-2b:** CI runs [`mas-sandbox-launch-smoke.sh`](scripts/ci/mas-sandbox-launch-smoke.sh) on the signed MAS **`Dayseam.app`** after entitlement verification so the real sandboxed shell stays up through bootstrap; [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §16 now lists third-party stack versions and **`PrivacyInfo.xcprivacy`** gaps for **MAS-7a**.
 
+### Documentation
+
+- **DAY-210 / MAS-2c:** [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](docs/compliance/MAS-JIT-ENTITLEMENTS.md) records exact JIT / executable-memory entitlement keys, macOS **arm64** / **x86_64** scope, App Review–ready justification (seed for **MAS-7c**), and the fallback ladder; [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §5 / §7 / §21 cross-link it.
+
 ## [0.13.1] - 2026-04-30
 
 ### Added
