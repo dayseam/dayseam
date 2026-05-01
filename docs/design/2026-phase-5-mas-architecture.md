@@ -249,8 +249,8 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ## 15. Updater
 
-- **Direct:** Tauri updater + `updater.json` capability + `createUpdaterArtifacts: true` in [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json).
-- **MAS:** **MAS-3** target — no in-app auto-update, no `latest.json` polling, no swap-and-relaunch — updates **only** via App Store. **MAS-2b reality:** [`main.rs`](../../apps/desktop/src-tauri/src/main.rs) still registers **`tauri-plugin-updater`** (and **`tauri-plugin-process`**) for `--features mas` until that task cfg-gates them; see §16 for the linked stack.
+- **Direct:** Tauri updater + [`updater.json`](../../apps/desktop/src-tauri/capabilities/updater.json) capability + `createUpdaterArtifacts: true` in [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json).
+- **MAS:** **MAS-3** — no in-app auto-update, no `latest.json` polling, no swap-and-relaunch — updates **only** via App Store. [`main.rs`](../../apps/desktop/src-tauri/src/main.rs) registers **`tauri-plugin-updater`** / **`tauri-plugin-process`** only when **`not(feature = "mas")`**; [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) merges **`app.security.capabilities: ["default"]`** and **`plugins: {}`** so **`updater.json`** is not active. The webview reads **`distribution_profile`** ([`commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs)) once and [`useUpdater`](../../apps/desktop/src/features/updater/useUpdater.ts) skips plugin calls when the profile is **`mas`** (Vitest covers the negative path). Cargo still lists the updater crates so **`cargo test --workspace --all-features`** does not need optional-deps juggling; dead registration paths are compile-time gated only.
 
 ---
 
@@ -271,9 +271,9 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 | **`git2` / libgit2** | `git2` **0.20.4**; `libgit2-sys` **0.18.3+1.9.2** | yes | no (MAS-7a) | Local repo read/write — Local-git |
 | **`opener`** | **0.7.2** | yes | no (MAS-7a) | Opens URLs / paths in user’s default apps — Desktop |
 | **`keyring`** | **2.3.3** | yes (macOS) | no (MAS-7a) | OS credential storage — Secrets |
-| **`minisign-verify`** (via `tauri-plugin-updater`) | **0.2.5** | yes | no (MAS-7a) | Ed25519 verify path inside the updater plugin — Desktop |
+| **`minisign-verify`** (via `tauri-plugin-updater`) | **0.2.5** | yes (crate still linked; updater plugin **not** initialized on MAS — **MAS-3**) | no (MAS-7a) | Ed25519 verify path inside the updater plugin — Desktop |
 | **`minisign`** (test helper crate) | **0.9.1** | **no** (dev-dependency only; not in `cargo tree -p dayseam-desktop -e normal`) | n/a | Updater signature tests only — Desktop |
-| **`tauri-plugin-updater`** | **2.10.1** | yes (**both** profiles today — [`main.rs`](../../apps/desktop/src-tauri/src/main.rs) registers the plugin unconditionally) | no (MAS-7a) | **MAS-3** must stop registering / strip capability for App Store policy; `mas` Cargo feature does **not** remove this crate yet — Desktop |
+| **`tauri-plugin-updater`** | **2.10.1** | yes (dependency present; **MAS-3:** not registered when `--features mas`) | no (MAS-7a) | In-app updater inactive on MAS; policy surface is capability merge + JS gate — Desktop |
 | **`tray-icon`** | **0.21.3** | yes | no (MAS-7a) | Status-item / menu bar — Desktop |
 
 ---
@@ -323,7 +323,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 | **Direct (default)** | `pnpm --filter @dayseam/desktop tauri build` | none (release) | [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) only | [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) |
 | **MAS (sandbox plist)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas` and **`bundle.macOS.entitlements`** to [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)) | [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) — **MAS-2a:** App Sandbox + **`network.client`** + user-selected + JIT-class keys; **MAS-2c:** JIT justification in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) ([`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) stays **without** App Sandbox |
 
-The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/src/lib.rs) (`"direct"` \| `"mas"`) for future compile-time gates — **no** user-visible behaviour branches yet.
+The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/src/lib.rs) (`"direct"` \| `"mas"`). **`distribution_profile`** IPC (**MAS-3b**) exposes it to the webview so updater UX gates without a second bundle.
 
 CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) and [`check-entitlements.sh`](../../scripts/ci/check-entitlements.sh) against both plists so merge regressions fail before release. Those bundle-only builds merge **`bundle.createUpdaterArtifacts: false`** so PR runners do not need **`TAURI_SIGNING_PRIVATE_KEY`** (release workflow still signs updater artifacts with the real secret).
 

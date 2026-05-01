@@ -265,6 +265,11 @@ export interface Commands {
     args: { ids: string[] };
     result: ActivityEventT[];
   };
+  /** **MAS-3b.** Compile-time SKU (`direct` vs App Store `mas`). */
+  distribution_profile: {
+    args: Record<string, never>;
+    result: "direct" | "mas";
+  };
   shell_open: {
     args: { url: string };
     result: null;
@@ -537,6 +542,7 @@ export const PROD_COMMANDS: readonly CommandName[] = [
   "report_save",
   "retention_sweep_now",
   "activity_events_get",
+  "distribution_profile",
   "shell_open",
   "gitlab_validate_pat",
   "atlassian_validate_credentials",

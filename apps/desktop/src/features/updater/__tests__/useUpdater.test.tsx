@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -6,8 +7,10 @@ import {
   mockRelaunch,
   mockUpdaterCheck,
   queueUpdaterCheck,
+  registerInvokeHandler,
   resetTauriMocks,
 } from "../../../__tests__/tauri-mock";
+import { DistributionProfileProvider } from "../../../distribution/DistributionProfileProvider";
 import { __clearSkippedVersionsForTests } from "../skipped-versions";
 import { UpdaterBanner } from "../UpdaterBanner";
 import { useUpdater } from "../useUpdater";
@@ -22,6 +25,12 @@ function Harness() {
   );
 }
 
+function renderWithProfile(ui: ReactElement) {
+  return render(
+    <DistributionProfileProvider>{ui}</DistributionProfileProvider>,
+  );
+}
+
 describe("useUpdater + UpdaterBanner", () => {
   beforeEach(() => {
     resetTauriMocks();
@@ -31,9 +40,20 @@ describe("useUpdater + UpdaterBanner", () => {
     __clearSkippedVersionsForTests();
   });
 
+  it("MAS profile never invokes the updater plugin", async () => {
+    resetTauriMocks();
+    registerInvokeHandler("distribution_profile", async () => "mas");
+    renderWithProfile(<Harness />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockUpdaterCheck).not.toHaveBeenCalled();
+    expect(screen.getByTestId("kind").textContent).toBe("idle");
+  });
+
   it("renders nothing when the check returns no update", async () => {
     queueUpdaterCheck(null);
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     await waitFor(() =>
       expect(screen.getByTestId("kind").textContent).toBe("up-to-date"),
     );
@@ -50,7 +70,7 @@ describe("useUpdater + UpdaterBanner", () => {
         body: "Bug fixes",
       }),
     );
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     const banner = await screen.findByTestId("updater-banner-available");
     expect(banner.textContent).toContain("Dayseam 0.6.1");
     expect(banner.textContent).toContain("you have 0.6.0");
@@ -60,7 +80,7 @@ describe("useUpdater + UpdaterBanner", () => {
     queueUpdaterCheck(
       new MockUpdate({ version: "0.6.1", currentVersion: "0.6.0" }),
     );
-    const { unmount } = render(<Harness />);
+    const { unmount } = renderWithProfile(<Harness />);
     const skipBtn = await screen.findByRole("button", {
       name: /skip this version/i,
     });
@@ -76,7 +96,7 @@ describe("useUpdater + UpdaterBanner", () => {
     queueUpdaterCheck(
       new MockUpdate({ version: "0.6.1", currentVersion: "0.6.0" }),
     );
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     await waitFor(() =>
       expect(screen.getByTestId("kind").textContent).toBe("available"),
     );
@@ -95,7 +115,7 @@ describe("useUpdater + UpdaterBanner", () => {
       ],
     });
     queueUpdaterCheck(update);
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     const installBtn = await screen.findByRole("button", {
       name: /install and restart/i,
     });
@@ -127,7 +147,7 @@ describe("useUpdater + UpdaterBanner", () => {
         ],
       }),
     );
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     const installBtn = await screen.findByRole("button", {
       name: /install and restart/i,
     });
@@ -149,7 +169,7 @@ describe("useUpdater + UpdaterBanner", () => {
 
   it("exposes errors from the check as a retryable banner", async () => {
     queueUpdaterCheck(new Error("network down"));
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     const banner = await screen.findByTestId("updater-banner-error");
     expect(banner.textContent).toContain("network down");
     // Retry replays the check — queue a success and click.
@@ -179,7 +199,7 @@ describe("useUpdater + UpdaterBanner", () => {
   // banner stuck on "up-to-date" and the test fails.
   it("re-runs the update check when the native menu item fires the event", async () => {
     queueUpdaterCheck(null);
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     await waitFor(() =>
       expect(screen.getByTestId("kind").textContent).toBe("up-to-date"),
     );
@@ -215,7 +235,7 @@ describe("useUpdater + UpdaterBanner", () => {
       currentVersion: "0.6.2",
     });
     queueUpdaterCheck(first);
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     await waitFor(() =>
       expect(screen.getByTestId("kind").textContent).toBe("available"),
     );
@@ -247,7 +267,7 @@ describe("useUpdater + UpdaterBanner", () => {
   // verbose true by default and claims it was "for visibility".
   it("keeps the banner silent on the mount-time check when verbose has not been requested", async () => {
     queueUpdaterCheck(null);
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     await waitFor(() =>
       expect(screen.getByTestId("kind").textContent).toBe("up-to-date"),
     );
@@ -270,7 +290,7 @@ describe("useUpdater + UpdaterBanner", () => {
     // Mount-time check resolves silent/null so the banner is
     // clean when the menu event fires.
     queueUpdaterCheck(null);
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     await waitFor(() =>
       expect(screen.getByTestId("kind").textContent).toBe("up-to-date"),
     );
@@ -314,7 +334,7 @@ describe("useUpdater + UpdaterBanner", () => {
   it("collapses a second menu click while a check is still in flight", async () => {
     // Mount-time check resolves silent/null.
     queueUpdaterCheck(null);
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     await waitFor(() =>
       expect(screen.getByTestId("kind").textContent).toBe("up-to-date"),
     );
@@ -363,7 +383,7 @@ describe("useUpdater + UpdaterBanner", () => {
         downloadError: new Error("signature verify failed"),
       }),
     );
-    render(<Harness />);
+    renderWithProfile(<Harness />);
     const installBtn = await screen.findByRole("button", {
       name: /install and restart/i,
     });
