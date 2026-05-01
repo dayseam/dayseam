@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Added
+
+- **DAY-210 / MAS-4c:** [`SecurityScopedBookmarkRepo`](crates/dayseam-db/src/repos/security_scoped_bookmarks.rs) syncs **`security_scoped_bookmarks`** rows with each Local Git source’s `scan_roots` (`logical_path` keys match `Path::to_str` / config JSON; **`bookmark_blob`** preserved on re-sync). **`sources_add`** / **`sources_update`** call it when **`--features mas`**. [`local_git_scan`](apps/desktop/src-tauri/src/local_git_scan.rs) runs initial discovery with per-root [`SecurityScopedGuard::from_bookmark`](apps/desktop/src-tauri/src/security_scoped/mod.rs) on **macOS + `mas`** when a blob exists, otherwise the same **`discover_repos`** path as direct. Per-root walks share one cumulative **`max_roots`** budget and stop when any walk truncates, matching single-call [`discover_repos`](crates/connectors/connector-local-git/src/discovery.rs) semantics. Integration test **`security_scoped_bookmarks_sync_local_git_scan_roots`**.
+
 ## [0.13.4] - 2026-05-01
 
 ### Added

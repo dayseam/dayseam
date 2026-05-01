@@ -13,6 +13,7 @@ pub mod local_repos;
 pub mod logs;
 pub mod persons;
 pub mod raw_payloads;
+pub mod security_scoped_bookmarks;
 pub mod settings;
 pub mod sinks;
 pub mod source_identities;

@@ -15,9 +15,10 @@ use dayseam_core::{
     SyncRunTrigger,
 };
 use dayseam_db::{
-    open, ActivityRepo, ArtifactRepo, DbError, DraftRepo, IdentityRepo, LocalRepoRepo, LogRepo,
-    LogRow, PersonRepo, RawPayload, RawPayloadRepo, SettingsRepo, SinkRepo, SourceIdentityRepo,
-    SourceRepo, SyncRunRepo,
+    local_git_scan_root_logical_path, open, ActivityRepo, ArtifactRepo, DbError, DraftRepo,
+    IdentityRepo, LocalRepoRepo, LogRepo, LogRow, PersonRepo, RawPayload, RawPayloadRepo,
+    SecurityScopedBookmarkRepo, SettingsRepo, SinkRepo, SourceIdentityRepo, SourceRepo,
+    SyncRunRepo,
 };
 use sqlx::SqlitePool;
 use tempfile::TempDir;
@@ -2003,4 +2004,64 @@ async fn security_scoped_bookmarks_sink_cascade() {
             .await
             .unwrap();
     assert_eq!(remaining, 0, "bookmark row must CASCADE with sink delete");
+}
+
+/// **MAS-4c.** `SecurityScopedBookmarkRepo::sync_local_git_scan_roots` keeps rows aligned with
+/// `scan_roots`, clears when empty, and does not wipe an existing `bookmark_blob` on re-sync.
+#[tokio::test]
+async fn security_scoped_bookmarks_sync_local_git_scan_roots() {
+    let (pool, _dir) = test_pool().await;
+    let src = fixture_local_source();
+    SourceRepo::new(pool.clone()).insert(&src).await.unwrap();
+
+    let primary = match &src.config {
+        SourceConfig::LocalGit { scan_roots, .. } => scan_roots[0].clone(),
+        _ => panic!("expected LocalGit fixture"),
+    };
+    let secondary = PathBuf::from("/second/scan/root");
+
+    let repo = SecurityScopedBookmarkRepo::new(pool.clone());
+    repo.sync_local_git_scan_roots(&src.id, &[primary.clone(), secondary.clone()])
+        .await
+        .unwrap();
+    let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
+    assert_eq!(rows.len(), 2);
+
+    repo.sync_local_git_scan_roots(&src.id, &[primary.clone()])
+        .await
+        .unwrap();
+    let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].logical_path,
+        local_git_scan_root_logical_path(&primary).unwrap()
+    );
+
+    repo.sync_local_git_scan_roots(&src.id, &[]).await.unwrap();
+    let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
+    assert!(rows.is_empty());
+
+    repo.sync_local_git_scan_roots(&src.id, &[primary.clone()])
+        .await
+        .unwrap();
+    let bid: String =
+        sqlx::query_scalar("SELECT id FROM security_scoped_bookmarks WHERE owner_source_id = ?")
+            .bind(src.id.to_string())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let fake_blob = vec![1u8, 2, 3, 4];
+    sqlx::query("UPDATE security_scoped_bookmarks SET bookmark_blob = ? WHERE id = ?")
+        .bind(&fake_blob[..])
+        .bind(&bid)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    repo.sync_local_git_scan_roots(&src.id, &[primary.clone()])
+        .await
+        .unwrap();
+    let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].bookmark_blob.as_deref(), Some(fake_blob.as_slice()));
 }

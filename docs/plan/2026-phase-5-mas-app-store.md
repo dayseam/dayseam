@@ -355,3 +355,4 @@ MAS-9a ──► MAS-9c
 | 2026-05-01 | **MAS-3a/b:** Updater + process plugins not registered on `--features mas`; MAS Tauri merge drops updater capability + plugin section; **`distribution_profile`** IPC + frontend gate + Vitest; architecture §15/§16/§21 updated. |
 | 2026-05-01 | **MAS-4a:** SQLite **`security_scoped_bookmarks`** table + architecture §9.6; **`dayseam-db` `build.rs`** migration rerun hints; integration tests for FK / `CHECK` / cascade. |
 | 2026-05-01 | **MAS-4b:** Desktop **`security_scoped`** module (`objc2-foundation`): bookmark create/resolve + RAII guard; macOS lib tests; Linux stubs. |
+| 2026-05-01 | **MAS-4c:** `SecurityScopedBookmarkRepo` + Local Git `sources_add`/`sources_update` sync; **`local_git_scan`** MAS macOS discovery; DB integration test. |
