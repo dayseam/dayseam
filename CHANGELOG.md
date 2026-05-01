@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.11] - 2026-05-01
+
 ### Added
 
 - **DAY-210 / MAS-7a:** macOS app bundles now ship Apple’s privacy manifest [`PrivacyInfo.xcprivacy`](apps/desktop/src-tauri/PrivacyInfo.xcprivacy) under **`Contents/Resources`** (via [`tauri.conf.json`](apps/desktop/src-tauri/tauri.conf.json) `bundle.macOS.files`) for **both** direct and Mac App Store merge profiles. Declares **`NSPrivacyTracking`** false and required-reason API categories (**File Timestamp** — **3B52.1** / **C617.1**; **User Defaults** — **CA92.1**) aligned with **MAS-2b** inventory in [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §16. CI runs [`verify-bundle-privacy-manifest.sh`](scripts/ci/verify-bundle-privacy-manifest.sh) after each **`desktop-bundle`** `tauri build`, and the **`shell-scripts`** job (macOS) `plutil -lint`s the checked-in source file. **§21** in the design doc separates **built app** entitlements/privacy checks from **source** entitlements linting.
