@@ -358,3 +358,4 @@ MAS-9a ──► MAS-9c
 | 2026-05-01 | **MAS-4c:** `SecurityScopedBookmarkRepo` + Local Git `sources_add`/`sources_update` sync; **`local_git_scan`** MAS macOS discovery; DB integration test. |
 | 2026-05-01 | **MAS-4d:** `sync_markdown_sink_dest_dirs` + **`sinks_add`** MAS sync; DB integration test **`security_scoped_bookmarks_sync_markdown_sink_dest_dirs`**. |
 | 2026-05-01 | **MAS-4e:** `create_directory_bookmark` + **`set_*_bookmark_blob`** wired into **`sources_add`** / **`sources_update`** / **`sinks_add`** on **macOS + `mas`**; DB test **`security_scoped_bookmarks_set_blob_updates_rows`**; error codes **`ipc.security_scoped_bookmark.*`**. |
+| 2026-05-01 | **MAS-5a:** Keychain audit under sandbox documented in **MAS-0b** §12 (+ §20 checklist); mock tests unchanged per task row. |
