@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-05-01
+
 ### Changed
 
 - **DAY-210 / MAS-3:** Mac App Store builds no longer register Tauri’s in-app updater or process-relaunch plugins (`#[cfg(not(feature = "mas"))]` in [`main.rs`](apps/desktop/src-tauri/src/main.rs)); [`tauri.mas.conf.json`](apps/desktop/src-tauri/tauri.mas.conf.json) keeps **`capabilities: ["default"]`** only and clears merged updater plugin config. New **`distribution_profile`** IPC plus [`DistributionProfileProvider`](apps/desktop/src/distribution/DistributionProfileProvider.tsx) lets [`useUpdater`](apps/desktop/src/features/updater/useUpdater.ts) skip updater calls when the profile is **`mas`** (Vitest). See [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §15.
