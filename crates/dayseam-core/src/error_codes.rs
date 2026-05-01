@@ -565,6 +565,15 @@ pub const IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED: &str =
 pub const IPC_SECURITY_SCOPED_BOOKMARK_ROW_MISSING: &str =
     "ipc.security_scoped_bookmark.row_missing";
 
+/// **MAS-4f.** Local Git discovery found a persisted scan-root bookmark that
+/// could not be resolved, was marked stale by Foundation, or could not start
+/// security-scoped access. Discovery may have continued without App Sandbox
+/// grants; the desktop layer surfaces a toast so the user re-selects affected
+/// folders in Settings. Reserved for diagnostics and future IPC — not emitted
+/// as a command error in the initial MAS-4f slice.
+pub const IPC_SECURITY_SCOPED_BOOKMARK_STALE_OR_UNUSABLE_SCAN_ROOT: &str =
+    "ipc.security_scoped_bookmark.stale_or_unusable_scan_root";
+
 /// `sinks_add` was called with a `config` whose body fails the IPC
 /// layer's structural check (e.g. a `MarkdownFile` sink with an
 /// empty `dest_dirs` list, a non-absolute path, or a path with `..`
@@ -909,6 +918,7 @@ pub const ALL: &[&str] = &[
     IPC_SINK_INVALID_CONFIG,
     IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED,
     IPC_SECURITY_SCOPED_BOOKMARK_ROW_MISSING,
+    IPC_SECURITY_SCOPED_BOOKMARK_STALE_OR_UNUSABLE_SCAN_ROOT,
     IPC_INVALID_DISPLAY_NAME,
     IPC_SHELL_URL_DISALLOWED,
     IPC_SHELL_URL_INVALID,
