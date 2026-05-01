@@ -99,6 +99,7 @@ jobs:
           APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
           test -d "$APP"
           bash scripts/ci/verify-tauri-bundle-entitlements.sh "$APP" direct
+          bash scripts/ci/verify-bundle-privacy-manifest.sh "$APP"
 
       - name: Tauri bundle — MAS merge profile (`app` only)
         working-directory: apps/desktop
@@ -114,6 +115,7 @@ jobs:
           APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
           test -d "$APP"
           bash scripts/ci/verify-tauri-bundle-entitlements.sh "$APP" mas
+          bash scripts/ci/verify-bundle-privacy-manifest.sh "$APP"
 
       # **MAS-2b.** Real `main` + WebView shell — launch the MAS bundle binary
       # for a bounded interval so regressions that crash under sandbox fail here.
@@ -247,6 +249,13 @@ jobs:
         run: bash scripts/ci/test-check-entitlements.sh
       - name: check-entitlements.sh (entitlements.plist validity)
         run: bash scripts/ci/check-entitlements.sh
+      # **MAS-7a.** Privacy manifest script syntax (embed checked in
+      # `desktop-bundle-profiles` on macOS only).
+      - name: bash -n verify-bundle-privacy-manifest.sh (syntax)
+        run: bash -n scripts/ci/verify-bundle-privacy-manifest.sh
+      - name: plutil -lint PrivacyInfo.xcprivacy (source, macOS only)
+        if: matrix.os == 'macos-latest'
+        run: plutil -lint "${{ github.workspace }}/apps/desktop/src-tauri/PrivacyInfo.xcprivacy"
       # **MAS-1b+.** Same AMFI / plutil gate for the MAS plist (macOS
       # only — `plutil` is absent on ubuntu-latest; the comment grep
       # still runs when ENTITLEMENTS_FILE is overridden).

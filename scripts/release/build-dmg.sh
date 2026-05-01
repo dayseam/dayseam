@@ -158,6 +158,8 @@ if ! echo "$entitlements_dump" | grep -q 'com.apple.security.files.user-selected
   echo "build-dmg.sh: .app is missing the 'user-selected.read-write' entitlement; folder-picker grants will not persist. Regression in tauri.conf.json 'macOS.entitlements' path?" >&2
   exit 1
 fi
+# **MAS-7a:** same `PrivacyInfo.xcprivacy` embed check as PR `desktop-bundle` CI.
+bash "${REPO_ROOT}/scripts/ci/verify-bundle-privacy-manifest.sh" "$APP_PATH"
 
 OUT_DIR="${REPO_ROOT}/dist/release"
 OUT_DMG="${OUT_DIR}/Dayseam-v${VERSION}.dmg"
