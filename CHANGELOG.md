@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.8] - 2026-05-01
+
 ### Changed
 
 - **DAY-210 / MAS-5b1:** Mac App Store builds (`--features mas`) now write Application Support and `state.db` under **`dev.dayseam.mas`**, matching the MAS bundle identifier, instead of reusing the direct SKU directory **`dev.dayseam.desktop`** — co-installed direct and Mac App Store copies no longer collide on SQLite or logs ([`startup.rs`](apps/desktop/src-tauri/src/startup.rs)).
