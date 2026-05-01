@@ -59,7 +59,7 @@ Anything “Apple required” must land in the **correct column** so we do not a
 | **Packaging** | Bundle id, product name suffix, targets (`dmg` vs `app` only), `createUpdaterArtifacts`, signing identity, export method. | MAS bundle id **distinct** from direct (§9); updater artifacts **off** on MAS. |
 | **Entitlements** | Keys in `entitlements.plist` vs `entitlements.mas.plist`. | Sandbox, network client/server, JIT-related keys (§6), user-selected file access. |
 | **Capability allow-lists** | Tauri v2 `capabilities/*.json` grants. | Strip `updater:*`, `process:allow-restart`, and any command not reachable under sandbox (MAS-3). |
-| **Store metadata** | Privacy manifest, export compliance prose, review notes. | `PrivacyInfo.xcprivacy` (**MAS-7a**), [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) (**MAS-7b**). |
+| **Store metadata** | Privacy manifest, export compliance prose, review notes. | `PrivacyInfo.xcprivacy` (**MAS-7a**), [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) (**MAS-7b**), [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md) (**MAS-7c**). |
 | **UX** | User-visible differences tied to distribution. | No “Check for updates” on MAS; single `distribution_profile` enum preferred over scattered checks (plan: *Single codebase*). |
 
 **Runtime behaviour** (bookmarks, scoped FS, Keychain, OAuth) should stay **unified** across SKUs where feasible; the direct build may adopt the same security-scoped access patterns to reduce drift.
@@ -98,7 +98,7 @@ Today’s direct macOS build **opts out of App Sandbox** and instead relies on h
 | `com.apple.security.network.client` | **on** (**MAS-2a** + **MAS-6a**) | Outbound **HTTPS** to user-configured hosts (self-hosted GitLab, enterprise GitHub, …); broad client entitlement—see §13 / [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md). |
 | `com.apple.security.network.server` | **on** (**MAS-6b**) | OAuth PKCE **loopback** `TcpListener` on **`127.0.0.1`** (`accept` counts as **incoming** TCP per Apple—[`com.apple.security.network.server`](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.server)); production pins **DAY-205** port. **Not** a public WAN listener—see §14 / [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) (**OAuth loopback**). |
 | `com.apple.security.files.user-selected.read-write` | **TBD with bookmarks** | Under sandbox, picker + bookmark flow must match **MAS-4**; may differ from direct’s standalone key semantics — validate against Apple’s matrix for sandboxed apps. |
-| `com.apple.security.cs.allow-jit` / `…allow-unsigned-executable-memory` | **on** (**MAS-2c**) | Same keys as direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist); justified for WKWebView + in-process native deps — canonical text in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) (feeds **MAS-7c**). **Fallback** if App Review rejects: WebKit/Tauri narrowing → upstream issue → hold SKU (see that doc). |
+| `com.apple.security.cs.allow-jit` / `…allow-unsigned-executable-memory` | **on** (**MAS-2c**) | Same keys as direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist); justified for WKWebView + in-process native deps — canonical engineering text in [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md); App Review paste seed in [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md) (**MAS-7c**). **Fallback** if App Review rejects: WebKit/Tauri narrowing → upstream issue → hold SKU (see **MAS-JIT**). |
 
 **Footnote (MAS-2a vs MAS-4):** `user-selected.read-write` stays **on** in `entitlements.mas.plist` at **MAS-2a** for parity with the direct picker story; **MAS-4** defines the security-scoped bookmark contract that makes that key meaningful under sandbox — the matrix “TBD” row is about *semantics*, not “key absent”.
 
@@ -138,7 +138,7 @@ Nothing in the MAS matrix should **widen** the attack surface “because MAS is 
 
 ## 7. JIT / executable memory (evidence and fallback)
 
-**MAS-2c** is documented in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md): exact entitlement keys, macOS **arm64 / x86_64** scope, engineering rationale, an **App Review–ready prose seed** for **MAS-7c**, and the **fallback** ladder (**maintain the numbered steps only in that file** so App Review copy and engineering narrative stay one source of truth).
+**MAS-2c** is documented in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md): exact entitlement keys, macOS **arm64 / x86_64** scope, engineering rationale, an **App Review–ready prose seed** (reproduced in [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md) **MAS-7c** for paste convenience), and the **fallback** ladder (**maintain the numbered steps only in that file** so App Review copy and engineering narrative stay one source of truth).
 
 **Version inventory** for compliance lives in **§16** (`Cargo.lock` snapshot). Optional deep evidence (`nm` / dylib maps) is **on demand** for App Review or legal — not a standing gate for every patch.
 
@@ -369,6 +369,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 - [x] **OAuth loopback + network parity (MAS-6b):** **`com.apple.security.network.server`** in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) for localhost **bind/accept**; **`network.client`** for IdP HTTPS; documented in [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) + §14; CI verifies both keys on signed **`mas`** bundles.
 - [x] **Privacy manifest (MAS-7a):** [`PrivacyInfo.xcprivacy`](../../apps/desktop/src-tauri/PrivacyInfo.xcprivacy) bundled via [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) → **`Contents/Resources`**; [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh) in **`desktop-bundle`** CI.
 - [x] **Export compliance narrative (MAS-7b):** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) — inventory + App Store Connect answers; **MAS-8d** upload automation must mirror the same metadata.
+- [x] **App Review notes pack (MAS-7c):** [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md) — local-first + sandbox + JIT blockquote + subprocess §8 pointer + privacy / export cross-links.
 
 ---
 
@@ -389,7 +390,13 @@ The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/
 
 ## 22. Export compliance (**MAS-7b**)
 
-US export / App Store Connect encryption answers and the **MAS-8d** automation contract live in [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md). That file is the **single** engineering source for “what crypto ships” and “what Connect must say”; JIT / executable-memory justification remains in [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) (**MAS-2c** → **MAS-7c**).
+US export / App Store Connect encryption answers and the **MAS-8d** automation contract live in [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md). That file is the **single** engineering source for “what crypto ships” and “what Connect must say.”
+
+---
+
+## 23. App Review notes (**MAS-7c**)
+
+Consolidated **App Store Connect** paste material (local-first summary, sandbox + network + **MAS-3** updater posture, **JIT** blockquote, **§8** subprocess pointer, privacy + export links) lives in [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md). Deep JIT keys, evidence, and the **numbered fallback ladder** remain only in [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) (**MAS-2c**).
 
 ---
 
@@ -413,3 +420,4 @@ US export / App Store Connect encryption answers and the **MAS-8d** automation c
 | 2026-05-01 | Plan: split **MAS-5b** into **MAS-5b1** / **MAS-5b2**; §12.7 table + §10 / §12.3 / §20 pointers updated. |
 | 2026-05-01 | **MAS-7a:** [`PrivacyInfo.xcprivacy`](../../apps/desktop/src-tauri/PrivacyInfo.xcprivacy) + `bundle.macOS.files`; §16 inventory + §20 checklist + §21 CI; [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh). |
 | 2026-05-01 | **MAS-7b:** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md); §3 store-metadata link; §20 checklist; new §22; **MAS-8d** metadata contract in compliance doc; Apple export doc link + ENC wording in compliance file; [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) **Related** cross-link. |
+| 2026-05-01 | **MAS-7c:** [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md); §3 store-metadata; §20 checklist; new §23; **MAS-2c** intro + **MAS-JIT** maintenance point at paste pack; **MAS-EXPORT** **Related** §22–§23 + **MAS-APP-REVIEW** link. |

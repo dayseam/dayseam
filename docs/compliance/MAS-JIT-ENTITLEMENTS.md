@@ -1,8 +1,8 @@
 # MAS JIT and executable-memory entitlements (**MAS-2c**)
 
-Normative engineering record for the Mac App Store SKU. It satisfies the **MAS-2c** plan row (exact keys, platform scope, Apple-facing justification seed, fallback). **`MAS-7c`** (`MAS-APP-REVIEW-NOTES.md`) should copy or adapt the “App Review notes” section here when filing.
+Normative engineering record for the Mac App Store SKU. It satisfies the **MAS-2c** plan row (exact keys, platform scope, Apple-facing justification seed, fallback). The **paste pack** for App Store Connect lives in [`MAS-APP-REVIEW-NOTES.md`](MAS-APP-REVIEW-NOTES.md) (**MAS-7c**); it reproduces the blockquote under **Apple-facing notes** below — edit **[MAS-APP-REVIEW-NOTES](MAS-APP-REVIEW-NOTES.md)** for Connect submission copy, or change **both** files together when the seed text moves.
 
-**Related:** [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md) (#210), [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md) §5–§7, [`MAS-EXPORT-COMPLIANCE.md`](MAS-EXPORT-COMPLIANCE.md) (**MAS-7b** — export classification; orthogonal to JIT), [`apps/desktop/src-tauri/entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist), [`apps/desktop/src-tauri/entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md).
+**Related:** [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md) (#210), [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md) §5–§7, [`MAS-APP-REVIEW-NOTES.md`](MAS-APP-REVIEW-NOTES.md) (**MAS-7c** — App Review paste pack; JIT blockquote mirror), [`MAS-EXPORT-COMPLIANCE.md`](MAS-EXPORT-COMPLIANCE.md) (**MAS-7b** — export classification; orthogonal to JIT), [`apps/desktop/src-tauri/entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist), [`apps/desktop/src-tauri/entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md).
 
 ---
 
@@ -58,4 +58,4 @@ The app is **not** a generic code host: there is no `eval`-style user script sur
 
 ## Maintenance
 
-When **changing** `entitlements.mas.plist` JIT keys or CI expectations, update this file, [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md), and [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md) §5 / §7 in the same change set so the plan, plist prose, and compliance narrative stay aligned.
+When **changing** `entitlements.mas.plist` JIT keys or CI expectations, update this file, [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md), [`MAS-APP-REVIEW-NOTES.md`](MAS-APP-REVIEW-NOTES.md) (if the **Apple-facing notes** blockquote changes), and [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md) §5 / §7 in the same change set so the plan, plist prose, and compliance narrative stay aligned.

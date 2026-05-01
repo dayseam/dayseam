@@ -2,7 +2,7 @@
 
 Normative record for **US export classification** assumptions and **App Store Connect** answers that apply to the **Mac App Store** SKU of Dayseam. It satisfies the **MAS-7b** plan row and must stay aligned with whatever **MAS-8d** (automated Connect upload) asserts in metadata or workflow comments.
 
-**Related:** [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md) (Block **MAS-7**, **MAS-8d**), [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md) §3 (**Store metadata** column) and §22, [`MAS-JIT-ENTITLEMENTS.md`](MAS-JIT-ENTITLEMENTS.md) (JIT / executable memory — separate from export classification).
+**Related:** [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md) (Block **MAS-7**, **MAS-8d**), [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md) §3 (**Store metadata** column), §22–§23, [`MAS-JIT-ENTITLEMENTS.md`](MAS-JIT-ENTITLEMENTS.md) (JIT / executable memory — separate from export classification), [`MAS-APP-REVIEW-NOTES.md`](MAS-APP-REVIEW-NOTES.md) (**MAS-7c** — App Review paste pack).
 
 **Apple (official):** [Complying with encryption export regulations](https://developer.apple.com/documentation/security/complying-with-encryption-export-regulations) — use alongside this file when answering Connect; questionnaire wording may differ from BIS terms below.
 
