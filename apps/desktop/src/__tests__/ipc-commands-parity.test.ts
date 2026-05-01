@@ -73,6 +73,7 @@ const commandSurface: Record<keyof Commands, true> = {
   report_save: true,
   retention_sweep_now: true,
   activity_events_get: true,
+  distribution_profile: true,
   shell_open: true,
   gitlab_validate_pat: true,
   atlassian_validate_credentials: true,

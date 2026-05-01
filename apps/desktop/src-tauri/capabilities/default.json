@@ -28,6 +28,7 @@
     "allow-report-save",
     "allow-retention-sweep-now",
     "allow-activity-events-get",
+    "allow-distribution-profile",
     "allow-shell-open",
     "allow-gitlab-validate-pat",
     "allow-atlassian-validate-credentials",

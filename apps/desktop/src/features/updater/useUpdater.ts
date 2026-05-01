@@ -35,6 +35,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { listen } from "@tauri-apps/api/event";
+import { useDistributionProfile } from "../../distribution/useDistributionProfile";
 import { isSkipped, skipVersion } from "./skipped-versions";
 
 export type UpdaterStatus =
@@ -85,6 +86,8 @@ function formatError(err: unknown): string {
 }
 
 export function useUpdater(): UpdaterState {
+  const distributionProfile = useDistributionProfile();
+  const allowUpdater = distributionProfile === "direct";
   const [status, setStatus] = useState<UpdaterStatus>({ kind: "idle" });
   // DAY-127 #3: tracks whether the current check cycle was fired by
   // the user through the native menu (true) or by the silent
@@ -141,6 +144,7 @@ export function useUpdater(): UpdaterState {
   }, []);
 
   const runCheck = useCallback(async () => {
+    if (!allowUpdater) return;
     // DAY-127 #3: back-to-back menu clicks used to fire a second
     // `check()` against the updater endpoint for every click, which
     // is wasted network and, worse, gave the user no indication
@@ -186,9 +190,10 @@ export function useUpdater(): UpdaterState {
     } catch (err) {
       setStatusIfMounted({ kind: "error", message: formatError(err) });
     }
-  }, [setStatusIfMounted, releaseHandle]);
+  }, [allowUpdater, setStatusIfMounted, releaseHandle]);
 
   const install = useCallback(async () => {
+    if (!allowUpdater) return;
     const update = updateRef.current;
     if (!update) return;
     const version = update.version;
@@ -224,7 +229,7 @@ export function useUpdater(): UpdaterState {
     } catch (err) {
       setStatusIfMounted({ kind: "error", message: formatError(err) });
     }
-  }, [setStatusIfMounted]);
+  }, [allowUpdater, setStatusIfMounted]);
 
   const skipCurrent = useCallback(() => {
     if (status.kind !== "available") return;
@@ -237,6 +242,7 @@ export function useUpdater(): UpdaterState {
   // shell stays fully functional if GitHub is unreachable.
   useEffect(() => {
     mountedRef.current = true;
+    if (!allowUpdater) return;
     void runCheck();
     return () => {
       mountedRef.current = false;
@@ -249,7 +255,7 @@ export function useUpdater(): UpdaterState {
     // no deps that change) so this effect really does run exactly
     // once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [allowUpdater]);
 
   // DAY-119: listen for the native "Check for Updates…" menu item
   // (installed by the Rust setup hook). The menu emits
@@ -260,6 +266,7 @@ export function useUpdater(): UpdaterState {
   // fallback) we simply skip registering; the mount-time check
   // still runs.
   useEffect(() => {
+    if (!allowUpdater) return;
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     void listen("menu://check-for-updates", () => {
@@ -286,7 +293,7 @@ export function useUpdater(): UpdaterState {
       cancelled = true;
       if (unlisten) unlisten();
     };
-  }, [runCheck]);
+  }, [allowUpdater, runCheck]);
 
   // DAY-127 #3: once the verbose check resolves to "up-to-date",
   // leave the confirmation on screen just long enough to be read,

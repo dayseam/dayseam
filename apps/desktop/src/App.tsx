@@ -17,13 +17,14 @@ import {
 } from "./features/scheduler/useScheduler";
 import { SinksDialog } from "./features/sinks/SinksDialog";
 import { SourcesSidebar } from "./features/sources/SourcesSidebar";
+import { DistributionProfileProvider } from "./distribution/DistributionProfileProvider";
 import { UpdaterBanner } from "./features/updater/UpdaterBanner";
 import { useUpdater } from "./features/updater/useUpdater";
 import { useReport } from "./ipc";
 import { dismissSplash } from "./splash";
 import { ThemeProvider } from "./theme";
 
-export default function App() {
+function AppInner() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [identitiesOpen, setIdentitiesOpen] = useState(false);
   const [sinksOpen, setSinksOpen] = useState(false);
@@ -214,5 +215,13 @@ export default function App() {
       />
       <ToastHost />
     </ThemeProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <DistributionProfileProvider>
+      <AppInner />
+    </DistributionProfileProvider>
   );
 }

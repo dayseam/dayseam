@@ -275,6 +275,7 @@ export function resetTauriMocks(): void {
   resetDialogPlugin();
   resetUpdaterPlugin();
   resetProcessPlugin();
+  registerInvokeHandler("distribution_profile", async () => "direct");
 }
 
 // ---------------------------------------------------------------------------

@@ -92,6 +92,7 @@ pub const PROD_COMMANDS: &[&str] = &[
     "report_save",
     "retention_sweep_now",
     "activity_events_get",
+    "distribution_profile",
     "shell_open",
     "gitlab_validate_pat",
     "atlassian_validate_credentials",
@@ -129,6 +130,13 @@ fn internal(code: &str, err: impl std::fmt::Display) -> DayseamError {
         code: code.to_string(),
         message: err.to_string(),
     }
+}
+
+/// **MAS-3b.** Compile-time distribution profile (`direct` \| `mas`) so the
+/// webview can gate in-app updater UX without a second frontend bundle.
+#[tauri::command]
+pub fn distribution_profile() -> &'static str {
+    crate::DISTRIBUTION_PROFILE
 }
 
 /// Read the currently-stored [`Settings`]. Falls back to
