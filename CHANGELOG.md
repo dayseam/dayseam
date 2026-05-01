@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.7] - 2026-05-01
+
 ### Added
 
 - **DAY-210 / MAS-4f:** On **macOS + `mas`**, Local Git discovery resolves each scan-root bookmark before walking; resolve failures, Foundation **stale** bookmarks, and **`startAccessingSecurityScopedResource`** denials log at **warn** and fall back to unscoped discovery. **`upsert_discovered_repos`** publishes a **warning toast** (with stable reference **`ipc.security_scoped_bookmark.stale_or_unusable_scan_root`**) so users re-select affected folders under Settings -> Sources, including when a later scan root aborts discovery (stale roots collected earlier are not dropped on error).
