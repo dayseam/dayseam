@@ -356,3 +356,4 @@ MAS-9a ──► MAS-9c
 | 2026-05-01 | **MAS-4a:** SQLite **`security_scoped_bookmarks`** table + architecture §9.6; **`dayseam-db` `build.rs`** migration rerun hints; integration tests for FK / `CHECK` / cascade. |
 | 2026-05-01 | **MAS-4b:** Desktop **`security_scoped`** module (`objc2-foundation`): bookmark create/resolve + RAII guard; macOS lib tests; Linux stubs. |
 | 2026-05-01 | **MAS-4c:** `SecurityScopedBookmarkRepo` + Local Git `sources_add`/`sources_update` sync; **`local_git_scan`** MAS macOS discovery; DB integration test. |
+| 2026-05-01 | **MAS-4d:** `sync_markdown_sink_dest_dirs` + **`sinks_add`** MAS sync; DB integration test **`security_scoped_bookmarks_sync_markdown_sink_dest_dirs`**. |

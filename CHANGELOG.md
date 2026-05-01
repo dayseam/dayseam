@@ -47,6 +47,14 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-210 / MAS-4c / MAS-4d:** If security-scoped bookmark sync fails after inserting a new Local Git source or Markdown sink, **`sources_add`** / **`sinks_add`** now remove the new row so the database is not left without aligned **`security_scoped_bookmarks`** placeholders.
+
+### Added
+
+- **DAY-210 / MAS-4d:** [`SecurityScopedBookmarkRepo`](crates/dayseam-db/src/repos/security_scoped_bookmarks.rs) syncs **`markdown_sink_dest`** bookmark rows with each Markdown-file sink’s **`dest_dirs`** (same placeholder / **`bookmark_blob`** preservation rules as **MAS-4c**). **`sinks_add`** calls it when **`--features mas`**. Integration test **`security_scoped_bookmarks_sync_markdown_sink_dest_dirs`**.
+
 ## [0.13.5] - 2026-05-01
 
 ### Added

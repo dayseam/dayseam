@@ -15,10 +15,10 @@ use dayseam_core::{
     SyncRunTrigger,
 };
 use dayseam_db::{
-    local_git_scan_root_logical_path, open, ActivityRepo, ArtifactRepo, DbError, DraftRepo,
-    IdentityRepo, LocalRepoRepo, LogRepo, LogRow, PersonRepo, RawPayload, RawPayloadRepo,
-    SecurityScopedBookmarkRepo, SettingsRepo, SinkRepo, SourceIdentityRepo, SourceRepo,
-    SyncRunRepo,
+    local_git_scan_root_logical_path, markdown_sink_dest_logical_path, open, ActivityRepo,
+    ArtifactRepo, DbError, DraftRepo, IdentityRepo, LocalRepoRepo, LogRepo, LogRow, PersonRepo,
+    RawPayload, RawPayloadRepo, SecurityScopedBookmarkRepo, SettingsRepo, SinkRepo,
+    SourceIdentityRepo, SourceRepo, SyncRunRepo,
 };
 use sqlx::SqlitePool;
 use tempfile::TempDir;
@@ -2062,6 +2062,77 @@ async fn security_scoped_bookmarks_sync_local_git_scan_roots() {
         .await
         .unwrap();
     let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].bookmark_blob.as_deref(), Some(fake_blob.as_slice()));
+}
+
+/// **MAS-4d.** `SecurityScopedBookmarkRepo::sync_markdown_sink_dest_dirs` keeps rows aligned with
+/// `dest_dirs`, clears when empty, and does not wipe an existing `bookmark_blob` on re-sync.
+#[tokio::test]
+async fn security_scoped_bookmarks_sync_markdown_sink_dest_dirs() {
+    let (pool, _dir) = test_pool().await;
+    let sink_id = Uuid::parse_str("33333333-3333-3333-3333-333333333333").unwrap();
+    let primary = PathBuf::from("/Users/example/VaultOut");
+    let secondary = PathBuf::from("/Users/example/VaultMirror");
+
+    let sink = Sink {
+        id: sink_id,
+        kind: SinkKind::MarkdownFile,
+        label: "reports".into(),
+        config: SinkConfig::MarkdownFile {
+            config_version: 1,
+            dest_dirs: vec![primary.clone(), secondary.clone()],
+            frontmatter: true,
+        },
+        created_at: fixed_now(),
+        last_write_at: None,
+    };
+    SinkRepo::new(pool.clone()).insert(&sink).await.unwrap();
+
+    let repo = SecurityScopedBookmarkRepo::new(pool.clone());
+    repo.sync_markdown_sink_dest_dirs(&sink_id, &[primary.clone(), secondary.clone()])
+        .await
+        .unwrap();
+    let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
+    assert_eq!(rows.len(), 2);
+
+    repo.sync_markdown_sink_dest_dirs(&sink_id, &[primary.clone()])
+        .await
+        .unwrap();
+    let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].logical_path,
+        markdown_sink_dest_logical_path(&primary).unwrap()
+    );
+
+    repo.sync_markdown_sink_dest_dirs(&sink_id, &[])
+        .await
+        .unwrap();
+    let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
+    assert!(rows.is_empty());
+
+    repo.sync_markdown_sink_dest_dirs(&sink_id, &[primary.clone()])
+        .await
+        .unwrap();
+    let bid: String =
+        sqlx::query_scalar("SELECT id FROM security_scoped_bookmarks WHERE owner_sink_id = ?")
+            .bind(sink_id.to_string())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let fake_blob = vec![9u8, 8, 7];
+    sqlx::query("UPDATE security_scoped_bookmarks SET bookmark_blob = ? WHERE id = ?")
+        .bind(&fake_blob[..])
+        .bind(&bid)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    repo.sync_markdown_sink_dest_dirs(&sink_id, &[primary.clone()])
+        .await
+        .unwrap();
+    let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].bookmark_blob.as_deref(), Some(fake_blob.as_slice()));
 }

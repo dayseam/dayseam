@@ -1058,7 +1058,12 @@ pub async fn sources_add(
 
     if let SourceConfig::LocalGit { scan_roots } = &config {
         #[cfg(feature = "mas")]
-        sync_local_git_security_scoped_rows(&state.pool, &source_id, scan_roots).await?;
+        if let Err(e) =
+            sync_local_git_security_scoped_rows(&state.pool, &source_id, scan_roots).await
+        {
+            let _ = source_repo.delete(&source_id).await;
+            return Err(e);
+        }
         upsert_discovered_repos(&state, &source.id, scan_roots).await?;
     }
 
@@ -1478,6 +1483,19 @@ async fn sync_local_git_security_scoped_rows(
         .map_err(|e| internal("security_scoped_bookmarks.sync", e))
 }
 
+/// **MAS-4d.** Align `security_scoped_bookmarks` with `MarkdownFile.dest_dirs` (placeholder rows).
+#[cfg(feature = "mas")]
+async fn sync_markdown_sink_security_scoped_rows(
+    pool: &sqlx::SqlitePool,
+    sink_id: &Uuid,
+    dest_dirs: &[std::path::PathBuf],
+) -> Result<(), DayseamError> {
+    dayseam_db::SecurityScopedBookmarkRepo::new(pool.clone())
+        .sync_markdown_sink_dest_dirs(sink_id, dest_dirs)
+        .await
+        .map_err(|e| internal("security_scoped_bookmarks.sync_markdown_sink", e))
+}
+
 async fn upsert_discovered_repos(
     state: &AppState,
     source_id: &SourceId,
@@ -1737,10 +1755,21 @@ pub async fn sinks_add(
         created_at: Utc::now(),
         last_write_at: None,
     };
-    SinkRepo::new(state.pool.clone())
+    let sink_repo = SinkRepo::new(state.pool.clone());
+    sink_repo
         .insert(&sink)
         .await
         .map_err(|e| internal("sinks.insert", e))?;
+    #[cfg(feature = "mas")]
+    {
+        let SinkConfig::MarkdownFile { dest_dirs, .. } = &sink.config;
+        if let Err(e) =
+            sync_markdown_sink_security_scoped_rows(&state.pool, &sink.id, dest_dirs).await
+        {
+            let _ = sink_repo.delete(&sink.id).await;
+            return Err(e);
+        }
+    }
     Ok(sink)
 }
 
