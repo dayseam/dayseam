@@ -353,3 +353,4 @@ MAS-9a ──► MAS-9c
 | 2026-04-30 | **MAS-2b:** `mas-sandbox-launch-smoke.sh` in `desktop-bundle` MAS leg; §16 inventory in architecture addendum. |
 | 2026-05-01 | **MAS-2c:** `docs/compliance/MAS-JIT-ENTITLEMENTS.md` + architecture §5/§7/§21 pointers (JIT keys unchanged). |
 | 2026-05-01 | **MAS-3a/b:** Updater + process plugins not registered on `--features mas`; MAS Tauri merge drops updater capability + plugin section; **`distribution_profile`** IPC + frontend gate + Vitest; architecture §15/§16/§21 updated. |
+| 2026-05-01 | **MAS-4a:** SQLite **`security_scoped_bookmarks`** table + architecture §9.6; **`dayseam-db` `build.rs`** migration rerun hints; integration tests for FK / `CHECK` / cascade. |

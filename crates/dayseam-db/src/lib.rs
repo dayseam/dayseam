@@ -5,7 +5,10 @@
 //!
 //! The schema is versioned via `sqlx::migrate!("./migrations")`, opening
 //! a pool runs any pending migrations, and every repository round-trip is
-//! covered by integration tests in `tests/repos.rs`.
+//! covered by integration tests in `tests/repos.rs`. Crate `build.rs` prints
+//! `cargo:rerun-if-changed` on the whole **`migrations/`** directory so any new
+//! or edited `.sql` file rebuilds this crate (**MAS-4a**) — Cargo does not track
+//! those paths for `sqlx::migrate!`'s compile-time embed on its own.
 
 pub mod error;
 pub mod pool;

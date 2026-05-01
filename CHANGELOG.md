@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Added
+
+- **DAY-210 / MAS-4a:** SQLite migration [`0007_security_scoped_bookmarks.sql`](crates/dayseam-db/migrations/0007_security_scoped_bookmarks.sql) adds **`security_scoped_bookmarks`** — persistent store for macOS security-scoped directory bookmarks keyed to Local Git scan roots and Markdown sink destinations ([`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §9.6). **`bookmark_blob`** is filled in **MAS-4b**; rows cascade-delete with their source or sink. **`dayseam-db`** now ships [`build.rs`](crates/dayseam-db/build.rs) that emits `cargo:rerun-if-changed` on the whole **`migrations/`** directory so **new** `.sql` files (not only edits to existing ones) rebuild the crate and refresh the `sqlx::migrate!` embed.
+
 ## [0.13.3] - 2026-05-01
 
 ### Changed
