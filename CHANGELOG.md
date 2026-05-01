@@ -51,9 +51,13 @@ release's chore commit from master's linear history; v0.8.1's
 
 ### Fixed
 
+- **DAY-210 / MAS-4e:** Local Git bookmark materialization builds every **`create_directory_bookmark`** payload before touching SQLite and applies **`bookmark_blob`** updates in **one transaction** (`SecurityScopedBookmarkRepo::replace_*`), so **`sources_update`** cannot persist blobs for only some scan roots when a later root fails.
+
 - **DAY-210 / MAS-4c / MAS-4d:** If security-scoped bookmark sync fails after inserting a new Local Git source or Markdown sink, **`sources_add`** / **`sinks_add`** now remove the new row so the database is not left without aligned **`security_scoped_bookmarks`** placeholders.
 
 ### Added
+
+- **DAY-210 / MAS-4e:** On **macOS + `mas`**, after placeholder sync, **`sources_add`** / **`sources_update`** (Local Git) and **`sinks_add`** call [`create_directory_bookmark`](apps/desktop/src-tauri/src/security_scoped/mod.rs) for each configured path and persist bytes via **`SecurityScopedBookmarkRepo::set_*_bookmark_blob`**. Linux **`mas`** CI skips materialization (placeholders stay **`NULL`**). New error codes **`ipc.security_scoped_bookmark.materialize_failed`** / **`row_missing`**; DB integration test **`security_scoped_bookmarks_set_blob_updates_rows`**.
 
 - **DAY-210 / MAS-4d:** [`SecurityScopedBookmarkRepo`](crates/dayseam-db/src/repos/security_scoped_bookmarks.rs) syncs **`markdown_sink_dest`** bookmark rows with each Markdown-file sink’s **`dest_dirs`** (same placeholder / **`bookmark_blob`** preservation rules as **MAS-4c**). **`sinks_add`** calls it when **`--features mas`**. Integration test **`security_scoped_bookmarks_sync_markdown_sink_dest_dirs`**.
 

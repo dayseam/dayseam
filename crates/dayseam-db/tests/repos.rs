@@ -2136,3 +2136,112 @@ async fn security_scoped_bookmarks_sync_markdown_sink_dest_dirs() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].bookmark_blob.as_deref(), Some(fake_blob.as_slice()));
 }
+
+/// **MAS-4e.** `set_*_bookmark_blob` updates `bookmark_blob` for an existing placeholder row.
+#[tokio::test]
+async fn security_scoped_bookmarks_set_blob_updates_rows() {
+    let (pool, _dir) = test_pool().await;
+    let src = fixture_local_source();
+    SourceRepo::new(pool.clone()).insert(&src).await.unwrap();
+
+    let primary = match &src.config {
+        SourceConfig::LocalGit { scan_roots, .. } => scan_roots[0].clone(),
+        _ => panic!("expected LocalGit fixture"),
+    };
+
+    let repo = SecurityScopedBookmarkRepo::new(pool.clone());
+    repo.sync_local_git_scan_roots(&src.id, &[primary.clone()])
+        .await
+        .unwrap();
+
+    let logical = local_git_scan_root_logical_path(&primary).unwrap();
+    let blob = [7u8, 8, 9];
+    let n = repo
+        .set_local_git_scan_root_bookmark_blob(&src.id, &logical, &blob)
+        .await
+        .unwrap();
+    assert_eq!(n, 1);
+
+    let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].bookmark_blob.as_deref(), Some(blob.as_slice()));
+
+    let sink_id = Uuid::new_v4();
+    let dest = PathBuf::from("/tmp/dayseam-mas-4e-sink-blob");
+    let sink = Sink {
+        id: sink_id,
+        kind: SinkKind::MarkdownFile,
+        label: "blob test".into(),
+        config: SinkConfig::MarkdownFile {
+            config_version: 1,
+            dest_dirs: vec![dest.clone()],
+            frontmatter: false,
+        },
+        created_at: fixed_now(),
+        last_write_at: None,
+    };
+    SinkRepo::new(pool.clone()).insert(&sink).await.unwrap();
+    repo.sync_markdown_sink_dest_dirs(&sink_id, &[dest.clone()])
+        .await
+        .unwrap();
+
+    let dest_logical = markdown_sink_dest_logical_path(&dest).unwrap();
+    let sink_blob = [1u8, 2, 3, 4];
+    let n = repo
+        .set_markdown_sink_dest_bookmark_blob(&sink_id, &dest_logical, &sink_blob)
+        .await
+        .unwrap();
+    assert_eq!(n, 1);
+    let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
+    assert_eq!(rows[0].bookmark_blob.as_deref(), Some(sink_blob.as_slice()));
+}
+
+/// **MAS-4e.** Transactional replace updates multiple placeholders atomically.
+#[tokio::test]
+async fn security_scoped_bookmarks_replace_scan_blobs_transaction() {
+    let (pool, _dir) = test_pool().await;
+    let src = fixture_local_source();
+    SourceRepo::new(pool.clone()).insert(&src).await.unwrap();
+
+    let primary = match &src.config {
+        SourceConfig::LocalGit { scan_roots, .. } => scan_roots[0].clone(),
+        _ => panic!("expected LocalGit fixture"),
+    };
+    let secondary = PathBuf::from("/second/root/for-replace-tx");
+
+    let repo = SecurityScopedBookmarkRepo::new(pool.clone());
+    repo.sync_local_git_scan_roots(&src.id, &[primary.clone(), secondary.clone()])
+        .await
+        .unwrap();
+
+    let log_a = local_git_scan_root_logical_path(&primary).unwrap();
+    let log_b = local_git_scan_root_logical_path(&secondary).unwrap();
+    let blob_a = vec![1u8, 2];
+    let blob_b = vec![3u8, 4, 5];
+
+    repo.replace_local_git_scan_root_bookmark_blobs(
+        &src.id,
+        &[
+            (log_a.clone(), blob_a.clone()),
+            (log_b.clone(), blob_b.clone()),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
+    assert_eq!(rows.len(), 2);
+    let mut by_path: std::collections::HashMap<String, Option<Vec<u8>>> = rows
+        .into_iter()
+        .map(|r| (r.logical_path, r.bookmark_blob))
+        .collect();
+    assert_eq!(
+        by_path.remove(&log_a).unwrap().as_deref(),
+        Some(blob_a.as_slice())
+    );
+    assert_eq!(
+        by_path.remove(&log_b).unwrap().as_deref(),
+        Some(blob_b.as_slice())
+    );
+    assert!(by_path.is_empty());
+}

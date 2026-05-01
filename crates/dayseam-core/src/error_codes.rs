@@ -552,6 +552,19 @@ pub const IPC_OUTLOOK_TENANT_UNRESOLVED: &str = "ipc.outlook.tenant_unresolved";
 /// [`DayseamError::InvalidConfig`].
 pub const IPC_OUTLOOK_SOURCE_ALREADY_EXISTS: &str = "ipc.outlook.source_already_exists";
 
+/// **MAS-4e.** `sources_add` / `sources_update` / `sinks_add` could not
+/// persist security-scoped bookmark bytes for a configured directory path
+/// (`create_directory_bookmark` failed). Surfaced as [`DayseamError::InvalidConfig`].
+pub const IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED: &str =
+    "ipc.security_scoped_bookmark.materialize_failed";
+
+/// **MAS-4e.** Bookmark materialization ran but no matching
+/// `security_scoped_bookmarks` placeholder row existed for the encoded
+/// `logical_path` (internal invariant violation — placeholders should exist
+/// after sync). Surfaced as [`DayseamError::InvalidConfig`].
+pub const IPC_SECURITY_SCOPED_BOOKMARK_ROW_MISSING: &str =
+    "ipc.security_scoped_bookmark.row_missing";
+
 /// `sinks_add` was called with a `config` whose body fails the IPC
 /// layer's structural check (e.g. a `MarkdownFile` sink with an
 /// empty `dest_dirs` list, a non-absolute path, or a path with `..`
@@ -894,6 +907,8 @@ pub const ALL: &[&str] = &[
     IPC_OUTLOOK_TENANT_UNRESOLVED,
     IPC_OUTLOOK_SOURCE_ALREADY_EXISTS,
     IPC_SINK_INVALID_CONFIG,
+    IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED,
+    IPC_SECURITY_SCOPED_BOOKMARK_ROW_MISSING,
     IPC_INVALID_DISPLAY_NAME,
     IPC_SHELL_URL_DISALLOWED,
     IPC_SHELL_URL_INVALID,
