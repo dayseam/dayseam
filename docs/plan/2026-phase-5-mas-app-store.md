@@ -59,11 +59,11 @@ These rules are **normative in this document** (not “pick one in the PR body�
 | **Subsequent tasks** | **MAS-1b** onward through the capstone: each merge that ships user-visible or packager-visible MAS work uses **`semver:patch`** → **`v0.13.1`**, **`v0.13.2`**, … in task order unless tasks are **batched** into one PR (preferred when several steps are tiny). |
 | **Inserted tasks** | Renumber **target versions** from the insertion point; do not pretend older table rows stay valid after the catalogue changes. |
 | **Overflow** | **Target** completion in **`0.13.x`**. If external blockers (Apple review, secrets, runner capacity) prevent closure, record **`MAS-*-followup`** and either continue **`0.13.(N+1)`** or escalate minor line by **team decision** — not by accidental drift. |
-| **Capstone** | **MAS-9a–c** land at **`v0.13.24`–`v0.13.26`** in the table below (recalculated after inserting **MAS-4f** and removing **MAS-6c**). |
+| **Capstone** | **MAS-9a–c** land at **`v0.13.25`–`v0.13.27`** in the table below (recalculated after splitting **MAS-5b** into **MAS-5b1** / **MAS-5b2**). |
 
 **Branch / ticket naming**
 
-- **Task IDs:** `MAS-0a`, `MAS-0b`, `MAS-1a`, … (GitHub issue title: `MAS-1a: <short title>`).
+- **Task IDs:** `MAS-0a`, `MAS-0b`, `MAS-1a`, … Split delivery steps may use suffixes (e.g. **`MAS-5b1`**, **`MAS-5b2`**) — GitHub issue title: `MAS-5b1: <short title>` (same **`MAS-*`** prefix for traceability).
 - **Branches:** **`DAY-NNN-*`** per [`AGENTS.md`](../../AGENTS.md); keep **MAS-*** in the issue title for traceability.
 
 ---
@@ -239,12 +239,13 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 
 ---
 
-### Block MAS-5 — Keychain (**may gate OAuth — see graph**)
+### Block MAS-5 — Keychain + **`DATA_SUBDIR`** (**may gate OAuth — see graph**)
 
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
 | **MAS-5a** | Keychain audit under sandbox | **`v0.13.13`** | Document in addendum; mock tests unchanged. |
-| **MAS-5b** | Fix Keychain issues from **MAS-2b** + **MAS-4** block | **`v0.13.14`** | Regression tests. |
+| **MAS-5b1** | **`DATA_SUBDIR` / Application Support** for MAS profile (`startup.rs`, §10) | **`v0.13.14`** | Distinct `state.db` namespace vs direct when both SKUs installed; tests. |
+| **MAS-5b2** | Keychain **`service` SKU prefix** + remaining fixes from **MAS-2b** / **MAS-4** + **MAS-5a** follow-ups | **`v0.13.15`** | Regression tests; optional migration / reconnect story for existing MAS installs. |
 
 ---
 
@@ -252,8 +253,8 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
-| **MAS-6a** | Network entitlements + smoke | **`v0.13.15`** | Document HTTPS domains pattern. |
-| **MAS-6b** | **OAuth loopback** + **rate-limit / retry parity** vs direct | **`v0.13.16`** | Merges old **MAS-6c** scope: no behaviour change unless bug found; if found, add regression test. Manual + automated where possible. |
+| **MAS-6a** | Network entitlements + smoke | **`v0.13.16`** | Document HTTPS domains pattern. |
+| **MAS-6b** | **OAuth loopback** + **rate-limit / retry parity** vs direct | **`v0.13.17`** | Merges old **MAS-6c** scope: no behaviour change unless bug found; if found, add regression test. Manual + automated where possible. |
 
 ---
 
@@ -261,9 +262,9 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
-| **MAS-7a** | Wire **`PrivacyInfo.xcprivacy`** | **`v0.13.17`** | Consumes **MAS-2b** inventory; no surprises at packaging. |
-| **MAS-7b** | **`MAS-EXPORT-COMPLIANCE.md`** | **`v0.13.18`** | **Explicit linkage** to **MAS-8d** upload metadata answers. |
-| **MAS-7c** | **`MAS-APP-REVIEW-NOTES.md`** | **`v0.13.19`** | JIT justification, sandbox, local-first, subprocess list pointer. |
+| **MAS-7a** | Wire **`PrivacyInfo.xcprivacy`** | **`v0.13.18`** | Consumes **MAS-2b** inventory; no surprises at packaging. |
+| **MAS-7b** | **`MAS-EXPORT-COMPLIANCE.md`** | **`v0.13.19`** | **Explicit linkage** to **MAS-8d** upload metadata answers. |
+| **MAS-7c** | **`MAS-APP-REVIEW-NOTES.md`** | **`v0.13.20`** | JIT justification, sandbox, local-first, subprocess list pointer. |
 
 ---
 
@@ -273,10 +274,10 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
-| **MAS-8a** | GHA: full **MAS package** on tag / schedule | **`v0.13.20`** | Same codesign checks as **MAS-1b** scaled up. |
-| **MAS-8b** | **`scripts/release/`** MAS helper | **`v0.13.21`** | **Disposable scaffolding** until **MAS-8d** tool choice is final; README must say **replace or delete** when **MAS-8d** lands. |
-| **MAS-8c** | Changelog / **DAY-195** gates for MAS releases | **`v0.13.22`** | `check-unreleased-for-semver-pr.sh` mock run. |
-| **MAS-8d** | **Automated Connect upload** | **`v0.13.23`** | Non-blocking vs direct release (document); secrets in GHA only; **TestFlight-first** rollout. **`MAS-8d-followup`** if slipped post–bar A. |
+| **MAS-8a** | GHA: full **MAS package** on tag / schedule | **`v0.13.21`** | Same codesign checks as **MAS-1b** scaled up. |
+| **MAS-8b** | **`scripts/release/`** MAS helper | **`v0.13.22`** | **Disposable scaffolding** until **MAS-8d** tool choice is final; README must say **replace or delete** when **MAS-8d** lands. |
+| **MAS-8c** | Changelog / **DAY-195** gates for MAS releases | **`v0.13.23`** | `check-unreleased-for-semver-pr.sh` mock run. |
+| **MAS-8d** | **Automated Connect upload** | **`v0.13.24`** | Non-blocking vs direct release (document); secrets in GHA only; **TestFlight-first** rollout. **`MAS-8d-followup`** if slipped post–bar A. |
 
 ---
 
@@ -284,9 +285,9 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
-| **MAS-9a** | Full review + **`docs/review/phase-5-mas-review.md`** | **`v0.13.24`** | Lenses: IPC, errors, Keychain, FS, OAuth, **subprocess/helper binaries**, **capability deny-list**, CSP, **cfg inventory** per *Single codebase* exit rule. State **bar A** / **bar B** explicitly. |
-| **MAS-9b** | Bugfix sweep | **`v0.13.25`** | No P0/P1 for **bar A**. |
-| **MAS-9c** | Dogfood using **Canonical MAS smoke** | **`v0.13.26`** | Evidence in review doc. |
+| **MAS-9a** | Full review + **`docs/review/phase-5-mas-review.md`** | **`v0.13.25`** | Lenses: IPC, errors, Keychain, FS, OAuth, **subprocess/helper binaries**, **capability deny-list**, CSP, **cfg inventory** per *Single codebase* exit rule. State **bar A** / **bar B** explicitly. |
+| **MAS-9b** | Bugfix sweep | **`v0.13.26`** | No P0/P1 for **bar A**. |
+| **MAS-9c** | Dogfood using **Canonical MAS smoke** | **`v0.13.27`** | Evidence in review doc. |
 
 **Self-review (capstone):** **`cargo test --workspace`** + desktop **`pnpm test`**; E2E only with documented gap; **ARCHITECTURE.md** Phase 5 blurb; flag inventory closed or filed.
 
@@ -310,7 +311,7 @@ MAS-3a/b
     ▼
 MAS-4a ──► … ──► MAS-4f
     │
-    ├──► MAS-5 (Keychain may unblock / inform MAS-6b OAuth)
+    ├──► MAS-5b1 ──► MAS-5b2 (Keychain / paths — may unblock / inform MAS-6b OAuth)
     ▼
 MAS-6a ──► MAS-6b
     │
@@ -359,3 +360,4 @@ MAS-9a ──► MAS-9c
 | 2026-05-01 | **MAS-4d:** `sync_markdown_sink_dest_dirs` + **`sinks_add`** MAS sync; DB integration test **`security_scoped_bookmarks_sync_markdown_sink_dest_dirs`**. |
 | 2026-05-01 | **MAS-4e:** `create_directory_bookmark` + **`set_*_bookmark_blob`** wired into **`sources_add`** / **`sources_update`** / **`sinks_add`** on **macOS + `mas`**; DB test **`security_scoped_bookmarks_set_blob_updates_rows`**; error codes **`ipc.security_scoped_bookmark.*`**. |
 | 2026-05-01 | **MAS-5a:** Keychain audit under sandbox documented in **MAS-0b** §12 (+ §20 checklist); mock tests unchanged per task row. |
+| 2026-05-01 | Split **MAS-5b** into **MAS-5b1** (Application Support / `DATA_SUBDIR`) + **MAS-5b2** (Keychain prefix + regression tests); renumbered target **`v0.13.14`**–**`v0.13.27`** from **MAS-6** onward; capstone **`v0.13.25`–`v0.13.27`**. |
