@@ -174,7 +174,7 @@ This section satisfies the plan’s **bookmark contract** checklist; implementat
 
 ### 9.2 Descendants and cold start
 
-After relaunch, the app must **resolve** each stored bookmark to a file URL before passing paths to `git2` or sink adapters. **Nested repos** under a bookmarked scan root are accessible **iff** they remain within the resolved directory subtree and the bookmark is still valid. Implementation must not assume POSIX access without `startAccessingSecurityScopedResource` (or RAII equivalent) around each batch of filesystem work (**MAS-4b**).
+After relaunch, the app must **resolve** each stored bookmark to a file URL before passing paths to `git2` or sink adapters. **Nested repos** under a bookmarked scan root are accessible **iff** they remain within the resolved directory subtree and the bookmark is still valid. Implementation must not assume POSIX access without `startAccessingSecurityScopedResource` (or RAII equivalent) around each batch of filesystem work (**MAS-4b**). **MAS-4c:** IPC-time Local Git discovery after `sources_add` / `sources_update` uses [`local_git_scan`](../../apps/desktop/src-tauri/src/local_git_scan.rs) on **macOS + `mas`** when `bookmark_blob` is set; connector runtime refresh still uses plain `discover_repos` until a later task threads bookmarks through the orchestrator path.
 
 ### 9.3 Rename / move / stale bookmarks
 
@@ -352,3 +352,4 @@ CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-ta
 | 2026-05-01 | **MAS-2c:** §5 JIT matrix row + §7 pointer to [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md); §21 MAS column cites compliance doc. |
 | 2026-05-01 | **MAS-4a:** §9.6 **`security_scoped_bookmarks`** SQLite mapping + crate [`build.rs`](../../crates/dayseam-db/build.rs) rerun hints for migrations. |
 | 2026-05-01 | **MAS-4b:** §9.5 pointer to desktop [`security_scoped`](../../apps/desktop/src-tauri/src/security_scoped/mod.rs) module. |
+| 2026-05-01 | **MAS-4c:** §9.2 — IPC discovery vs connector `discover_repos`; [`local_git_scan`](../../apps/desktop/src-tauri/src/local_git_scan.rs) + [`SecurityScopedBookmarkRepo`](../../crates/dayseam-db/src/repos/security_scoped_bookmarks.rs). |

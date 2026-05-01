@@ -20,7 +20,6 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use connector_local_git::{discover_repos, DiscoveryConfig};
 use connectors_sdk::{
     AuthStrategy, BasicAuth, ConnCtx, NoneAuth, NoopRawStore, PatAuth, SystemClock,
 };
@@ -1058,6 +1057,8 @@ pub async fn sources_add(
     }
 
     if let SourceConfig::LocalGit { scan_roots } = &config {
+        #[cfg(feature = "mas")]
+        sync_local_git_security_scoped_rows(&state.pool, &source_id, scan_roots).await?;
         upsert_discovered_repos(&state, &source.id, scan_roots).await?;
     }
 
@@ -1213,6 +1214,8 @@ pub async fn sources_update(
     }
 
     if let Some(roots) = new_scan_roots {
+        #[cfg(feature = "mas")]
+        sync_local_git_security_scoped_rows(&state.pool, &id, &roots).await?;
         upsert_discovered_repos(&state, &id, &roots).await?;
     }
 
@@ -1461,6 +1464,20 @@ fn paths_overlap(a: &std::path::Path, b: &std::path::Path) -> bool {
     a == b || a.starts_with(b) || b.starts_with(a)
 }
 
+/// **MAS-4c.** Align `security_scoped_bookmarks` with `LocalGit.scan_roots` (placeholder rows;
+/// blobs land in **MAS-4e**).
+#[cfg(feature = "mas")]
+async fn sync_local_git_security_scoped_rows(
+    pool: &sqlx::SqlitePool,
+    source_id: &SourceId,
+    scan_roots: &[std::path::PathBuf],
+) -> Result<(), DayseamError> {
+    dayseam_db::SecurityScopedBookmarkRepo::new(pool.clone())
+        .sync_local_git_scan_roots(source_id, scan_roots)
+        .await
+        .map_err(|e| internal("security_scoped_bookmarks.sync", e))
+}
+
 async fn upsert_discovered_repos(
     state: &AppState,
     source_id: &SourceId,
@@ -1469,7 +1486,13 @@ async fn upsert_discovered_repos(
     if scan_roots.is_empty() {
         return Ok(());
     }
-    let outcome = match discover_repos(scan_roots, DiscoveryConfig::default()) {
+    let outcome = match crate::local_git_scan::discover_scan_roots_with_optional_mas_access(
+        state.pool.clone(),
+        source_id,
+        scan_roots,
+    )
+    .await
+    {
         Ok(o) => o,
         Err(e) => {
             // A missing scan root surfaces as `Io`; rather than fail

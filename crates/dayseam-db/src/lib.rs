@@ -28,6 +28,9 @@ pub use repos::{
     logs::{LogRepo, LogRow},
     persons::PersonRepo,
     raw_payloads::{RawPayload, RawPayloadRepo},
+    security_scoped_bookmarks::{
+        local_git_scan_root_logical_path, LocalGitScanBookmarkRow, SecurityScopedBookmarkRepo,
+    },
     settings::SettingsRepo,
     sinks::SinkRepo,
     source_identities::SourceIdentityRepo,
