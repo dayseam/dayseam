@@ -263,7 +263,7 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
 | **MAS-7a** | Wire **`PrivacyInfo.xcprivacy`** | **`v0.13.18`** | App-level manifest + **`bundle.macOS.files`** (**done:** [`PrivacyInfo.xcprivacy`](../../apps/desktop/src-tauri/PrivacyInfo.xcprivacy), [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh), architecture §16). |
-| **MAS-7b** | **`MAS-EXPORT-COMPLIANCE.md`** | **`v0.13.19`** | **Explicit linkage** to **MAS-8d** upload metadata answers. |
+| **MAS-7b** | **`MAS-EXPORT-COMPLIANCE.md`** | **`v0.13.19`** | **Done:** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) (crypto inventory, Connect answers, **MAS-8d** checklist); architecture §22 + §20. |
 | **MAS-7c** | **`MAS-APP-REVIEW-NOTES.md`** | **`v0.13.20`** | JIT justification, sandbox, local-first, subprocess list pointer. |
 
 ---
@@ -361,3 +361,4 @@ MAS-9a ──► MAS-9c
 | 2026-05-01 | **MAS-4e:** `create_directory_bookmark` + **`set_*_bookmark_blob`** wired into **`sources_add`** / **`sources_update`** / **`sinks_add`** on **macOS + `mas`**; DB test **`security_scoped_bookmarks_set_blob_updates_rows`**; error codes **`ipc.security_scoped_bookmark.*`**. |
 | 2026-05-01 | **MAS-5a:** Keychain audit under sandbox documented in **MAS-0b** §12 (+ §20 checklist); mock tests unchanged per task row. |
 | 2026-05-01 | Split **MAS-5b** into **MAS-5b1** (Application Support / `DATA_SUBDIR`) + **MAS-5b2** (Keychain prefix + regression tests); renumbered target **`v0.13.14`**–**`v0.13.27`** from **MAS-6** onward; capstone **`v0.13.25`–`v0.13.27`**. |
+| 2026-05-01 | **MAS-7b:** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) + architecture §22; **MAS-8d** linkage; MR review tightened ENC/WebKit/minisign wording + Apple doc link; **MAS-JIT** cross-link. |

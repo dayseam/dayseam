@@ -59,7 +59,7 @@ Anything “Apple required” must land in the **correct column** so we do not a
 | **Packaging** | Bundle id, product name suffix, targets (`dmg` vs `app` only), `createUpdaterArtifacts`, signing identity, export method. | MAS bundle id **distinct** from direct (§9); updater artifacts **off** on MAS. |
 | **Entitlements** | Keys in `entitlements.plist` vs `entitlements.mas.plist`. | Sandbox, network client/server, JIT-related keys (§6), user-selected file access. |
 | **Capability allow-lists** | Tauri v2 `capabilities/*.json` grants. | Strip `updater:*`, `process:allow-restart`, and any command not reachable under sandbox (MAS-3). |
-| **Store metadata** | Privacy manifest, export compliance prose, review notes. | `PrivacyInfo.xcprivacy` (**MAS-7a**), `MAS-EXPORT-COMPLIANCE.md` (**MAS-7b**). |
+| **Store metadata** | Privacy manifest, export compliance prose, review notes. | `PrivacyInfo.xcprivacy` (**MAS-7a**), [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) (**MAS-7b**). |
 | **UX** | User-visible differences tied to distribution. | No “Check for updates” on MAS; single `distribution_profile` enum preferred over scattered checks (plan: *Single codebase*). |
 
 **Runtime behaviour** (bookmarks, scoped FS, Keychain, OAuth) should stay **unified** across SKUs where feasible; the direct build may adopt the same security-scoped access patterns to reduce drift.
@@ -368,6 +368,7 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 - [x] **Outbound network entitlement (MAS-6a):** **`com.apple.security.network.client`** documented for user-configured HTTPS / self-hosted SaaS ([`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); CI verifies embedded entitlement ([`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh)).
 - [x] **OAuth loopback + network parity (MAS-6b):** **`com.apple.security.network.server`** in [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) for localhost **bind/accept**; **`network.client`** for IdP HTTPS; documented in [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) + §14; CI verifies both keys on signed **`mas`** bundles.
 - [x] **Privacy manifest (MAS-7a):** [`PrivacyInfo.xcprivacy`](../../apps/desktop/src-tauri/PrivacyInfo.xcprivacy) bundled via [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) → **`Contents/Resources`**; [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh) in **`desktop-bundle`** CI.
+- [x] **Export compliance narrative (MAS-7b):** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) — inventory + App Store Connect answers; **MAS-8d** upload automation must mirror the same metadata.
 
 ---
 
@@ -383,6 +384,12 @@ The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/
 **`desktop-bundle (direct + MAS)`** runs [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) and [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh) (**MAS-7a**) on each produced **`Dayseam.app`**. **`shell-scripts`** (Ubuntu + macOS) runs [`check-entitlements.sh`](../../scripts/ci/check-entitlements.sh) on the **source** `entitlements.plist` (all matrix legs) and on **`entitlements.mas.plist`** (macOS leg, `ENTITLEMENTS_FILE` override) — not the same surface as the bundle verify scripts. Those bundle-only builds merge **`bundle.createUpdaterArtifacts: false`** so PR runners do not need **`TAURI_SIGNING_PRIVATE_KEY`** (release workflow still signs updater artifacts with the real secret).
 
 **MAS-2b:** after the MAS bundle passes entitlement + privacy-manifest verification, CI runs [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) against the signed **`Dayseam.app`** — the **real** `CFBundleExecutable` stays alive for a bounded interval so crashes during sandboxed bootstrap / WebView init fail the job (not a plist-only or stub-binary gate).
+
+---
+
+## 22. Export compliance (**MAS-7b**)
+
+US export / App Store Connect encryption answers and the **MAS-8d** automation contract live in [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md). That file is the **single** engineering source for “what crypto ships” and “what Connect must say”; JIT / executable-memory justification remains in [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) (**MAS-2c** → **MAS-7c**).
 
 ---
 
@@ -405,3 +412,4 @@ The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/
 | 2026-05-01 | **MAS-5a:** §12 Keychain — App Sandbox + coexistence audit (service matrix, entitlements, **MAS-5b1** / **MAS-5b2** follow-ups); §20 — split **`DATA_SUBDIR`** vs Keychain audit checkbox. |
 | 2026-05-01 | Plan: split **MAS-5b** into **MAS-5b1** / **MAS-5b2**; §12.7 table + §10 / §12.3 / §20 pointers updated. |
 | 2026-05-01 | **MAS-7a:** [`PrivacyInfo.xcprivacy`](../../apps/desktop/src-tauri/PrivacyInfo.xcprivacy) + `bundle.macOS.files`; §16 inventory + §20 checklist + §21 CI; [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh). |
+| 2026-05-01 | **MAS-7b:** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md); §3 store-metadata link; §20 checklist; new §22; **MAS-8d** metadata contract in compliance doc; Apple export doc link + ENC wording in compliance file; [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md) **Related** cross-link. |

@@ -2,7 +2,7 @@
 
 Normative engineering record for the Mac App Store SKU. It satisfies the **MAS-2c** plan row (exact keys, platform scope, Apple-facing justification seed, fallback). **`MAS-7c`** (`MAS-APP-REVIEW-NOTES.md`) should copy or adapt the “App Review notes” section here when filing.
 
-**Related:** [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md) (#210), [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md) §5–§7, [`apps/desktop/src-tauri/entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist), [`apps/desktop/src-tauri/entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md).
+**Related:** [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md) (#210), [`docs/design/2026-phase-5-mas-architecture.md`](../design/2026-phase-5-mas-architecture.md) §5–§7, [`MAS-EXPORT-COMPLIANCE.md`](MAS-EXPORT-COMPLIANCE.md) (**MAS-7b** — export classification; orthogonal to JIT), [`apps/desktop/src-tauri/entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist), [`apps/desktop/src-tauri/entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md).
 
 ---
 
