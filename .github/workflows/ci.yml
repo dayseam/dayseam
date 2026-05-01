@@ -47,7 +47,7 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --all-features
 
-  # **MAS-1b.** Prove both Tauri merge profiles produce a signed `.app`
+  # **MAS-1b / MAS-2a.** Prove both Tauri merge profiles produce a signed `.app`
   # and that `codesign` embeds the expected entitlement keys — separate
   # from the `rust` job so `cargo test` stays the long pole and this job
   # can use a tighter cache key for bundling only.
@@ -107,7 +107,7 @@ jobs:
           --config '{"bundle":{"createUpdaterArtifacts":false}}'
           --features mas
 
-      - name: Codesign entitlements — MAS stub
+      - name: Codesign entitlements — MAS (sandbox plist)
         run: |
           TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
           APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
@@ -237,7 +237,7 @@ jobs:
         run: bash scripts/ci/test-check-entitlements.sh
       - name: check-entitlements.sh (entitlements.plist validity)
         run: bash scripts/ci/check-entitlements.sh
-      # **MAS-1b.** Same AMFI / plutil gate for the MAS plist (macOS
+      # **MAS-1b+.** Same AMFI / plutil gate for the MAS plist (macOS
       # only — `plutil` is absent on ubuntu-latest; the comment grep
       # still runs when ENTITLEMENTS_FILE is overridden).
       - name: check-entitlements.sh (entitlements.mas.plist validity)

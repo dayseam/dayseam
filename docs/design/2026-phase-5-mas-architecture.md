@@ -99,6 +99,8 @@ Today’s direct macOS build **opts out of App Sandbox** and instead relies on h
 | `com.apple.security.files.user-selected.read-write` | **TBD with bookmarks** | Under sandbox, picker + bookmark flow must match **MAS-4**; may differ from direct’s standalone key semantics — validate against Apple’s matrix for sandboxed apps. |
 | `com.apple.security.cs.allow-jit` / `…allow-unsigned-executable-memory` | **evidence-led** (**MAS-2c**) | WKWebView / Tauri may still require JIT-class allowances; App Review may challenge. Document exact binaries and justification in **MAS-7c**; keep a **fallback** plan (WebKit feature flags, Tauri upstream issue) if rejected. |
 
+**Footnote (MAS-2a vs MAS-4):** `user-selected.read-write` stays **on** in `entitlements.mas.plist` at **MAS-2a** for parity with the direct picker story; **MAS-4** defines the security-scoped bookmark contract that makes that key meaningful under sandbox — the matrix “TBD” row is about *semantics*, not “key absent”.
+
 **MAS deny-list (entitlements)**
 
 - No **hardened runtime–incompatible** “escape hatch” entitlements unless justified and declared for review (e.g. temporary exceptions Apple grants in writing).
@@ -318,12 +320,12 @@ After relaunch, the app must **resolve** each stored bookmark to a file URL befo
 
 ---
 
-## 21. Build profiles (**MAS-1a** + **MAS-1b**)
+## 21. Build profiles (**MAS-1a** + **MAS-1b** + **MAS-2a**)
 
 | Profile | Command | Cargo features | Tauri config | Entitlements plist |
 |---------|---------|----------------|--------------|-------------------|
 | **Direct (default)** | `pnpm --filter @dayseam/desktop tauri build` | none (release) | [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) only | [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) |
-| **MAS (scaffold)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas` and **`bundle.macOS.entitlements`** to [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)) | [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) — **stub** (no App Sandbox until **MAS-2a**; see [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)) |
+| **MAS (sandbox plist)** | `pnpm --filter @dayseam/desktop tauri:build:mas` | `mas` | base `tauri.conf.json` merged with [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (overrides **`identifier`** to `dev.dayseam.mas` and **`bundle.macOS.entitlements`** to [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist)) | [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) — **MAS-2a:** App Sandbox + **`network.client`** + user-selected + JIT-class keys (see [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md)); direct [`entitlements.plist`](../../apps/desktop/src-tauri/entitlements.plist) stays **without** App Sandbox |
 
 The desktop crate exposes [`DISTRIBUTION_PROFILE`](../../apps/desktop/src-tauri/src/lib.rs) (`"direct"` \| `"mas"`) for future compile-time gates — **no** user-visible behaviour branches yet.
 
@@ -338,3 +340,5 @@ CI (`desktop-bundle (direct + MAS)` + `shell-scripts` on macOS) runs [`verify-ta
 | 2026-04-30 | **MAS-0b:** initial full addendum (matrices, bookmarks, coexistence, subprocess baseline, skew, testing). |
 | 2026-04-30 | **MAS-1a:** §21 build profiles + open-decisions checkbox for scaffold bundle id. |
 | 2026-04-30 | **MAS-1b:** §21 entitlements column + CI script references. |
+| 2026-04-30 | **MAS-2a:** §21 MAS row — App Sandbox + `network.client` in `entitlements.mas.plist`; verify script requires those keys on `mas` profile. |
+| 2026-04-30 | **MAS-2a review:** §5 footnote — `user-selected.read-write` on at MAS-2a vs bookmark semantics in **MAS-4**. |

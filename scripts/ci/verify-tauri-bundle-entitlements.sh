@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# verify-tauri-bundle-entitlements.sh — **MAS-1b** codesign gate.
+# verify-tauri-bundle-entitlements.sh — **MAS-1b** + **MAS-2a** codesign gate.
 #
 # After `pnpm exec tauri build --bundles app`, assert the built `.app`
-# carries the entitlement keys we require for CI (same three keys as
-# `entitlements.plist` / stub `entitlements.mas.plist` today). This goes
+# carries the entitlement keys we require for CI (`direct`: same three
+# keys as `entitlements.plist`; `mas`: those plus App Sandbox + network
+# client per `entitlements.mas.plist`). This goes
 # beyond `plutil -lint` on the source file: it exercises what `codesign`
 # actually embedded.
 #
@@ -56,18 +57,32 @@ require_key() {
   fi
 }
 
+forbid_key() {
+  local key="$1"
+  if grep -qF "<key>${key}</key>" "$ENT_TMP"; then
+    echo "verify-tauri-bundle-entitlements.sh: \`${MODE}\` bundle must not embed \`${key}\` (got key in ${APP})" >&2
+    exit 1
+  fi
+}
+
 require_key "com.apple.security.files.user-selected.read-write"
 require_key "com.apple.security.cs.allow-unsigned-executable-memory"
 require_key "com.apple.security.cs.allow-jit"
 
+if [[ "$MODE" == "direct" ]]; then
+  # Direct SKU matches [`entitlements.plist`]: no App Sandbox, no
+  # outbound-network entitlement (connectors use unsandboxed paths).
+  forbid_key "com.apple.security.app-sandbox"
+  forbid_key "com.apple.security.network.client"
+fi
+
 if [[ "$MODE" == "mas" ]]; then
-  # **MAS-2a** adds `com.apple.security.app-sandbox`. Until then the
-  # stub deliberately matches the direct plist so dual-SKU CI stays
-  # green without claiming a sandboxed store build.
-  if grep -qF "<key>com.apple.security.app-sandbox</key>" "$ENT_TMP"; then
-    echo "verify-tauri-bundle-entitlements.sh: MAS stub must not include com.apple.security.app-sandbox until MAS-2a (got key in ${APP})" >&2
-    exit 1
-  fi
+  # **MAS-2a:** store-bound SKU must ship App Sandbox + outbound TLS
+  # (connectors, OAuth, WKWebView). JIT-class keys stay until **MAS-2c**
+  # narrows them with review evidence. (In-app updater is **off** on MAS;
+  # see architecture §6.)
+  require_key "com.apple.security.app-sandbox"
+  require_key "com.apple.security.network.client"
 fi
 
 echo "verify-tauri-bundle-entitlements.sh: ${APP} (${MODE}) embeds expected entitlements."
