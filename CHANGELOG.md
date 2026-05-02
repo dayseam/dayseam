@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Documentation
+
+- **DAY-210 / MAS-9a (lenses — keychain):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 advances head to **`f9fa74a`** ([#246](https://github.com/dayseam/dayseam/pull/246)), GitHub compare **`8aaab40...f9fa74a`**, PR table row **#246**, and refreshed `git diff --shortstat`; **§3.3 Keychain** (**Partial**) ties [`keychain_profile.rs`](apps/desktop/src-tauri/src/keychain_profile.rs) (**MAS-5b2**), [`keychain.rs`](crates/dayseam-secrets/src/keychain.rs), connector IPC + [`oauth_persister.rs`](apps/desktop/src-tauri/src/oauth_persister.rs), [`startup.rs`](apps/desktop/src-tauri/src/startup.rs) orphan-secret audit, and [`entitlements.mas.plist`](apps/desktop/src-tauri/entitlements.mas.plist) to **MAS-0b** §12 + **MAS-9c** cold-start evidence. ([#247](https://github.com/dayseam/dayseam/pull/247)) MR review: **§2.1** head-row note for open **#247**; **§3.9** `ipc/commands` row + **§3.3** `KeychainStore` / `split_key` wording.
+
 ## [0.13.17] - 2026-05-02
 
 ### Documentation
