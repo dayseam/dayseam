@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Documentation
+
+- **DAY-210 / MAS-9a (lenses — filesystem):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 advances head to **`7b88204`** ([#244](https://github.com/dayseam/dayseam/pull/244)), GitHub compare **`8aaab40...7b88204`**, PR table row **#244**, and refreshed `git diff --shortstat`; **§3.4 Filesystem** (**Partial**) ties [`security_scoped/mod.rs`](apps/desktop/src-tauri/src/security_scoped/mod.rs), [`security_scoped_bookmarks.rs`](crates/dayseam-db/src/repos/security_scoped_bookmarks.rs), [`0007_security_scoped_bookmarks.sql`](crates/dayseam-db/migrations/0007_security_scoped_bookmarks.sql), [`ipc/commands.rs`](apps/desktop/src-tauri/src/ipc/commands.rs), and [`local_git_scan.rs`](apps/desktop/src-tauri/src/local_git_scan.rs) to **MAS-0b** symlink policy ([`2026-phase-5-mas-architecture.md` §9.4](docs/design/2026-phase-5-mas-architecture.md#94-symlinks)) + **MAS-9c** dogfood follow-up. MR review (**#245**): Canonical smoke cross-ref (**§1**, item 3), “not audited line-by-line” wording, deep link for symlink policy.
+
 ## [0.13.16] - 2026-05-02
 
 ### Documentation
