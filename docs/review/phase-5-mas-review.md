@@ -2,10 +2,10 @@
 
 **Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone))  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9a-lenses-keychain` · **PR:** [#247](https://github.com/dayseam/dayseam/pull/247)  
+**Branch:** `DAY-210-mas-9a-lenses-oauth` · **PR:** [#248](https://github.com/dayseam/dayseam/pull/248)  
 **Semver label:** *(typically `semver:patch` when closing **MAS-9a** with substantive findings; `semver:none` is OK for doc-only scaffolding PRs)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** first-parent **`c9eb8d7`..`f9fa74a`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.2 lens [#246](https://github.com/dayseam/dayseam/pull/246); captured 2026-05-04). **[#247](https://github.com/dayseam/dayseam/pull/247)** extends **§2** (post-#246 tip) + **§3.3 Keychain** (desk review prose) — after **#247** lands on **`master`**, bump **§2** (**Head**, compare, shortstat, **§2.2** row **#247**) through the **#247** merge commit.
+**Release / commit under review:** first-parent **`c9eb8d7`..`c68282b`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.3 lens [#247](https://github.com/dayseam/dayseam/pull/247); captured 2026-05-05). **[#248](https://github.com/dayseam/dayseam/pull/248)** extends **§2** (post-#247 tip) + **§3.5 OAuth** (desk review prose) — after **#248** lands on **`master`**, bump **§2** (**Head**, compare, shortstat, **§2.2** row **#248**) through the **#248** merge commit.
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -50,7 +50,7 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
-**GitHub compare (full diff):** [`8aaab40...f9fa74a`](https://github.com/dayseam/dayseam/compare/8aaab40...f9fa74a) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+**GitHub compare (full diff):** [`8aaab40...c68282b`](https://github.com/dayseam/dayseam/compare/8aaab40...c68282b) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
 
 ### 2.1 Baseline and head
 
@@ -58,9 +58,9 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 |---|--------|-------|
 | Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
 | In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
-| Head (capture) | `f9fa74a` | [#246](https://github.com/dayseam/dayseam/pull/246) — **MAS-9a** §2 post-#245 + **§3.2 Errors** lens; tip of **`master`** at that merge (**§3.3** prose in [#247](https://github.com/dayseam/dayseam/pull/247)) |
+| Head (capture) | `c68282b` | [#247](https://github.com/dayseam/dayseam/pull/247) — **MAS-9a** §2 post-#246 + **§3.3 Keychain** lens; tip of **`master`** at that merge (**§3.5** prose in [#248](https://github.com/dayseam/dayseam/pull/248)) |
 
-### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..f9fa74a`, excluding `chore(release)`)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..c68282b`, excluding `chore(release)`)
 
 | # | PR | Merge title |
 |---|----|---------------|
@@ -94,15 +94,16 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 | 244 | [#244](https://github.com/dayseam/dayseam/pull/244) | MAS-9a §2 refresh + §3.1 IPC lens |
 | 245 | [#245](https://github.com/dayseam/dayseam/pull/245) | MAS-9a §3.4 filesystem lens + MR review polish |
 | 246 | [#246](https://github.com/dayseam/dayseam/pull/246) | MAS-9a §2 post-#245 + §3.2 Errors lens |
+| 247 | [#247](https://github.com/dayseam/dayseam/pull/247) | MAS-9a §2 post-#246 + §3.3 Keychain lens |
 
 ### 2.3 Surface under review
 
 ```text
-$ git diff --shortstat 8aaab40..f9fa74a
- 64 files changed, 3979 insertions(+), 403 deletions(-)
+$ git diff --shortstat 8aaab40..c68282b
+ 64 files changed, 3993 insertions(+), 403 deletions(-)
 ```
 
-Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC, `distribution_profile`), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
+Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC + **OAuth loopback**, `distribution_profile`), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
 
 ---
 
@@ -125,7 +126,7 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 - **Status:** **Partial** — `DayseamError` + allocated **`ipc.*`** codes for bookmark flows are line-sourced; exhaustive per-command ↔ code coverage stays with **§3.7** (capability matrix).
 
-- **Evidence:** [`error.rs`](../../crates/dayseam-core/src/error.rs) (`DayseamError` variants and stable `code` on every IPC-facing shape), [`error_codes.rs`](../../crates/dayseam-core/src/error_codes.rs) (`IPC_SECURITY_SCOPED_BOOKMARK_*` and adjacent IPC constants), [`ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) (`invalid_config` / `internal`, `map_bookmark_materialize_db_error`, bookmark materialize call sites).
+- **Evidence:** [`error.rs`](../../crates/dayseam-core/src/error.rs) (`DayseamError` variants and stable `code` on every IPC-facing shape), [`error_codes.rs`](../../crates/dayseam-core/src/error_codes.rs) (`IPC_SECURITY_SCOPED_BOOKMARK_*` and adjacent IPC constants), [`ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) (`invalid_config` / `internal`, `map_bookmark_materialize_db_error`, bookmark materialize call sites), [`ipc/oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) + [`oauth_config.rs`](../../apps/desktop/src-tauri/src/oauth_config.rs) (**`OAUTH_LOGIN_*`** — see **§3.5**).
 
 **Taxonomy:** The core crate documents that every UI-visible failure crosses the IPC boundary as **`DayseamError`** with a stable dot-delimited `code` so the frontend can key copy and retry behaviour without parsing prose (`error.rs` module docs). Variants separate auth (`Auth` with `retryable`), structural config (`InvalidConfig`), transport / OS (`Io`, `Network`), operational internals (`Internal`), and non-errors (`Cancelled`).
 
@@ -133,9 +134,9 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 **Sync vs materialize errors:** `sync_local_git_security_scoped_rows` / `sync_markdown_sink_security_scoped_rows` map DB failures through `internal("security_scoped_bookmarks.sync…", e)` (stable log `ctx`, generic **`Internal`** to the client) whereas macOS materialization uses the explicit bookmark codes above — intentional split between placeholder alignment vs user-actionable grant failures.
 
-**Other sandbox-adjacent IPC codes (hooks for §3.3 / §3.5 / §3.7):** [`IPC_SHELL_OPEN_FAILED`](../../crates/dayseam-core/src/error_codes.rs) explicitly includes sandbox denial in its doc string; connector `ipc.*.keychain_*` constants cover Keychain read/write failures during source add/reconnect.
+**Other sandbox-adjacent IPC codes (hooks for §3.3 / §3.5 / §3.7):** [`IPC_SHELL_OPEN_FAILED`](../../crates/dayseam-core/src/error_codes.rs) explicitly includes sandbox denial in its doc string; connector `ipc.*.keychain_*` constants cover Keychain read/write failures during source add/reconnect; **`oauth.login.*`** loopback / session failures are desk-reviewed under **§3.5**.
 
-**Gap / follow-up:** No issue opened — **§3.7** should confirm every `#[tauri::command]` error path either reuses an `error_codes` constant or is deliberately generic `Internal` with a stable tracing `ctx` only.
+**Gap / follow-up:** No issue opened — **§3.7** should confirm every registered Tauri command (including **`ipc/oauth.rs`** `oauth_*`) either reuses an `error_codes` constant or is deliberately generic `Internal` with a stable tracing `ctx` only.
 
 ### 3.3 Keychain (SKU prefix, coexistence with direct build)
 
@@ -158,7 +159,15 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 ### 3.5 OAuth (loopback, parity with direct)
 
-*TBD*
+- **Status:** **Partial** — PKCE loopback IPC + **MAS-6b** entitlement story are line-sourced; **MAS-9c** still owns browser → callback → token exchange on a **signed MAS** bundle (**Canonical MAS smoke** **§1**, item 6).
+
+- **Evidence:** [`ipc/oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) (`oauth_begin_login` / `oauth_cancel_login` / `oauth_session_status` — `tokio::net::TcpListener` on **`127.0.0.1`**, module docs for redirect URL + background driver), [`oauth_config.rs`](../../apps/desktop/src-tauri/src/oauth_config.rs) (**DAY-205** — production **`MICROSOFT_LOOPBACK_PORT`** **53691**; tests use ephemeral **`0`**), [`oauth_session.rs`](../../apps/desktop/src-tauri/src/oauth_session.rs) (in-memory session registry; tokens do not cross IPC), [`ipc/outlook.rs`](../../apps/desktop/src-tauri/src/ipc/outlook.rs) + [`oauth_persister.rs`](../../apps/desktop/src-tauri/src/oauth_persister.rs) (post-login Keychain persistence — cross-ref **§3.3**), [**MAS-0b** §13 Networking / §14 OAuth](../design/2026-phase-5-mas-architecture.md) + [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) (**`com.apple.security.network.client`** + **`network.server`** for sandbox **bind/accept**), [`entitlements.mas.md`](../../apps/desktop/src-tauri/entitlements.mas.md) (**OAuth loopback** prose), [`error_codes.rs`](../../crates/dayseam-core/src/error_codes.rs) (**`OAUTH_LOGIN_*`** definitions).
+
+**`oauth.login.*` vs `DayseamError` (cross-ref **§3.2**):** [`lookup_provider`](../../apps/desktop/src-tauri/src/oauth_config.rs) surfaces **`InvalidConfig`** for **`OAUTH_LOGIN_NOT_CONFIGURED`** (unset **`client_id`**) and **`OAUTH_LOGIN_PROVIDER_UNKNOWN`**. **`oauth_begin_login`** uses **`Internal`** for loopback bind / browser-open failures (**`OAUTH_LOGIN_LOOPBACK_BIND_FAILED`**, **`OAUTH_LOGIN_BROWSER_OPEN_FAILED`**) and for authorize-endpoint URL parse errors (**`build_authorize_url`** reuses the **`OAUTH_LOGIN_NOT_CONFIGURED`** code on **`Internal`** when the configured URL is malformed). The background driver records timeout / CSRF / IdP errors as **`OAuthSessionStatus::Failed`** carrying **`oauth.login.*`** codes for **`oauth_session_status`** / events; successful callback **`exchange_code`** failures propagate the connector’s existing **`DayseamError`** code (not necessarily an **`oauth.login.*`** prefix).
+
+**SKU parity:** The loopback driver carries **no** `#[cfg(feature = "mas")]` fork — direct and **MAS** share the same **`reqwest`** token-exchange path; sandbox differences are **entitlements-only** (**MAS-6b**), asserted in CI via [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) (**`direct`** mode **`forbid_key`**-s both network entitlements so a mis-merge cannot ship on Developer ID).
+
+**Gap / follow-up:** No new issue — capture **MAS-9c** evidence for item **6** once dogfood runs on the store SKU; watch **MAS-0b** §14 collision note if a future IdP forces a conflicting fixed port.
 
 ### 3.6 Subprocesses / helper binaries (enumeration + sandbox legality — **MAS-0b** §8 baseline)
 
@@ -199,6 +208,7 @@ The Rust pattern is intentionally prefix-oriented (it matches `#[cfg(all(feature
 | [`apps/desktop/src-tauri/src/main.rs`](../../apps/desktop/src-tauri/src/main.rs) | Updater / menu / single-instance registration | Yes — **MAS-3** updater removal | — |
 | [`apps/desktop/src-tauri/src/local_git_scan.rs`](../../apps/desktop/src-tauri/src/local_git_scan.rs) | Default scan roots vs security-scoped MAS discovery | Yes — **MAS-4c** filesystem contract | — |
 | [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | Bookmarks, `distribution_profile`, folder pickers, `secret_store_key` / connector secret refs, `#[cfg(all(feature = "mas", target_os = "macos"))]` branches | Yes — **IPC + FS** tasks **MAS-4a–f**; **§3.1 / §3.2 / §3.3 / §3.4** must still sign off pass vs gap | — |
+| [`apps/desktop/src-tauri/src/ipc/oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) | PKCE loopback listener + session registry (no `mas` cfg fork in flow) | Yes — **MAS-6b** entitlements + documented **DAY-205** port policy; **§3.5** desk review | — |
 | [`apps/desktop/src/distribution/DistributionProfileProvider.tsx`](../../apps/desktop/src/distribution/DistributionProfileProvider.tsx) | `invoke("distribution_profile")` → `"mas"` \| `"direct"` | Yes — **MAS-3** documented UX delta (feeds `useUpdater` gate) | — |
 | [`apps/desktop/src/distribution/distributionProfileContext.ts`](../../apps/desktop/src/distribution/distributionProfileContext.ts) | `DistributionProfileLoaded` union | Yes — typed **store metadata** surface | — |
 
