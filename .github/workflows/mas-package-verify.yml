@@ -1,5 +1,12 @@
 # MAS-8a — full Mac direct + MAS `tauri build` proof on tag / schedule / manual.
 #
+# **MAS-8c:** after checkout, run `check-unreleased-for-semver-pr.sh` with a mock
+# `PR_LABELS_JSON` (`semver:patch`) so tag/schedule/manual runs hit the same
+# DAY-195 `extract-release-notes.sh` preflight as `.github/workflows/ci.yml` →
+# `changelog-semver-pr` (CHANGELOG regressions surface here, not only on
+# semver-labelled PRs or at `release.yml` time). Mock label is **patch** — the
+# dominant cadence on the MAS line; **minor** / **major** paths stay PR-gated.
+#
 # Keep steps aligned with `.github/workflows/ci.yml` → `desktop-bundle-profiles`
 # (same `createUpdaterArtifacts: false` merge, same verify + MAS-2b smoke scripts).
 #
@@ -32,6 +39,17 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: bash -n check-unreleased-for-semver-pr.sh (syntax, MAS-8c)
+        run: bash -n scripts/release/check-unreleased-for-semver-pr.sh
+
+      - name: DAY-195 changelog preflight (mock semver:patch, MAS-8c)
+        env:
+          PR_LABELS_JSON: '[{"name":"semver:patch"}]'
+        run: bash scripts/release/check-unreleased-for-semver-pr.sh
 
       - name: Install Rust toolchain (matches rust-toolchain.toml)
         uses: dtolnay/rust-toolchain@master
