@@ -4,13 +4,14 @@
 
 ## Lifecycle
 
-When **MAS-8d** (automated App Store Connect upload) lands, **replace** this flow with the chosen upload/notarization pipeline or **delete** this directory if the workflow alone is sufficient. The Phase 5 plan requires that explicit cleanup — do not let this rot as a second source of truth.
+**MAS-8d** [`mas-connect-upload.yml`](../../../.github/workflows/mas-connect-upload.yml) + [`MAS-CONNECT-UPLOAD.md`](../../../docs/release/MAS-CONNECT-UPLOAD.md) now cover **TestFlight / `.pkg` upload** (repo secrets only). **Replace or delete** this directory once that pipeline **subsumes** local **`Dayseam.app`** iteration (**store-signed `.pkg` in CI** is tracked as **`MAS-8d-followup`**). The Phase 5 plan requires explicit cleanup — do not let this rot as a second source of truth.
 
 ## Contents
 
 | File | Role |
 |------|------|
 | [`build-mas-app.sh`](build-mas-app.sh) | `pnpm` install (if needed), Vite build, `tauri build` (**`mas`**), [`verify-tauri-bundle-entitlements.sh`](../../ci/verify-tauri-bundle-entitlements.sh) + [`verify-bundle-privacy-manifest.sh`](../../ci/verify-bundle-privacy-manifest.sh), optional [`mas-sandbox-launch-smoke.sh`](../../ci/mas-sandbox-launch-smoke.sh). |
+| [`mas-connect-upload-preflight.sh`](mas-connect-upload-preflight.sh) | **MAS-8d** — GHA + local preflight for App Store Connect secrets / `.pkg` path (never prints secret values). |
 
 ## Prerequisites
 
@@ -24,3 +25,4 @@ When **MAS-8d** (automated App Store Connect upload) lands, **replace** this flo
 - [`docs/plan/2026-phase-5-mas-app-store.md`](../../../docs/plan/2026-phase-5-mas-app-store.md) — Block **MAS-8**.
 - [`docs/design/2026-phase-5-mas-architecture.md`](../../../docs/design/2026-phase-5-mas-architecture.md) — §21 build profiles.
 - [`.github/workflows/mas-package-verify.yml`](../../../.github/workflows/mas-package-verify.yml) — **MAS-8c:** **`bash -n`** + mock **`semver:patch`** run of [`check-unreleased-for-semver-pr.sh`](../check-unreleased-for-semver-pr.sh) (DAY-195 / same **`extract-release-notes.sh`** gate as **`ci.yml`** **`changelog-semver-pr`**) before the bundle job; PRs also **`bash -n`** that script from **`shell-scripts`**.
+- [`.github/workflows/mas-connect-upload.yml`](../../../.github/workflows/mas-connect-upload.yml) — **MAS-8d:** **`workflow_dispatch`** TestFlight upload for **macOS `.pkg`** (see [`MAS-CONNECT-UPLOAD.md`](../../../docs/release/MAS-CONNECT-UPLOAD.md)).

@@ -1,0 +1,122 @@
+# MAS-8d — App Store Connect upload (TestFlight-first, macOS .pkg).
+#
+# Separate from `release.yml` so Connect failures never block the direct /
+# GitHub Releases channel. Job-level `continue-on-error: true` is
+# belt-and-suspenders.
+#
+# Operator runbook + export compliance cross-links:
+#   docs/release/MAS-CONNECT-UPLOAD.md
+#   docs/compliance/MAS-EXPORT-COMPLIANCE.md (MAS-8d checklist)
+
+name: mas-connect-upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "If true, only run preflight (no Transporter install or upload)."
+        type: boolean
+        default: true
+      mas_pkg_path:
+        description: "Workspace-relative path to signed Mac App Store .pkg (required when dry_run is false)."
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  mas-8d-testflight-upload:
+    name: App Store Connect upload (MAS-8d)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight — MAS Connect upload contract
+        env:
+          INPUTS_DRY_RUN: ${{ inputs.dry_run }}
+          INPUTS_MAS_PKG_PATH: ${{ inputs.mas_pkg_path }}
+          DAYSEAM_ASC_ISSUER_ID: ${{ secrets.DAYSEAM_ASC_ISSUER_ID }}
+          DAYSEAM_ASC_KEY_ID: ${{ secrets.DAYSEAM_ASC_KEY_ID }}
+          DAYSEAM_ASC_PRIVATE_KEY: ${{ secrets.DAYSEAM_ASC_PRIVATE_KEY }}
+        run: bash scripts/release/mas/mas-connect-upload-preflight.sh
+
+      - name: Require .pkg path, workspace containment, and ASC secrets (non dry-run)
+        id: mas_gate
+        # `inputs` keeps booleans for workflow_dispatch, but `github.event.inputs` uses
+        # strings — accept both so dry_run=false never skips this gate incorrectly.
+        if: ${{ inputs.dry_run == false || github.event.inputs.dry_run == 'false' }}
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          MAS_PKG_PATH: ${{ inputs.mas_pkg_path }}
+          DAYSEAM_ASC_ISSUER_ID: ${{ secrets.DAYSEAM_ASC_ISSUER_ID }}
+          DAYSEAM_ASC_KEY_ID: ${{ secrets.DAYSEAM_ASC_KEY_ID }}
+          DAYSEAM_ASC_PRIVATE_KEY: ${{ secrets.DAYSEAM_ASC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          ws="$(cd "${GITHUB_WORKSPACE}" && pwd -P)"
+          cd "$ws"
+          if [[ -z "${MAS_PKG_PATH// }" ]]; then
+            echo '::error::mas_pkg_path is required when dry_run is false (see docs/release/MAS-CONNECT-UPLOAD.md).'
+            exit 1
+          fi
+          rel="${MAS_PKG_PATH#./}"
+          if [[ "$rel" == /* ]]; then
+            echo "::error::mas_pkg_path must be workspace-relative (no leading slash): ${MAS_PKG_PATH}"
+            exit 1
+          fi
+          if [[ ! -f "$rel" ]]; then
+            echo "::error::MAS package not found at ${ws}/${rel}"
+            exit 1
+          fi
+          abs="$(cd "$(dirname -- "$rel")" && pwd -P)/$(basename -- "$rel")"
+          case "$abs" in
+            "$ws"|"$ws"/)
+              echo "::error::expected a file path to a .pkg, not the workspace root"
+              exit 1
+              ;;
+            "$ws"/*) ;;
+            *)
+              echo "::error::MAS package resolves outside workspace: ${abs}"
+              exit 1
+              ;;
+          esac
+          for v in DAYSEAM_ASC_ISSUER_ID DAYSEAM_ASC_KEY_ID DAYSEAM_ASC_PRIVATE_KEY; do
+            if [[ -z "${!v:-}" ]]; then
+              echo "::error::Secret ${v} is not configured (see docs/release/MAS-CONNECT-UPLOAD.md)."
+              exit 1
+            fi
+          done
+          {
+            echo "rel_path<<MAS8D_PKG_REL"
+            printf '%s\n' "$rel"
+            echo "MAS8D_PKG_REL"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Install Apple Transporter (macOS .pkg uploads)
+        if: ${{ (inputs.dry_run == false || github.event.inputs.dry_run == 'false') && inputs.mas_pkg_path != '' }}
+        run: |
+          set -euo pipefail
+          url="https://itunesconnect.apple.com/WebObjects/iTunesConnect.woa/ra/resources/download/public/Transporter__OSX/bin/"
+          curl -fsSL "$url" -o "/tmp/itmstransporter.pkg"
+          sudo installer -pkg "/tmp/itmstransporter.pkg" -target /
+          rm -f /tmp/itmstransporter.pkg
+          /usr/local/itms/bin/iTMSTransporter -help >/dev/null
+
+      - name: Upload to TestFlight (Transporter backend)
+        if: ${{ (inputs.dry_run == false || github.event.inputs.dry_run == 'false') && inputs.mas_pkg_path != '' }}
+        # Pinned to v4.1.0 tag object (supply chain); bump deliberately with release notes.
+        uses: apple-actions/upload-testflight-build@994cd4f6aba72e12dbce1deee4439227b39723f6
+        with:
+          # Use gate-normalized path (strips ./) so validation matches upload.
+          app-path: ${{ steps.mas_gate.outputs.rel_path }}
+          app-type: macos
+          issuer-id: ${{ secrets.DAYSEAM_ASC_ISSUER_ID }}
+          api-key-id: ${{ secrets.DAYSEAM_ASC_KEY_ID }}
+          api-private-key: ${{ secrets.DAYSEAM_ASC_PRIVATE_KEY }}
+          backend: transporter
+          uses-non-exempt-encryption: "false"
+          wait-for-processing: "true"

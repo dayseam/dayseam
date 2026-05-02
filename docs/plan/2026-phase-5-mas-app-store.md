@@ -277,7 +277,7 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 | **MAS-8a** | GHA: **direct + MAS** bundles on tag / schedule | **`v0.13.21`** | **Done:** [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml) — same `tauri build --bundles app` pair as **`ci.yml`** `desktop-bundle-profiles`, [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) + [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh), [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh); triggers: `push` **`v*`** tags, `workflow_dispatch`, weekly `schedule`; `bash -n` on the three verify/smoke scripts + `plutil -lint` on source **`PrivacyInfo.xcprivacy`**. |
 | **MAS-8b** | **`scripts/release/`** MAS helper | **`v0.13.22`** | **Done:** [`scripts/release/mas/README.md`](../../scripts/release/mas/README.md) + [`build-mas-app.sh`](../../scripts/release/mas/build-mas-app.sh) — local MAS `Dayseam.app` + CI-parity verify/smoke; **`bash -n`** in [`ci.yml`](../../.github/workflows/ci.yml) + [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml); **replace or delete when MAS-8d**; architecture §21. |
 | **MAS-8c** | Changelog / **DAY-195** gates for MAS releases | **`v0.13.23`** | **Done:** [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml) — **`fetch-depth: 0`** checkout, **`bash -n`** + mock **`semver:patch`** [`check-unreleased-for-semver-pr.sh`](../../scripts/release/check-unreleased-for-semver-pr.sh) (same preflight as [`ci.yml`](../../.github/workflows/ci.yml) **`changelog-semver-pr`**); **`shell-scripts`** **`bash -n`** on PRs; architecture §21. |
-| **MAS-8d** | **Automated Connect upload** | **`v0.13.24`** | Non-blocking vs direct release (document); secrets in GHA only; **TestFlight-first** rollout. **`MAS-8d-followup`** if slipped post–bar A. |
+| **MAS-8d** | **Automated Connect upload** | **`v0.13.24`** | **Done:** [`mas-connect-upload.yml`](../../.github/workflows/mas-connect-upload.yml) — **`workflow_dispatch`**, **`continue-on-error`**, **TestFlight** via **Transporter** + **`upload-testflight-build`** pinned to **v4.1.0** (**`994cd4f`**, `app-type: macos`, **`DAYSEAM_ASC_*`** secrets, **`uses-non-exempt-encryption: false`**); workspace-relative **`.pkg`** + secret gate before upload; [`MAS-CONNECT-UPLOAD.md`](../../docs/release/MAS-CONNECT-UPLOAD.md) + [`mas-connect-upload-preflight.sh`](../../scripts/release/mas/mas-connect-upload-preflight.sh). **Non-blocking** vs [`release.yml`](../../.github/workflows/release.yml). **`.pkg` CI / artefact wiring** → **`MAS-8d-followup`**. |
 
 ---
 
@@ -334,7 +334,7 @@ MAS-9a ──► MAS-9c
 | JIT rejection | Evidence pack + fallback (**MAS-2c**, **MAS-7c**). |
 | Dual maintenance | Packaging-only deltas + **MAS-9a** cfg gate. |
 | CI flake / Linux blind | **MAS-1b** macOS job; stubs labelled **non-authoritative**. |
-| **MAS-8b dead scaffold** | Explicit **remove/replace** when **MAS-8d** merges. |
+| **MAS-8b dead scaffold** | Explicit **remove/replace** when the **MAS-8d** upload pipeline **subsumes** the local helper (`.pkg` / signing in CI — **`MAS-8d-followup`**). |
 | **Review discovers late helper binary** | **MAS-9a** subprocess enumeration + sandbox legality. |
 
 ---
@@ -366,3 +366,4 @@ MAS-9a ──► MAS-9c
 | 2026-05-01 | **MAS-8a:** [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml) + **`ci.yml`** cross-reference comment; architecture §21 / §20; MR review: job rename, `permissions`, extra **`bash -n`**, plan row (**direct + MAS**). |
 | 2026-05-01 | **MAS-8b:** [`scripts/release/mas/`](../../scripts/release/mas/) README + **`build-mas-app.sh`**; §21 local helper; **MAS-8d** replace/delete contract. |
 | 2026-05-02 | **MAS-8c:** [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml) DAY-195 mock **`check-unreleased-for-semver-pr.sh`** + full git checkout; plan row; architecture §21 / §20. MR review: **`bash -n`** + **`ci.yml`** **`shell-scripts`**, doc wording. |
+| 2026-05-02 | **MAS-8d:** [`mas-connect-upload.yml`](../../.github/workflows/mas-connect-upload.yml) + [`MAS-CONNECT-UPLOAD.md`](../../docs/release/MAS-CONNECT-UPLOAD.md) + preflight script; plan row + risk register; architecture §21 / §20; **MAS-EXPORT** checklist. MR review: runbook **`mas-package-verify.yml`** link; **`.pkg`** workspace gate + ASC secrets; action pin **994cd4f**; Transporter tmp cleanup. |

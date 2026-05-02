@@ -273,6 +273,8 @@ jobs:
         run: bash -n scripts/release/mas/build-mas-app.sh
       - name: bash -n check-unreleased-for-semver-pr.sh (syntax, DAY-195 / MAS-8c)
         run: bash -n scripts/release/check-unreleased-for-semver-pr.sh
+      - name: bash -n mas-connect-upload-preflight.sh (syntax, MAS-8d)
+        run: bash -n scripts/release/mas/mas-connect-upload-preflight.sh
 
   # DAY-195: same extract-release-notes preflight release.yml runs,
   # but at PR time — empty [Unreleased] used to fail only post-merge.

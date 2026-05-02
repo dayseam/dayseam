@@ -44,9 +44,9 @@ When filing manually **today** or when **MAS-8d** automates upload, **use the sa
 
 **MAS-8d** implementation checklist (for whoever wires upload):
 
-- [ ] Upload job (or runbook) **links or quotes** this document in the PR / workflow README so metadata drift is reviewable.
-- [ ] If Connect exposes **`ITSAppUsesNonExemptEncryption`** (or successor fields) in API payloads, set values consistent with **exempt-only** use; if the binary later gains **non-exempt** crypto, **stop** and update this doc first.
-- [ ] Keep **TestFlight** / production answers identical unless the **binary** changed.
+- [x] Upload workflow + runbook **link** this document — [`.github/workflows/mas-connect-upload.yml`](../../.github/workflows/mas-connect-upload.yml) header / [`MAS-CONNECT-UPLOAD.md`](../release/MAS-CONNECT-UPLOAD.md) **Export compliance** section.
+- [x] **`uses-non-exempt-encryption: "false"`** on the TestFlight upload action while the **Cryptography actually shipped** table remains exempt-only; if Connect exposes successor fields or the binary gains **non-exempt** crypto, **stop** and update this doc first.
+- [x] **TestFlight-first** + keep **TestFlight** / production Connect answers aligned with this file unless the **binary** materially changes ([`MAS-CONNECT-UPLOAD.md`](../release/MAS-CONNECT-UPLOAD.md) operator notes).
 
 ---
 
