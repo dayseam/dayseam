@@ -2,10 +2,10 @@
 
 **Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone))  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9a-lenses-capability` · **PR:** [#250](https://github.com/dayseam/dayseam/pull/250)  
+**Branch:** `DAY-210-mas-9a-lenses-csp` · **PR:** [#251](https://github.com/dayseam/dayseam/pull/251)  
 **Semver label:** *(typically `semver:patch` when closing **MAS-9a** with substantive findings; `semver:none` is OK for doc-only scaffolding PRs)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** first-parent **`c9eb8d7`..`abcf4aa`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.6 lens [#249](https://github.com/dayseam/dayseam/pull/249); captured 2026-05-07). **[#250](https://github.com/dayseam/dayseam/pull/250)** extends **§2** (post-#249 tip) + **§3.7 Capability matrix** (desk review prose) — after **#250** lands on **`master`**, bump **§2** (**Head**, compare, shortstat, **§2.2** row **#250**) through the **#250** merge commit.
+**Release / commit under review:** first-parent **`c9eb8d7`..`429e71d`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.7 lens [#250](https://github.com/dayseam/dayseam/pull/250); captured 2026-05-08). **[#251](https://github.com/dayseam/dayseam/pull/251)** extends **§2** (post-#250 tip) + **§3.8 CSP / WebView** (desk review prose) — after **#251** lands on **`master`**, bump **§2** (**Head**, compare, shortstat, **§2.2** row **#251**) through the **#251** merge commit.
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -50,7 +50,7 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
-**GitHub compare (full diff):** [`8aaab40...abcf4aa`](https://github.com/dayseam/dayseam/compare/8aaab40...abcf4aa) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+**GitHub compare (full diff):** [`8aaab40...429e71d`](https://github.com/dayseam/dayseam/compare/8aaab40...429e71d) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
 
 ### 2.1 Baseline and head
 
@@ -58,9 +58,9 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 |---|--------|-------|
 | Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
 | In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
-| Head (capture) | `abcf4aa` | [#249](https://github.com/dayseam/dayseam/pull/249) — **MAS-9a** §2 post-#248 + **§3.6 Subprocesses** lens; tip of **`master`** at that merge |
+| Head (capture) | `429e71d` | [#250](https://github.com/dayseam/dayseam/pull/250) — **MAS-9a** §2 post-#249 + **§3.7 Capability** lens; tip of **`master`** at that merge |
 
-### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..abcf4aa`, excluding `chore(release)`)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..429e71d`, excluding `chore(release)`)
 
 | # | PR | Merge title |
 |---|----|---------------|
@@ -97,15 +97,16 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 | 247 | [#247](https://github.com/dayseam/dayseam/pull/247) | MAS-9a §2 post-#246 + §3.3 Keychain lens |
 | 248 | [#248](https://github.com/dayseam/dayseam/pull/248) | MAS-9a §2 post-#247 + §3.5 OAuth lens |
 | 249 | [#249](https://github.com/dayseam/dayseam/pull/249) | MAS-9a §2 post-#248 + §3.6 Subprocesses lens |
+| 250 | [#250](https://github.com/dayseam/dayseam/pull/250) | MAS-9a §2 post-#249 + §3.7 Capability lens |
 
 ### 2.3 Surface under review
 
 ```text
-$ git diff --shortstat 8aaab40..abcf4aa
- 64 files changed, 4020 insertions(+), 403 deletions(-)
+$ git diff --shortstat 8aaab40..429e71d
+ 64 files changed, 4034 insertions(+), 403 deletions(-)
 ```
 
-Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC + **OAuth loopback**, `shell_open` / **`opener`**, `distribution_profile`, **`capabilities/*.json`** + **`tauri.mas.conf.json`** merge), `crates/connectors/` (**libgit2** Local Git), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
+Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC + **OAuth loopback**, `shell_open` / **`opener`**, `distribution_profile`, **`capabilities/*.json`** + **`tauri.mas.conf.json`** merge), [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) (**WebView CSP**), `apps/desktop/index.html` + `public/` bootstrap scripts, `crates/connectors/` (**libgit2** Local Git), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
 
 ---
 
@@ -183,7 +184,7 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 ### 3.7 Capability deny-list vs **MAS-0b** matrix
 
-- **Status:** **Partial** — **Tauri** capability split (**MAS-0b** §6) is line-sourced against committed JSON + **MAS** merge config; **entitlement** deny-list prose (**MAS-0b** §5) is not re-derived cell-by-cell here (tracked via **§2** / **MAS-2a+** workstreams). **CSP** posture for the webview remains **§3.8**.
+- **Status:** **Partial** — **Tauri** capability split (**MAS-0b** §6) is line-sourced against committed JSON + **MAS** merge config; **entitlement** deny-list prose (**MAS-0b** §5) is not re-derived cell-by-cell here (tracked via **§2** / **MAS-2a+** workstreams). **CSP** / **WKWebView** policy string is **§3.8**.
 
 - **Evidence:** [**MAS-0b** §6 Tauri capability matrix (direct vs MAS)](../design/2026-phase-5-mas-architecture.md) (same production **`allow-*`** command surface on both SKUs; **MAS** omits **`updater.json`** and denies **`updater:*`** + **`process:allow-restart`**), [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) (**`app.security.capabilities`: [`"default"`]** only; **`plugins`: {}** so the **MAS** bundle never merges the updater capability identifier), [`capabilities/default.json`](../../apps/desktop/src-tauri/capabilities/default.json) (**`core:default`**, one **`allow-<command>`** per [`PROD_COMMANDS`](../../apps/desktop/src-tauri/src/ipc/commands.rs) entry, plus **`dialog:allow-open`** — enforced by [`tests/capabilities.rs`](../../apps/desktop/src-tauri/tests/capabilities.rs)), [`capabilities/updater.json`](../../apps/desktop/src-tauri/capabilities/updater.json) (direct-only **`updater:allow-check`** / **`updater:allow-download-and-install`** + **`process:allow-restart`**), [`main.rs`](../../apps/desktop/src-tauri/src/main.rs) (**MAS-3a** — **`#[cfg(not(feature = "mas"))]`** registers **`tauri-plugin-updater`** + **`tauri-plugin-process`**; **`mas`** build skips both), [`build.rs`](../../apps/desktop/src-tauri/build.rs) (single **`PROD_COMMANDS`** manifest for **`tauri-build`**; header documents the **four** touch points when adding a command).
 
@@ -193,7 +194,13 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 ### 3.8 CSP / WebView exposure (if in scope for this release)
 
-*TBD*
+- **Status:** **Partial** — production **Content-Security-Policy** is **SKU-neutral** today (**MAS-1a** single webview bundle); **MAS** does not fork the CSP string in [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json).
+
+- **Evidence:** [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) **`app.security.csp`**: `default-src 'self'`, `img-src 'self' data:`, `style-src 'self' 'unsafe-inline'`, `script-src 'self'` (no remote script origins, no `'unsafe-eval'`); [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) **`app.security`** carries **no** **`csp`** key — **MAS** builds inherit the merge-base policy from [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json); [`entitlements.md`](../../apps/desktop/src-tauri/entitlements.md) (CSP + hardened-runtime framing); [**MAS-0b** §6 Tauri capability matrix](../design/2026-phase-5-mas-architecture.md) ("CSP and IPC allow-list discipline stay identical where possible"); [`index.html`](../../apps/desktop/index.html) + [`public/hydrate-theme.js`](../../apps/desktop/public/hydrate-theme.js) (external **`/hydrate-theme.js`** script stays on **`script-src 'self'`** without CSP hashes — documented in-tree).
+
+**JIT / WebKit entitlements:** **MAS** ships **MAS-2c** keys for **WKWebView** (`entitlements.mas.plist` — cross-ref **MAS-0b** §5 / [`MAS-JIT-ENTITLEMENTS.md`](../compliance/MAS-JIT-ENTITLEMENTS.md)); that is **not** a CSP relaxation — App Review copy still pairs them ([`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md)).
+
+**Gap / follow-up:** No issue opened — widening **`connect-src`**, **`frame-src`**, **`script-src`**, or adding **`unsafe-inline`** on scripts requires **MAS-0b** §6 alignment + **MAS-7c** paste-pack refresh; **MAS-9c** should exercise any future **`blob:`** navigations or **`data:`** uses **outside** the existing **`img-src 'self' data:`** allowance in the signed **MAS** bundle.
 
 ### 3.9 **`cfg` / `feature = "mas"` inventory** (*Single codebase* exit rule)
 
@@ -215,6 +222,7 @@ The Rust pattern is intentionally prefix-oriented (it matches `#[cfg(all(feature
 |----------|----------------|-----------------------------|-------------------------|
 | [`apps/desktop/src-tauri/Cargo.toml`](../../apps/desktop/src-tauri/Cargo.toml) | `[features] mas = []` gate + docs | Yes — **feature / packaging** | — |
 | [`apps/desktop/src-tauri/tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) | Bundle id + `entitlements.mas.plist` | Yes — **packaging / entitlements** | — |
+| [`apps/desktop/src-tauri/tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) | WebView CSP (`app.security.csp`); `build.devUrl` dev-only | Yes — **MAS-0b** §6 + **§3.8** (shared across SKUs) | — |
 | [`apps/desktop/package.json`](../../apps/desktop/package.json) | `tauri:build:mas` script | Yes — **packaging** | — |
 | [`apps/desktop/src-tauri/src/startup.rs`](../../apps/desktop/src-tauri/src/startup.rs) | `DATA_SUBDIR` / path roots under `#[cfg(feature = "mas")]` | Yes — **MAS-5b1** coexistence / **MAS-0b** §10 | — |
 | [`apps/desktop/src-tauri/src/lib.rs`](../../apps/desktop/src-tauri/src/lib.rs) | Tauri builder + capability split | Yes — **packaging / capabilities**; **§3.7** matrix vs **MAS-0b** §6 | — |
