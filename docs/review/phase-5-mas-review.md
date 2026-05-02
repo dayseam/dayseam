@@ -2,10 +2,10 @@
 
 **Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone))  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9a-lenses-oauth` · **PR:** [#248](https://github.com/dayseam/dayseam/pull/248)  
+**Branch:** `DAY-210-mas-9a-lenses-subprocess` · **PR:** [#249](https://github.com/dayseam/dayseam/pull/249)  
 **Semver label:** *(typically `semver:patch` when closing **MAS-9a** with substantive findings; `semver:none` is OK for doc-only scaffolding PRs)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** first-parent **`c9eb8d7`..`c68282b`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.3 lens [#247](https://github.com/dayseam/dayseam/pull/247); captured 2026-05-05). **[#248](https://github.com/dayseam/dayseam/pull/248)** extends **§2** (post-#247 tip) + **§3.5 OAuth** (desk review prose) — after **#248** lands on **`master`**, bump **§2** (**Head**, compare, shortstat, **§2.2** row **#248**) through the **#248** merge commit.
+**Release / commit under review:** first-parent **`c9eb8d7`..`9b130eb`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.5 lens [#248](https://github.com/dayseam/dayseam/pull/248); captured 2026-05-06). **[#249](https://github.com/dayseam/dayseam/pull/249)** extends **§2** (post-#248 tip) + **§3.6 Subprocesses** (desk review prose) — after **#249** lands on **`master`**, bump **§2** (**Head**, compare, shortstat, **§2.2** row **#249**) through the **#249** merge commit.
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -50,7 +50,7 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
-**GitHub compare (full diff):** [`8aaab40...c68282b`](https://github.com/dayseam/dayseam/compare/8aaab40...c68282b) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+**GitHub compare (full diff):** [`8aaab40...9b130eb`](https://github.com/dayseam/dayseam/compare/8aaab40...9b130eb) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
 
 ### 2.1 Baseline and head
 
@@ -58,9 +58,9 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 |---|--------|-------|
 | Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
 | In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
-| Head (capture) | `c68282b` | [#247](https://github.com/dayseam/dayseam/pull/247) — **MAS-9a** §2 post-#246 + **§3.3 Keychain** lens; tip of **`master`** at that merge (**§3.5** prose in [#248](https://github.com/dayseam/dayseam/pull/248)) |
+| Head (capture) | `9b130eb` | [#248](https://github.com/dayseam/dayseam/pull/248) — **MAS-9a** §2 post-#247 + **§3.5 OAuth** lens; tip of **`master`** at that merge |
 
-### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..c68282b`, excluding `chore(release)`)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..9b130eb`, excluding `chore(release)`)
 
 | # | PR | Merge title |
 |---|----|---------------|
@@ -95,15 +95,16 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 | 245 | [#245](https://github.com/dayseam/dayseam/pull/245) | MAS-9a §3.4 filesystem lens + MR review polish |
 | 246 | [#246](https://github.com/dayseam/dayseam/pull/246) | MAS-9a §2 post-#245 + §3.2 Errors lens |
 | 247 | [#247](https://github.com/dayseam/dayseam/pull/247) | MAS-9a §2 post-#246 + §3.3 Keychain lens |
+| 248 | [#248](https://github.com/dayseam/dayseam/pull/248) | MAS-9a §2 post-#247 + §3.5 OAuth lens |
 
 ### 2.3 Surface under review
 
 ```text
-$ git diff --shortstat 8aaab40..c68282b
- 64 files changed, 3993 insertions(+), 403 deletions(-)
+$ git diff --shortstat 8aaab40..9b130eb
+ 64 files changed, 4008 insertions(+), 403 deletions(-)
 ```
 
-Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC + **OAuth loopback**, `distribution_profile`), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
+Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC + **OAuth loopback**, `shell_open` / **`opener`**, `distribution_profile`), `crates/connectors/` (**libgit2** Local Git), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
 
 ---
 
@@ -171,7 +172,13 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 ### 3.6 Subprocesses / helper binaries (enumeration + sandbox legality — **MAS-0b** §8 baseline)
 
-*TBD*
+- **Status:** **Partial** — shipped **macOS** paths line up with **MAS-0b** §8 rows **1–4**; no standalone helper **`.app`** / XPC binaries ship from this repo today (**MAS-0b** “Bundled binaries inside `.app`”).
+
+- **Evidence:** [**MAS-0b** §8 Subprocesses and helper binaries](../design/2026-phase-5-mas-architecture.md) (authoritative enumeration table + “update when adding spawns”), [`shell_open`](../../apps/desktop/src-tauri/src/ipc/commands.rs) (`opener::open` on **`tokio::task::spawn_blocking`** — macOS hands URLs to **`/usr/bin/open`** per **MAS-0b** §8 row **1**; scheme allow-list + errors **`IPC_SHELL_*`**, **§3.2**), [`ipc/oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) (`SystemBrowserOpener` → **`opener::open_browser`** for the authorize URL — **MAS-0b** §8 row **2**; OAuth flow desk-reviewed under **§3.5**), same file **`TcpListener`** loopback (**MAS-0b** §8 row **3** — inbound socket, not a child process), [`connector-local-git` / **`git2`**](../../crates/connectors/connector-local-git/Cargo.toml) (**`vendored-libgit2`** — **MAS-0b** §8 row **4**, no **`git`** CLI on production scan paths). **MAS-0b** §8 row **5** (`MetadataCommand`, `Command::new("git")` in **`tests/`**) is **not** in the shipped bundle.
+
+**Sandbox alignment:** **`shell_open`** stays **user-driven** (no background `open`); **OAuth** browser launch is paired with the loopback listener (**§3.5** / **MAS-6b**). Local Git repo access remains **bookmark-scoped** under **MAS** (**§3.4**), not arbitrary POSIX reads.
+
+**Gap / follow-up:** No issue opened — any new **`Command::new`**, bundled helper, or XPC agent must extend **MAS-0b** §8 **and** be re-reviewed here + in **§3.7** (capability matrix).
 
 ### 3.7 Capability deny-list vs **MAS-0b** matrix
 
@@ -207,8 +214,8 @@ The Rust pattern is intentionally prefix-oriented (it matches `#[cfg(all(feature
 | [`apps/desktop/src-tauri/src/keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) | Keychain service / account strings | Yes — **MAS-5b2** (**§3.3** desk review) | — |
 | [`apps/desktop/src-tauri/src/main.rs`](../../apps/desktop/src-tauri/src/main.rs) | Updater / menu / single-instance registration | Yes — **MAS-3** updater removal | — |
 | [`apps/desktop/src-tauri/src/local_git_scan.rs`](../../apps/desktop/src-tauri/src/local_git_scan.rs) | Default scan roots vs security-scoped MAS discovery | Yes — **MAS-4c** filesystem contract | — |
-| [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | Bookmarks, `distribution_profile`, folder pickers, `secret_store_key` / connector secret refs, `#[cfg(all(feature = "mas", target_os = "macos"))]` branches | Yes — **IPC + FS** tasks **MAS-4a–f**; **§3.1 / §3.2 / §3.3 / §3.4** must still sign off pass vs gap | — |
-| [`apps/desktop/src-tauri/src/ipc/oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) | PKCE loopback listener + session registry (no `mas` cfg fork in flow) | Yes — **MAS-6b** entitlements + documented **DAY-205** port policy; **§3.5** desk review | — |
+| [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | Bookmarks, `distribution_profile`, `shell_open` (**`opener::open`**), folder pickers, `secret_store_key` / connector secret refs, `#[cfg(all(feature = "mas", target_os = "macos"))]` branches | Yes — **IPC + FS** tasks **MAS-4a–f**; **§3.1 / §3.2 / §3.3 / §3.4 / §3.6** must still sign off pass vs gap | — |
+| [`apps/desktop/src-tauri/src/ipc/oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) | PKCE loopback listener + session registry (no `mas` cfg fork in flow) | Yes — **MAS-6b** entitlements + documented **DAY-205** port policy; **§3.5** + **§3.6** desk review | — |
 | [`apps/desktop/src/distribution/DistributionProfileProvider.tsx`](../../apps/desktop/src/distribution/DistributionProfileProvider.tsx) | `invoke("distribution_profile")` → `"mas"` \| `"direct"` | Yes — **MAS-3** documented UX delta (feeds `useUpdater` gate) | — |
 | [`apps/desktop/src/distribution/distributionProfileContext.ts`](../../apps/desktop/src/distribution/distributionProfileContext.ts) | `DistributionProfileLoaded` union | Yes — typed **store metadata** surface | — |
 
