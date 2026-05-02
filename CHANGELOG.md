@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.20] - 2026-05-02
+
 ### Documentation
 
 - **DAY-210 / MAS-9a (lenses — capability):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 advances head to **`abcf4aa`** ([#249](https://github.com/dayseam/dayseam/pull/249)), GitHub compare **`8aaab40...abcf4aa`**, PR table row **#249**, and refreshed `git diff --shortstat`; **§3.7 Capability deny-list** (**Partial**) ties [`tauri.mas.conf.json`](apps/desktop/src-tauri/tauri.mas.conf.json), [`capabilities/default.json`](apps/desktop/src-tauri/capabilities/default.json) + [`updater.json`](apps/desktop/src-tauri/capabilities/updater.json), [`main.rs`](apps/desktop/src-tauri/src/main.rs) (**MAS-3a** plugin registration), [`build.rs`](apps/desktop/src-tauri/build.rs), and [`tests/capabilities.rs`](apps/desktop/src-tauri/tests/capabilities.rs) to **MAS-0b** §6; **§3.2** gap defers **`DayseamError`** / `error_codes` exhaustiveness to **§3.2** / **§3.5**; **§3.9** `lib.rs` row cites **§3.7**. ([#250](https://github.com/dayseam/dayseam/pull/250))
