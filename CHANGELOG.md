@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.21] - 2026-05-02
+
 ### Documentation
 
 - **DAY-210 / MAS-9a (lenses — CSP / WebView):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 advances head to **`429e71d`** ([#250](https://github.com/dayseam/dayseam/pull/250)), GitHub compare **`8aaab40...429e71d`**, PR table row **#250**, and refreshed `git diff --shortstat`; **§3.8 CSP / WebView** (**Partial**) ties [`tauri.conf.json`](apps/desktop/src-tauri/tauri.conf.json) **`app.security.csp`**, [`tauri.mas.conf.json`](apps/desktop/src-tauri/tauri.mas.conf.json) (no CSP override), [`entitlements.md`](apps/desktop/src-tauri/entitlements.md), [`index.html`](apps/desktop/index.html) + [`hydrate-theme.js`](apps/desktop/public/hydrate-theme.js), and **MAS-0b** §6 / **MAS-2c** JIT cross-links; **§3.9** adds **`tauri.conf.json`** inventory row. ([#251](https://github.com/dayseam/dayseam/pull/251)) MR review: **`app.security.csp`** wording (not bare **`security.csp`**), straight **ASCII** quote around **MAS-0b** §6 pull-quote, **`blob:`** / **`data:`** gap scoped to **non-`img-src`** expansion.
