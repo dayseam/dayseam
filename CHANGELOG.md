@@ -53,6 +53,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 - **DAY-210 / MAS-7b:** [`docs/compliance/MAS-EXPORT-COMPLIANCE.md`](docs/compliance/MAS-EXPORT-COMPLIANCE.md) records what cryptography Dayseam ships (TLS via **`reqwest` + `rustls`** / system WebKit, OAuth, Keychain, plain SQLite at rest), **License Exception ENC** (**15 CFR §740.17**) framing with an Apple export-compliance doc link, App Store Connect answers to keep consistent, and a **MAS-8d** checklist so automated uploads do not drift from manual filings. [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) gains §22 and a §20 checklist item; [`MAS-JIT-ENTITLEMENTS.md`](docs/compliance/MAS-JIT-ENTITLEMENTS.md) **Related** links the export doc (JIT vs export classification).
 
+- **DAY-210 / MAS-7c:** [`docs/compliance/MAS-APP-REVIEW-NOTES.md`](docs/compliance/MAS-APP-REVIEW-NOTES.md) is the App Store Connect **paste pack** — local-first summary, sandbox filesystem + HTTPS + OAuth loopback (no in-app updater **MAS-3**; **MAS-6a** / **MAS-6b** networking), verbatim **JIT** seed from [`MAS-JIT-ENTITLEMENTS.md`](docs/compliance/MAS-JIT-ENTITLEMENTS.md) with a single-source pointer to the fallback ladder, architecture **§8** subprocess baseline, plus pointers to **§16** privacy inventory and [`MAS-EXPORT-COMPLIANCE.md`](docs/compliance/MAS-EXPORT-COMPLIANCE.md). [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) gains §23 and a §20 checklist item.
+
 ## [0.13.11] - 2026-05-01
 
 ### Added

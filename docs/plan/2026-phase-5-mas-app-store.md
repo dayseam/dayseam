@@ -264,7 +264,7 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 |----|------|----------------|-----------|
 | **MAS-7a** | Wire **`PrivacyInfo.xcprivacy`** | **`v0.13.18`** | App-level manifest + **`bundle.macOS.files`** (**done:** [`PrivacyInfo.xcprivacy`](../../apps/desktop/src-tauri/PrivacyInfo.xcprivacy), [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh), architecture §16). |
 | **MAS-7b** | **`MAS-EXPORT-COMPLIANCE.md`** | **`v0.13.19`** | **Done:** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) (crypto inventory, Connect answers, **MAS-8d** checklist); architecture §22 + §20. |
-| **MAS-7c** | **`MAS-APP-REVIEW-NOTES.md`** | **`v0.13.20`** | JIT justification, sandbox, local-first, subprocess list pointer. |
+| **MAS-7c** | **`MAS-APP-REVIEW-NOTES.md`** | **`v0.13.20`** | **Done:** [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md) (local-first, sandbox + network + **MAS-3**, JIT blockquote + **MAS-JIT** ladder pointer, **§8** subprocess baseline, privacy + export links); architecture §23 + §20; **MAS-JIT** maintenance. |
 
 ---
 
@@ -362,3 +362,4 @@ MAS-9a ──► MAS-9c
 | 2026-05-01 | **MAS-5a:** Keychain audit under sandbox documented in **MAS-0b** §12 (+ §20 checklist); mock tests unchanged per task row. |
 | 2026-05-01 | Split **MAS-5b** into **MAS-5b1** (Application Support / `DATA_SUBDIR`) + **MAS-5b2** (Keychain prefix + regression tests); renumbered target **`v0.13.14`**–**`v0.13.27`** from **MAS-6** onward; capstone **`v0.13.25`–`v0.13.27`**. |
 | 2026-05-01 | **MAS-7b:** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) + architecture §22; **MAS-8d** linkage; MR review tightened ENC/WebKit/minisign wording + Apple doc link; **MAS-JIT** cross-link. |
+| 2026-05-01 | **MAS-7c:** [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md) + architecture §23 + **MAS-JIT** / **MAS-EXPORT** cross-links. |
