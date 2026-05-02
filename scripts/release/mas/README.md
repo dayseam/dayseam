@@ -23,3 +23,4 @@ When **MAS-8d** (automated App Store Connect upload) lands, **replace** this flo
 
 - [`docs/plan/2026-phase-5-mas-app-store.md`](../../../docs/plan/2026-phase-5-mas-app-store.md) — Block **MAS-8**.
 - [`docs/design/2026-phase-5-mas-architecture.md`](../../../docs/design/2026-phase-5-mas-architecture.md) — §21 build profiles.
+- [`.github/workflows/mas-package-verify.yml`](../../../.github/workflows/mas-package-verify.yml) — **MAS-8c:** **`bash -n`** + mock **`semver:patch`** run of [`check-unreleased-for-semver-pr.sh`](../check-unreleased-for-semver-pr.sh) (DAY-195 / same **`extract-release-notes.sh`** gate as **`ci.yml`** **`changelog-semver-pr`**) before the bundle job; PRs also **`bash -n`** that script from **`shell-scripts`**.
