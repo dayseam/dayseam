@@ -2,10 +2,10 @@
 
 **Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone))  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9a-inventory` · **PR:** [#243](https://github.com/dayseam/dayseam/pull/243) *(§2 / §3.9 inventory pass — update head row when superseded)*  
+**Branch:** `DAY-210-mas-9a-lenses-ipc` · **PR:** [#244](https://github.com/dayseam/dayseam/pull/244)  
 **Semver label:** *(typically `semver:patch` when closing **MAS-9a** with substantive findings; `semver:none` is OK for doc-only scaffolding PRs)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** first-parent **`c9eb8d7`..`892369d`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** scaffold [#242](https://github.com/dayseam/dayseam/pull/242); captured 2026-05-02)
+**Release / commit under review:** first-parent **`c9eb8d7`..`f9b9d68`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** inventory [#243](https://github.com/dayseam/dayseam/pull/243); captured 2026-05-02). **[#244](https://github.com/dayseam/dayseam/pull/244)** extends **§3.1** only (desk review prose); it does **not** add further first-parent merges beyond **`f9b9d68`** — refresh **Head** again after **#244** merges if the tip moves.
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -50,7 +50,7 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
-**GitHub compare (full diff):** [`8aaab40...892369d`](https://github.com/dayseam/dayseam/compare/8aaab40...892369d) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+**GitHub compare (full diff):** [`8aaab40...f9b9d68`](https://github.com/dayseam/dayseam/compare/8aaab40...f9b9d68) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
 
 ### 2.1 Baseline and head
 
@@ -58,9 +58,9 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 |---|--------|-------|
 | Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
 | In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
-| Head (capture) | `892369d` | [#242](https://github.com/dayseam/dayseam/pull/242) — **MAS-9a** scaffold; tip of **`master`** when §2 / §3.9 inventory was drafted (update this row after **#243** merges if continuing on a newer tip) |
+| Head (capture) | `f9b9d68` | [#243](https://github.com/dayseam/dayseam/pull/243) — **MAS-9a** inventory (§2 + §3.9); tip of **`master`** at that merge (**§3.1** prose added in [#244](https://github.com/dayseam/dayseam/pull/244)) |
 
-### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..892369d`, excluding `chore(release)`)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..f9b9d68`, excluding `chore(release)`)
 
 | # | PR | Merge title |
 |---|----|---------------|
@@ -90,12 +90,13 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 | 240 | [#240](https://github.com/dayseam/dayseam/pull/240) | DAY-195 preflight on MAS packaging CI |
 | 241 | [#241](https://github.com/dayseam/dayseam/pull/241) | MAS-8d TestFlight upload workflow |
 | 242 | [#242](https://github.com/dayseam/dayseam/pull/242) | MAS-9a capstone review scaffold |
+| 243 | [#243](https://github.com/dayseam/dayseam/pull/243) | MAS-9a review §2 + cfg inventory |
 
 ### 2.3 Surface under review
 
 ```text
-$ git diff --shortstat 8aaab40..892369d
- 64 files changed, 3883 insertions(+), 403 deletions(-)
+$ git diff --shortstat 8aaab40..f9b9d68
+ 64 files changed, 3940 insertions(+), 403 deletions(-)
 ```
 
 Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC, `distribution_profile`), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
@@ -108,7 +109,14 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 ### 3.1 IPC
 
-*TBD*
+- **Status:** **Partial** — desk review of SKU-specific surfaces; full command ↔ capability matrix is **§3.7**.
+- **Evidence:** [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs)
+
+**Compile-time channel (`MAS-3` / `MAS-3b`):** [`distribution_profile`](../../apps/desktop/src-tauri/src/ipc/commands.rs) is a `#[tauri::command]` (see **`MAS-3b`** comment in-tree) returning `crate::DISTRIBUTION_PROFILE`, set in [`lib.rs`](../../apps/desktop/src-tauri/src/lib.rs) to **`"mas"`** vs **`"direct"`** under `#[cfg(feature = "mas")]` / `#[cfg(not(feature = "mas"))]`. It is listed in the static `COMMANDS` allow-list next to other vetted handlers so the **same** webview asset build can resolve the SKU at runtime via IPC (per **MAS-1a** / **MAS-3** — no separate front-end bundle per channel).
+
+**Security-scoped bookmark IPC (`MAS-4a–f`):** Local Git and Markdown sink flows call `sync_local_git_security_scoped_rows`, `materialize_local_git_bookmarks_from_paths`, `sync_markdown_sink_security_scoped_rows`, and `materialize_markdown_sink_bookmarks_from_paths` under `#[cfg(feature = "mas")]` / `#[cfg(all(feature = "mas", target_os = "macos"))]` inside `sources_add` / `sources_update` / `sinks_add` (same file). Errors map through `DayseamError` with stable internal contexts such as **`security_scoped_bookmarks.*`** (see `map_bookmark_materialize_db_error` and call sites). **MAS-4f** surfaces stale roots via `publish_stale_local_git_bookmark_toast`.
+
+**Gap / follow-up:** No issue opened — confirm on a future pass that every **MAS-only** code path behind `cfg` is either unreachable from the direct build (true today) or mirrored in Vitest/IPC parity tests where behaviour differs only by profile.
 
 ### 3.2 Errors (taxonomy, sandbox-specific surfaces)
 

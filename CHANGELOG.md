@@ -53,6 +53,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 - **DAY-210 / MAS-9a (inventory):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 fills **MAS-1a** ([#216](https://github.com/dayseam/dayseam/pull/216)) through **MAS-9a** scaffold ([#242](https://github.com/dayseam/dayseam/pull/242)) baseline/head, first-parent PR table, and `git diff --shortstat` surface; §3.9 adds a **`cfg` / `mas`** + frontend **`distribution_profile`** inventory with `rg` commands (documents **ripgrep** dependency + pattern intent). Deeper lenses remain **TBD**. MR review: **#243** metadata, **MAS-2a** row label, Canonical smoke §1 pointer, explicit [`mas-sandbox-launch-smoke.sh`](scripts/ci/mas-sandbox-launch-smoke.sh) link, head-row refresh note after merge.
 
+- **DAY-210 / MAS-9a (lenses — IPC):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 picks up **#243** (head **`f9b9d68`**, compare through that tip, PR table row, refreshed `git diff --shortstat`); **§3.1 IPC** documents **`distribution_profile`**, `COMMANDS` allow-list membership, and **`cfg` / `mas`** bookmark plumbing in **`sources_add` / `sources_update` / `sinks_add`** with evidence links into [`apps/desktop/src-tauri/src/ipc/commands.rs`](apps/desktop/src-tauri/src/ipc/commands.rs). Status **Partial** pending **§3.7** capability cross-check. MR review: clarify **#244** vs first-parent tip, **MAS-3b** labelling, single webview bundle + IPC, explicit **`sinks_add`**, full path in changelog link.
+
 ## [0.13.15] - 2026-05-02
 
 ### Added
