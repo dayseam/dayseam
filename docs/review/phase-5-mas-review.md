@@ -2,10 +2,10 @@
 
 **Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone))  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9a-phase5-review` · **PR:** [#242](https://github.com/dayseam/dayseam/pull/242) *(scaffold; update when superseded by the completion PR)*  
+**Branch:** `DAY-210-mas-9a-inventory` · **PR:** [#243](https://github.com/dayseam/dayseam/pull/243) *(§2 / §3.9 inventory pass — update head row when superseded)*  
 **Semver label:** *(typically `semver:patch` when closing **MAS-9a** with substantive findings; `semver:none` is OK for doc-only scaffolding PRs)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** *(tag or merge-base range for the MAS track being closed)*
+**Release / commit under review:** first-parent **`c9eb8d7`..`892369d`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** scaffold [#242](https://github.com/dayseam/dayseam/pull/242); captured 2026-05-02)
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -33,7 +33,7 @@ automation complete.”** State explicitly how this review closes each bar.
 
 ---
 
-## 1. Canonical MAS smoke (dogfood evidence — copy results into §5 or appendix)
+## 1. Canonical MAS smoke (dogfood evidence — copy results into §5, Appendix A, or a dedicated dogfood subsection)
 
 Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app-store.md#canonical-mas-smoke-checklist)):
 
@@ -50,22 +50,55 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
+**GitHub compare (full diff):** [`8aaab40...892369d`](https://github.com/dayseam/dayseam/compare/8aaab40...892369d) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+
 ### 2.1 Baseline and head
 
 | | Commit | Label |
 |---|--------|-------|
-| Baseline | *TBD* | *e.g. last commit before Phase 5 MAS track (or MAS-1a merge)* |
-| Head | *TBD* | *tip reviewed for capstone sign-off* |
+| Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
+| In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
+| Head (capture) | `892369d` | [#242](https://github.com/dayseam/dayseam/pull/242) — **MAS-9a** scaffold; tip of **`master`** when §2 / §3.9 inventory was drafted (update this row after **#243** merges if continuing on a newer tip) |
 
-### 2.2 PRs / merges in scope (first-parent narrative)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..892369d`, excluding `chore(release)`)
 
-| # | PR | Branch | Summary |
-|---|----|--------|---------|
-| *TBD* |  |  |  |
+| # | PR | Merge title |
+|---|----|---------------|
+| 216 | [#216](https://github.com/dayseam/dayseam/pull/216) | MAS-1a add mas Cargo feature and Tauri merge profile |
+| 217 | [#217](https://github.com/dayseam/dayseam/pull/217) | MAS stub entitlements + CI bundle verification |
+| 219 | [#219](https://github.com/dayseam/dayseam/pull/219) | **MAS-2a** — App Sandbox + network.client in MAS plist |
+| 220 | [#220](https://github.com/dayseam/dayseam/pull/220) | MAS-2b sandbox launch smoke + privacy inventory |
+| 221 | [#221](https://github.com/dayseam/dayseam/pull/221) | MAS-2c JIT entitlement compliance doc |
+| 222 | [#222](https://github.com/dayseam/dayseam/pull/222) | MAS-3 gate updater off Mac App Store SKU |
+| 223 | [#223](https://github.com/dayseam/dayseam/pull/223) | Add security_scoped_bookmarks table |
+| 224 | [#224](https://github.com/dayseam/dayseam/pull/224) | Bookmark helpers + RAII guard |
+| 225 | [#225](https://github.com/dayseam/dayseam/pull/225) | Local Git bookmark sync + MAS discovery |
+| 226 | [#226](https://github.com/dayseam/dayseam/pull/226) | MAS-4d Markdown sink bookmark rows |
+| 227 | [#227](https://github.com/dayseam/dayseam/pull/227) | Materialize security-scoped bookmark blobs |
+| 228 | [#228](https://github.com/dayseam/dayseam/pull/228) | Stale Local Git bookmark UX (MAS-4f) |
+| 229 | [#229](https://github.com/dayseam/dayseam/pull/229) | MAS-5a Keychain sandbox audit (docs) |
+| 230 | [#230](https://github.com/dayseam/dayseam/pull/230) | Split MAS-5b into 5b1 and 5b2 (plan + addendum) |
+| 231 | [#231](https://github.com/dayseam/dayseam/pull/231) | MAS-5b1 — distinct Application Support for MAS profile |
+| 232 | [#232](https://github.com/dayseam/dayseam/pull/232) | MAS-5b2 — Keychain service names for Mac App Store SKU |
+| 233 | [#233](https://github.com/dayseam/dayseam/pull/233) | Document MAS outbound HTTPS entitlements |
+| 234 | [#234](https://github.com/dayseam/dayseam/pull/234) | Add network.server for OAuth loopback |
+| 235 | [#235](https://github.com/dayseam/dayseam/pull/235) | Ship PrivacyInfo.xcprivacy |
+| 236 | [#236](https://github.com/dayseam/dayseam/pull/236) | Add MAS export compliance doc |
+| 237 | [#237](https://github.com/dayseam/dayseam/pull/237) | Add MAS App Review paste pack |
+| 238 | [#238](https://github.com/dayseam/dayseam/pull/238) | MAS bundle CI on tags and schedule |
+| 239 | [#239](https://github.com/dayseam/dayseam/pull/239) | MAS-8b local MAS build helper |
+| 240 | [#240](https://github.com/dayseam/dayseam/pull/240) | DAY-195 preflight on MAS packaging CI |
+| 241 | [#241](https://github.com/dayseam/dayseam/pull/241) | MAS-8d TestFlight upload workflow |
+| 242 | [#242](https://github.com/dayseam/dayseam/pull/242) | MAS-9a capstone review scaffold |
 
 ### 2.3 Surface under review
 
-*Shortstat, rough directory distribution, or “full MAS-touched tree” — TBD.*
+```text
+$ git diff --shortstat 8aaab40..892369d
+ 64 files changed, 3883 insertions(+), 403 deletions(-)
+```
+
+Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC, `distribution_profile`), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
 
 ---
 
@@ -112,9 +145,28 @@ beyond **packaging / entitlements / capability allow-lists / store metadata /
 documented UX deltas** needs a **linked removal issue + target** or **blocker
 sign-off** here.
 
-| Location | Pattern | Justified? | Removal issue (if any) |
-|----------|---------|------------|-------------------------|
-| *TBD* |  |  |  |
+Mechanical sweeps (repo root; requires [ripgrep](https://github.com/BurntSushi/ripgrep)):
+
+```bash
+rg 'feature\s*=\s*"mas"|cfg\(.*feature\s*=\s*"mas"|cfg\(not\(feature\s*=\s*"mas"\)\)|cfg\(all\(feature\s*=\s*"mas"' apps/desktop/src-tauri -g'*.rs'
+rg 'distribution_profile|"mas"' apps/desktop/src/distribution apps/desktop/src/features/updater -g'*.{ts,tsx}'
+```
+
+The Rust pattern is intentionally prefix-oriented (it matches `#[cfg(all(feature = "mas", …))]` without enumerating every `cfg` combinator). Re-run after meaningful MAS edits.
+
+| Location | What diverges | Justified per plan bucket? | Removal issue (if any) |
+|----------|----------------|-----------------------------|-------------------------|
+| [`apps/desktop/src-tauri/Cargo.toml`](../../apps/desktop/src-tauri/Cargo.toml) | `[features] mas = []` gate + docs | Yes — **feature / packaging** | — |
+| [`apps/desktop/src-tauri/tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json) | Bundle id + `entitlements.mas.plist` | Yes — **packaging / entitlements** | — |
+| [`apps/desktop/package.json`](../../apps/desktop/package.json) | `tauri:build:mas` script | Yes — **packaging** | — |
+| [`apps/desktop/src-tauri/src/startup.rs`](../../apps/desktop/src-tauri/src/startup.rs) | `DATA_SUBDIR` / path roots under `#[cfg(feature = "mas")]` | Yes — **MAS-5b1** coexistence / **MAS-0b** §10 | — |
+| [`apps/desktop/src-tauri/src/lib.rs`](../../apps/desktop/src-tauri/src/lib.rs) | Tauri builder + capability split | Yes — **packaging / capabilities** | — |
+| [`apps/desktop/src-tauri/src/keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) | Keychain service / account strings | Yes — **MAS-5b2** | — |
+| [`apps/desktop/src-tauri/src/main.rs`](../../apps/desktop/src-tauri/src/main.rs) | Updater / menu / single-instance registration | Yes — **MAS-3** updater removal | — |
+| [`apps/desktop/src-tauri/src/local_git_scan.rs`](../../apps/desktop/src-tauri/src/local_git_scan.rs) | Default scan roots vs security-scoped MAS discovery | Yes — **MAS-4c** filesystem contract | — |
+| [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | Bookmarks, `distribution_profile`, folder pickers, `#[cfg(all(feature = "mas", target_os = "macos"))]` branches | Yes — **IPC + FS** tasks **MAS-4a–f**; **§3.1 / §3.4** must still sign off pass vs gap | — |
+| [`apps/desktop/src/distribution/DistributionProfileProvider.tsx`](../../apps/desktop/src/distribution/DistributionProfileProvider.tsx) | `invoke("distribution_profile")` → `"mas"` \| `"direct"` | Yes — **MAS-3** documented UX delta (feeds `useUpdater` gate) | — |
+| [`apps/desktop/src/distribution/distributionProfileContext.ts`](../../apps/desktop/src/distribution/distributionProfileContext.ts) | `DistributionProfileLoaded` union | Yes — typed **store metadata** surface | — |
 
 ---
 

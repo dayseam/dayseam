@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Documentation
+
+- **DAY-210 / MAS-9a (inventory):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 fills **MAS-1a** ([#216](https://github.com/dayseam/dayseam/pull/216)) through **MAS-9a** scaffold ([#242](https://github.com/dayseam/dayseam/pull/242)) baseline/head, first-parent PR table, and `git diff --shortstat` surface; §3.9 adds a **`cfg` / `mas`** + frontend **`distribution_profile`** inventory with `rg` commands (documents **ripgrep** dependency + pattern intent). Deeper lenses remain **TBD**. MR review: **#243** metadata, **MAS-2a** row label, Canonical smoke §1 pointer, explicit [`mas-sandbox-launch-smoke.sh`](scripts/ci/mas-sandbox-launch-smoke.sh) link, head-row refresh note after merge.
+
 ## [0.13.15] - 2026-05-02
 
 ### Added
