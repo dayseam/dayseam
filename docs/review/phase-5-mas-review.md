@@ -2,10 +2,10 @@
 
 **Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone))  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9a-lenses-ipc` · **PR:** [#244](https://github.com/dayseam/dayseam/pull/244)  
+**Branch:** `DAY-210-mas-9a-lenses-fs` · **PR:** [#245](https://github.com/dayseam/dayseam/pull/245)  
 **Semver label:** *(typically `semver:patch` when closing **MAS-9a** with substantive findings; `semver:none` is OK for doc-only scaffolding PRs)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** first-parent **`c9eb8d7`..`f9b9d68`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** inventory [#243](https://github.com/dayseam/dayseam/pull/243); captured 2026-05-02). **[#244](https://github.com/dayseam/dayseam/pull/244)** extends **§3.1** only (desk review prose); it does **not** add further first-parent merges beyond **`f9b9d68`** — refresh **Head** again after **#244** merges if the tip moves.
+**Release / commit under review:** first-parent **`c9eb8d7`..`7b88204`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** IPC lens [#244](https://github.com/dayseam/dayseam/pull/244); captured 2026-05-02). **[#245](https://github.com/dayseam/dayseam/pull/245)** extends **§3.4** only (desk review prose) — refresh **Head** again after **#245** merges if **`master`** moves.
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -50,7 +50,7 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
-**GitHub compare (full diff):** [`8aaab40...f9b9d68`](https://github.com/dayseam/dayseam/compare/8aaab40...f9b9d68) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+**GitHub compare (full diff):** [`8aaab40...7b88204`](https://github.com/dayseam/dayseam/compare/8aaab40...7b88204) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
 
 ### 2.1 Baseline and head
 
@@ -58,9 +58,9 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 |---|--------|-------|
 | Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
 | In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
-| Head (capture) | `f9b9d68` | [#243](https://github.com/dayseam/dayseam/pull/243) — **MAS-9a** inventory (§2 + §3.9); tip of **`master`** at that merge (**§3.1** prose added in [#244](https://github.com/dayseam/dayseam/pull/244)) |
+| Head (capture) | `7b88204` | [#244](https://github.com/dayseam/dayseam/pull/244) — **MAS-9a** §2 refresh + **§3.1 IPC** lens; tip of **`master`** at that merge (**§3.4** prose in [#245](https://github.com/dayseam/dayseam/pull/245)) |
 
-### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..f9b9d68`, excluding `chore(release)`)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..7b88204`, excluding `chore(release)`)
 
 | # | PR | Merge title |
 |---|----|---------------|
@@ -91,12 +91,13 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 | 241 | [#241](https://github.com/dayseam/dayseam/pull/241) | MAS-8d TestFlight upload workflow |
 | 242 | [#242](https://github.com/dayseam/dayseam/pull/242) | MAS-9a capstone review scaffold |
 | 243 | [#243](https://github.com/dayseam/dayseam/pull/243) | MAS-9a review §2 + cfg inventory |
+| 244 | [#244](https://github.com/dayseam/dayseam/pull/244) | MAS-9a §2 refresh + §3.1 IPC lens |
 
 ### 2.3 Surface under review
 
 ```text
-$ git diff --shortstat 8aaab40..f9b9d68
- 64 files changed, 3940 insertions(+), 403 deletions(-)
+$ git diff --shortstat 8aaab40..7b88204
+ 64 files changed, 3952 insertions(+), 403 deletions(-)
 ```
 
 Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC, `distribution_profile`), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
@@ -128,7 +129,10 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 ### 3.4 Filesystem (security-scoped bookmarks, stale/rename, symlinks per **MAS-0b**)
 
-*TBD*
+- **Status:** **Partial** — desk review of bookmark persistence + runtime helpers; symlink “escape hatch” behaviour is **not** audited line-by-line in this lens (policy in **MAS-0b** §9.4; exercise via **Canonical MAS smoke** **§1**, item 3 — Local Git scan on nested repo layout).
+- **Evidence:** [`security_scoped/mod.rs`](../../apps/desktop/src-tauri/src/security_scoped/mod.rs) (**MAS-4b** — `SecurityScopedGuard` / `from_bookmark`, `ResolvedBookmark::is_stale`, `create_directory_bookmark`, non-macOS stubs), [`security_scoped_bookmarks.rs`](../../crates/dayseam-db/src/repos/security_scoped_bookmarks.rs) + [`0007_security_scoped_bookmarks.sql`](../../crates/dayseam-db/migrations/0007_security_scoped_bookmarks.sql) (**MAS-4a**), [`ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) sync/materialize + **MAS-4f** stale-root toasts (cross-ref **§3.1**), [`local_git_scan.rs`](../../apps/desktop/src-tauri/src/local_git_scan.rs) (**MAS-4c** discovery).
+
+**Symlink / rename policy:** [**MAS-0b**](../design/2026-phase-5-mas-architecture.md#94-symlinks) (architecture **§9.4 Symlinks**) documents canonicalization on persist, scan-root containment, and `meta_json` for bookmark rows. This lens assumes implementation tracks that doc; **Gap / follow-up:** file an issue if dogfood (**MAS-9c**) finds a divergence.
 
 ### 3.5 OAuth (loopback, parity with direct)
 
