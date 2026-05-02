@@ -115,6 +115,8 @@ Implementation: **MAS-8d** in [Block MAS-8](#mas-block-8-ci-release).
 
 ---
 
+<a id="canonical-mas-smoke-checklist"></a>
+
 ## Canonical MAS smoke checklist (reuse every manual / dogfood pass)
 
 Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
@@ -280,6 +282,8 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 | **MAS-8d** | **Automated Connect upload** | **`v0.13.24`** | **Done:** [`mas-connect-upload.yml`](../../.github/workflows/mas-connect-upload.yml) — **`workflow_dispatch`**, **`continue-on-error`**, **TestFlight** via **Transporter** + **`upload-testflight-build`** pinned to **v4.1.0** (**`994cd4f`**, `app-type: macos`, **`DAYSEAM_ASC_*`** secrets, **`uses-non-exempt-encryption: false`**); workspace-relative **`.pkg`** + secret gate before upload; [`MAS-CONNECT-UPLOAD.md`](../../docs/release/MAS-CONNECT-UPLOAD.md) + [`mas-connect-upload-preflight.sh`](../../scripts/release/mas/mas-connect-upload-preflight.sh). **Non-blocking** vs [`release.yml`](../../.github/workflows/release.yml). **`.pkg` CI / artefact wiring** → **`MAS-8d-followup`**. |
 
 ---
+
+<a id="mas-block-9-capstone"></a>
 
 ### Block MAS-9 — Capstone
 
