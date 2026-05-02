@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Added
+
+- **DAY-210 / MAS-8b:** [`scripts/release/mas/README.md`](scripts/release/mas/README.md) documents disposable local MAS packaging scaffolding (**replace or delete when MAS-8d**); [`scripts/release/mas/build-mas-app.sh`](scripts/release/mas/build-mas-app.sh) runs the MAS `tauri build --bundles app` profile (no updater artifacts), [`check-entitlements.sh`](scripts/ci/check-entitlements.sh) on **`entitlements.mas.plist`**, **`plutil -lint`** on **`PrivacyInfo.xcprivacy`**, the same post-build verify scripts as CI, optional **`mas-sandbox-launch-smoke.sh`** (skip with **`--no-smoke`**), and a clear error if **`jq`** is missing (same **`cargo metadata`** pattern as [`build-dmg.sh`](scripts/release/build-dmg.sh)). [`ci.yml`](.github/workflows/ci.yml) **`shell-scripts`** and [`mas-package-verify.yml`](.github/workflows/mas-package-verify.yml) run **`bash -n`** on the script so syntax regressions fail at PR time.
+
 ## [0.13.13] - 2026-05-02
 
 ### Changed
