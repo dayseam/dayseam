@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.13] - 2026-05-02
+
 ### Changed
 
 - **DAY-210 / MAS-8a:** Add [`.github/workflows/mas-package-verify.yml`](.github/workflows/mas-package-verify.yml) so the same **`desktop-bundle`**-grade macOS work as [`ci.yml`](.github/workflows/ci.yml) (**direct + MAS** `tauri build --bundles app` with **`createUpdaterArtifacts: false`**, [`verify-tauri-bundle-entitlements.sh`](scripts/ci/verify-tauri-bundle-entitlements.sh), [`verify-bundle-privacy-manifest.sh`](scripts/ci/verify-bundle-privacy-manifest.sh), [`mas-sandbox-launch-smoke.sh`](scripts/ci/mas-sandbox-launch-smoke.sh)) also runs on **`v*`** tag push, **`workflow_dispatch`**, and a **weekly** schedule — plus **`bash -n`** on all three verify/smoke scripts, **`plutil -lint`** on source **`PrivacyInfo.xcprivacy`**, and **`permissions: contents: read`**. Job id **`mas-8a-desktop-bundle`** avoids clashing with **`ci.yml`**’s `desktop-bundle-profiles` in the Actions UI. [`docs/design/2026-phase-5-mas-architecture.md`](docs/design/2026-phase-5-mas-architecture.md) §21 documents the split; keep the two workflow definitions in sync.
