@@ -2,10 +2,10 @@
 
 **Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone))  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9a-lenses-fs` · **PR:** [#245](https://github.com/dayseam/dayseam/pull/245)  
+**Branch:** `DAY-210-mas-9a-lenses-errors` · **PR:** [#246](https://github.com/dayseam/dayseam/pull/246)  
 **Semver label:** *(typically `semver:patch` when closing **MAS-9a** with substantive findings; `semver:none` is OK for doc-only scaffolding PRs)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** first-parent **`c9eb8d7`..`7b88204`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** IPC lens [#244](https://github.com/dayseam/dayseam/pull/244); captured 2026-05-02). **[#245](https://github.com/dayseam/dayseam/pull/245)** extends **§3.4** only (desk review prose) — refresh **Head** again after **#245** merges if **`master`** moves.
+**Release / commit under review:** first-parent **`c9eb8d7`..`fe1d079`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.4 lens [#245](https://github.com/dayseam/dayseam/pull/245); captured 2026-04-30). **[#246](https://github.com/dayseam/dayseam/pull/246)** extends **§2** (post-#245 tip) + **§3.2 Errors** (desk review prose).
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -50,7 +50,7 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
-**GitHub compare (full diff):** [`8aaab40...7b88204`](https://github.com/dayseam/dayseam/compare/8aaab40...7b88204) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+**GitHub compare (full diff):** [`8aaab40...fe1d079`](https://github.com/dayseam/dayseam/compare/8aaab40...fe1d079) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
 
 ### 2.1 Baseline and head
 
@@ -58,9 +58,9 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 |---|--------|-------|
 | Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
 | In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
-| Head (capture) | `7b88204` | [#244](https://github.com/dayseam/dayseam/pull/244) — **MAS-9a** §2 refresh + **§3.1 IPC** lens; tip of **`master`** at that merge (**§3.4** prose in [#245](https://github.com/dayseam/dayseam/pull/245)) |
+| Head (capture) | `fe1d079` | [#245](https://github.com/dayseam/dayseam/pull/245) — **MAS-9a** §3.4 Filesystem lens + §2 polish; tip of **`master`** at that merge |
 
-### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..7b88204`, excluding `chore(release)`)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..fe1d079`, excluding `chore(release)`)
 
 | # | PR | Merge title |
 |---|----|---------------|
@@ -92,12 +92,13 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 | 242 | [#242](https://github.com/dayseam/dayseam/pull/242) | MAS-9a capstone review scaffold |
 | 243 | [#243](https://github.com/dayseam/dayseam/pull/243) | MAS-9a review §2 + cfg inventory |
 | 244 | [#244](https://github.com/dayseam/dayseam/pull/244) | MAS-9a §2 refresh + §3.1 IPC lens |
+| 245 | [#245](https://github.com/dayseam/dayseam/pull/245) | MAS-9a §3.4 filesystem lens + MR review polish |
 
 ### 2.3 Surface under review
 
 ```text
-$ git diff --shortstat 8aaab40..7b88204
- 64 files changed, 3952 insertions(+), 403 deletions(-)
+$ git diff --shortstat 8aaab40..fe1d079
+ 64 files changed, 3961 insertions(+), 403 deletions(-)
 ```
 
 Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC, `distribution_profile`), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
@@ -121,7 +122,19 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 ### 3.2 Errors (taxonomy, sandbox-specific surfaces)
 
-*TBD*
+- **Status:** **Partial** — `DayseamError` + allocated **`ipc.*`** codes for bookmark flows are line-sourced; exhaustive per-command ↔ code coverage stays with **§3.7** (capability matrix).
+
+- **Evidence:** [`error.rs`](../../crates/dayseam-core/src/error.rs) (`DayseamError` variants and stable `code` on every IPC-facing shape), [`error_codes.rs`](../../crates/dayseam-core/src/error_codes.rs) (`IPC_SECURITY_SCOPED_BOOKMARK_*` and adjacent IPC constants), [`ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) (`invalid_config` / `internal`, `map_bookmark_materialize_db_error`, bookmark materialize call sites).
+
+**Taxonomy:** The core crate documents that every UI-visible failure crosses the IPC boundary as **`DayseamError`** with a stable dot-delimited `code` so the frontend can key copy and retry behaviour without parsing prose (`error.rs` module docs). Variants separate auth (`Auth` with `retryable`), structural config (`InvalidConfig`), transport / OS (`Io`, `Network`), operational internals (`Internal`), and non-errors (`Cancelled`).
+
+**MAS bookmark materialization (`MAS-4e–f`):** [`IPC_SECURITY_SCOPED_BOOKMARK_MATERIALIZE_FAILED`](../../crates/dayseam-core/src/error_codes.rs) covers logical-path encoding failures and `create_directory_bookmark` failures — surfaced as **`InvalidConfig`** so the dialog can prompt re-grant or path fixes. [`IPC_SECURITY_SCOPED_BOOKMARK_ROW_MISSING`](../../crates/dayseam-core/src/error_codes.rs) maps `DbError::InvalidData` from transactional blob replacement via `map_bookmark_materialize_db_error` in **`ipc/commands.rs`**. [`IPC_SECURITY_SCOPED_BOOKMARK_STALE_OR_UNUSABLE_SCAN_ROOT`](../../crates/dayseam-core/src/error_codes.rs) is reserved for **MAS-4f** stale-root diagnostics; the constant’s doc comment states it is **not** emitted as a command error in the initial slice — discovery logs and toasts instead (cross-ref **§3.1** / **§3.4**).
+
+**Sync vs materialize errors:** `sync_local_git_security_scoped_rows` / `sync_markdown_sink_security_scoped_rows` map DB failures through `internal("security_scoped_bookmarks.sync…", e)` (stable log `ctx`, generic **`Internal`** to the client) whereas macOS materialization uses the explicit bookmark codes above — intentional split between placeholder alignment vs user-actionable grant failures.
+
+**Other sandbox-adjacent IPC codes (hooks for §3.3 / §3.5 / §3.7):** [`IPC_SHELL_OPEN_FAILED`](../../crates/dayseam-core/src/error_codes.rs) explicitly includes sandbox denial in its doc string; connector `ipc.*.keychain_*` constants cover Keychain read/write failures during source add/reconnect.
+
+**Gap / follow-up:** No issue opened — **§3.7** should confirm every `#[tauri::command]` error path either reuses an `error_codes` constant or is deliberately generic `Internal` with a stable tracing `ctx` only.
 
 ### 3.3 Keychain (SKU prefix, coexistence with direct build)
 
@@ -176,7 +189,7 @@ The Rust pattern is intentionally prefix-oriented (it matches `#[cfg(all(feature
 | [`apps/desktop/src-tauri/src/keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) | Keychain service / account strings | Yes — **MAS-5b2** | — |
 | [`apps/desktop/src-tauri/src/main.rs`](../../apps/desktop/src-tauri/src/main.rs) | Updater / menu / single-instance registration | Yes — **MAS-3** updater removal | — |
 | [`apps/desktop/src-tauri/src/local_git_scan.rs`](../../apps/desktop/src-tauri/src/local_git_scan.rs) | Default scan roots vs security-scoped MAS discovery | Yes — **MAS-4c** filesystem contract | — |
-| [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | Bookmarks, `distribution_profile`, folder pickers, `#[cfg(all(feature = "mas", target_os = "macos"))]` branches | Yes — **IPC + FS** tasks **MAS-4a–f**; **§3.1 / §3.4** must still sign off pass vs gap | — |
+| [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | Bookmarks, `distribution_profile`, folder pickers, `#[cfg(all(feature = "mas", target_os = "macos"))]` branches | Yes — **IPC + FS** tasks **MAS-4a–f**; **§3.1 / §3.2 / §3.4** must still sign off pass vs gap | — |
 | [`apps/desktop/src/distribution/DistributionProfileProvider.tsx`](../../apps/desktop/src/distribution/DistributionProfileProvider.tsx) | `invoke("distribution_profile")` → `"mas"` \| `"direct"` | Yes — **MAS-3** documented UX delta (feeds `useUpdater` gate) | — |
 | [`apps/desktop/src/distribution/distributionProfileContext.ts`](../../apps/desktop/src/distribution/distributionProfileContext.ts) | `DistributionProfileLoaded` union | Yes — typed **store metadata** surface | — |
 
