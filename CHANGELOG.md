@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.15] - 2026-05-02
+
 ### Added
 
 - **DAY-210 / MAS-8d:** [`.github/workflows/mas-connect-upload.yml`](.github/workflows/mas-connect-upload.yml) adds **`workflow_dispatch`** App Store Connect / **TestFlight** upload for **macOS `.pkg`** builds using [`apple-actions/upload-testflight-build`](https://github.com/apple-actions/upload-testflight-build) **v4.1.0** (pinned commit **`994cd4f`**), **`backend: transporter`** (Apple **iTMSTransporter** install on the runner), **`uses-non-exempt-encryption: "false"`** aligned with [`MAS-EXPORT-COMPLIANCE.md`](docs/compliance/MAS-EXPORT-COMPLIANCE.md), repo secrets **`DAYSEAM_ASC_*`**, and job-level **`continue-on-error: true`** so failures never block [`release.yml`](.github/workflows/release.yml). Non-**`dry_run`** gates treat **`inputs.dry_run`** and **`github.event.inputs.dry_run == 'false'`** so upload never skips validation; the gate step writes a normalized **`rel_path`** (strips **`.`/**) to **`GITHUB_OUTPUT`** for **`app-path`**. Non-**`dry_run`** runs require a **workspace-relative** **`.pkg`** whose real path stays under **`GITHUB_WORKSPACE`**, plus all three ASC secrets, before Transporter install. [`docs/release/MAS-CONNECT-UPLOAD.md`](docs/release/MAS-CONNECT-UPLOAD.md) is the operator runbook (fixed **`mas-package-verify.yml`** relative link); [`mas-connect-upload-preflight.sh`](scripts/release/mas/mas-connect-upload-preflight.sh) supports the default **`dry_run: true`** path and explicit **`false`/`False`/`0`** dry-run overrides. **Store-signed `.pkg` CI** remains **`MAS-8d-followup`** until packaging exports an artefact for **`mas_pkg_path`**.
