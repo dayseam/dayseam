@@ -1,0 +1,101 @@
+# MAS-8a — full Mac direct + MAS `tauri build` proof on tag / schedule / manual.
+#
+# Keep steps aligned with `.github/workflows/ci.yml` → `desktop-bundle-profiles`
+# (same `createUpdaterArtifacts: false` merge, same verify + MAS-2b smoke scripts).
+#
+# `schedule` always evaluates the workflow file on the **default branch**; `push`
+# tags use the workflow (and tree) at the **tagged commit** — tags cut before this
+# file landed will not run this workflow.
+
+name: mas-package-verify
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 06:00 UTC Mondays — drift on `master` between PRs still exercises packaging.
+    - cron: "0 6 * * 1"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mas-package-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mas-8a-desktop-bundle:
+    name: desktop-bundle (direct + MAS) [MAS-8a]
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (matches rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop frontend (Vite)
+        run: pnpm --filter @dayseam/desktop build
+
+      - name: bash -n verify-bundle-privacy-manifest.sh (syntax)
+        run: bash -n scripts/ci/verify-bundle-privacy-manifest.sh
+      - name: bash -n verify-tauri-bundle-entitlements.sh (syntax)
+        run: bash -n scripts/ci/verify-tauri-bundle-entitlements.sh
+      - name: bash -n mas-sandbox-launch-smoke.sh (syntax)
+        run: bash -n scripts/ci/mas-sandbox-launch-smoke.sh
+      - name: plutil -lint PrivacyInfo.xcprivacy (source)
+        run: plutil -lint "${{ github.workspace }}/apps/desktop/src-tauri/PrivacyInfo.xcprivacy"
+
+      - name: Tauri bundle — direct SKU (`app` only)
+        working-directory: apps/desktop
+        run: >-
+          pnpm exec tauri build --bundles app
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Codesign entitlements — direct
+        run: |
+          TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
+          APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
+          test -d "$APP"
+          bash scripts/ci/verify-tauri-bundle-entitlements.sh "$APP" direct
+          bash scripts/ci/verify-bundle-privacy-manifest.sh "$APP"
+
+      - name: Tauri bundle — MAS merge profile (`app` only)
+        working-directory: apps/desktop
+        run: >-
+          pnpm exec tauri build --bundles app
+          --config src-tauri/tauri.mas.conf.json
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          --features mas
+
+      - name: Codesign entitlements — MAS (sandbox plist)
+        run: |
+          TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
+          APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
+          test -d "$APP"
+          bash scripts/ci/verify-tauri-bundle-entitlements.sh "$APP" mas
+          bash scripts/ci/verify-bundle-privacy-manifest.sh "$APP"
+
+      - name: MAS sandbox launch smoke (real shell)
+        run: |
+          TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path Cargo.toml | jq -r '.target_directory')"
+          APP="${TARGET_DIR}/release/bundle/macos/Dayseam.app"
+          test -d "$APP"
+          bash scripts/ci/mas-sandbox-launch-smoke.sh "$APP" 22
