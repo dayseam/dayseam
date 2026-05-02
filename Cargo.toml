@@ -22,7 +22,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.13.16"
+version = "0.13.17"
 edition = "2021"
 license = "AGPL-3.0-only"
 repository = "https://github.com/dayseam/dayseam"
