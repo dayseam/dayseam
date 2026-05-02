@@ -50,6 +50,9 @@ jobs:
   # **MAS-1b / MAS-2a / MAS-2b.** Prove both Tauri merge profiles produce a signed `.app`,
   # that `codesign` embeds the expected entitlement keys, and that the
   # **MAS** bundle’s real binary stays alive briefly under App Sandbox (**MAS-2b**).
+  # **MAS-8a:** the same steps also run from `mas-package-verify.yml` → job
+  # `mas-8a-desktop-bundle` on `v*` tags, `workflow_dispatch`, and a weekly schedule
+  # — keep those files in sync.
   # Separate from the `rust` job so `cargo test` stays the long pole and this job
   # can use a tighter cache key for bundling only.
   desktop-bundle-profiles:
