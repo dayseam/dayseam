@@ -80,6 +80,8 @@ jobs:
         run: bash -n scripts/ci/mas-sandbox-launch-smoke.sh
       - name: bash -n build-mas-app.sh (syntax, MAS-8b)
         run: bash -n scripts/release/mas/build-mas-app.sh
+      - name: bash -n mas-connect-upload-preflight.sh (syntax, MAS-8d)
+        run: bash -n scripts/release/mas/mas-connect-upload-preflight.sh
       - name: plutil -lint PrivacyInfo.xcprivacy (source)
         run: plutil -lint "${{ github.workspace }}/apps/desktop/src-tauri/PrivacyInfo.xcprivacy"
 

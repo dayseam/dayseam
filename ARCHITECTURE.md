@@ -342,7 +342,7 @@ dayseam/
 │   ├── plan/                   # Dated implementation plans per phase
 │   └── ARCHITECTURE.md ←── you are here (at repo root)
 ├── scripts/                    # CI + release + dev helpers
-├── .github/workflows/          # CI (`ci.yml`), semver labels, **MAS-8a** `mas-package-verify.yml` (tags / schedule)
+├── .github/workflows/          # CI (`ci.yml`), semver labels, **MAS-8a** `mas-package-verify.yml` (tags / schedule), **MAS-8d** `mas-connect-upload.yml` (TestFlight / `.pkg`)
 ├── Cargo.toml                  # Rust workspace manifest
 ├── pnpm-workspace.yaml         # JS workspace manifest
 ├── VERSION                     # Single source of truth for app version
