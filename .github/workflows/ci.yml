@@ -269,6 +269,8 @@ jobs:
         run: bash scripts/ci/check-entitlements.sh
       - name: bash -n mas-sandbox-launch-smoke.sh (syntax)
         run: bash -n scripts/ci/mas-sandbox-launch-smoke.sh
+      - name: bash -n build-mas-app.sh (syntax, MAS-8b)
+        run: bash -n scripts/release/mas/build-mas-app.sh
 
   # DAY-195: same extract-release-notes preflight release.yml runs,
   # but at PR time — empty [Unreleased] used to fail only post-merge.

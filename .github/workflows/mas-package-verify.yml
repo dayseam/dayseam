@@ -60,6 +60,8 @@ jobs:
         run: bash -n scripts/ci/verify-tauri-bundle-entitlements.sh
       - name: bash -n mas-sandbox-launch-smoke.sh (syntax)
         run: bash -n scripts/ci/mas-sandbox-launch-smoke.sh
+      - name: bash -n build-mas-app.sh (syntax, MAS-8b)
+        run: bash -n scripts/release/mas/build-mas-app.sh
       - name: plutil -lint PrivacyInfo.xcprivacy (source)
         run: plutil -lint "${{ github.workspace }}/apps/desktop/src-tauri/PrivacyInfo.xcprivacy"
 

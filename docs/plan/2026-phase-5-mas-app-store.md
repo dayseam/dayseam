@@ -275,7 +275,7 @@ Copy into PRs or **`docs/review/phase-5-mas-review.md`** as evidence:
 | ID | Task | Target version | Sub-tasks |
 |----|------|----------------|-----------|
 | **MAS-8a** | GHA: **direct + MAS** bundles on tag / schedule | **`v0.13.21`** | **Done:** [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml) — same `tauri build --bundles app` pair as **`ci.yml`** `desktop-bundle-profiles`, [`verify-tauri-bundle-entitlements.sh`](../../scripts/ci/verify-tauri-bundle-entitlements.sh) + [`verify-bundle-privacy-manifest.sh`](../../scripts/ci/verify-bundle-privacy-manifest.sh), [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh); triggers: `push` **`v*`** tags, `workflow_dispatch`, weekly `schedule`; `bash -n` on the three verify/smoke scripts + `plutil -lint` on source **`PrivacyInfo.xcprivacy`**. |
-| **MAS-8b** | **`scripts/release/`** MAS helper | **`v0.13.22`** | **Disposable scaffolding** until **MAS-8d** tool choice is final; README must say **replace or delete** when **MAS-8d** lands. |
+| **MAS-8b** | **`scripts/release/`** MAS helper | **`v0.13.22`** | **Done:** [`scripts/release/mas/README.md`](../../scripts/release/mas/README.md) + [`build-mas-app.sh`](../../scripts/release/mas/build-mas-app.sh) — local MAS `Dayseam.app` + CI-parity verify/smoke; **`bash -n`** in [`ci.yml`](../../.github/workflows/ci.yml) + [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml); **replace or delete when MAS-8d**; architecture §21. |
 | **MAS-8c** | Changelog / **DAY-195** gates for MAS releases | **`v0.13.23`** | `check-unreleased-for-semver-pr.sh` mock run. |
 | **MAS-8d** | **Automated Connect upload** | **`v0.13.24`** | Non-blocking vs direct release (document); secrets in GHA only; **TestFlight-first** rollout. **`MAS-8d-followup`** if slipped post–bar A. |
 
@@ -364,3 +364,4 @@ MAS-9a ──► MAS-9c
 | 2026-05-01 | **MAS-7b:** [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) + architecture §22; **MAS-8d** linkage; MR review tightened ENC/WebKit/minisign wording + Apple doc link; **MAS-JIT** cross-link. |
 | 2026-05-01 | **MAS-7c:** [`MAS-APP-REVIEW-NOTES.md`](../compliance/MAS-APP-REVIEW-NOTES.md) + architecture §23 + **MAS-JIT** / **MAS-EXPORT** cross-links. |
 | 2026-05-01 | **MAS-8a:** [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml) + **`ci.yml`** cross-reference comment; architecture §21 / §20; MR review: job rename, `permissions`, extra **`bash -n`**, plan row (**direct + MAS**). |
+| 2026-05-01 | **MAS-8b:** [`scripts/release/mas/`](../../scripts/release/mas/) README + **`build-mas-app.sh`**; §21 local helper; **MAS-8d** replace/delete contract. |
