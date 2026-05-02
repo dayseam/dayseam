@@ -2,10 +2,10 @@
 
 **Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone))  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9a-lenses-csp` · **PR:** [#251](https://github.com/dayseam/dayseam/pull/251)  
+**Branch:** `DAY-210-mas-9a-lenses-bars-39` · **PR:** [#252](https://github.com/dayseam/dayseam/pull/252)  
 **Semver label:** *(typically `semver:patch` when closing **MAS-9a** with substantive findings; `semver:none` is OK for doc-only scaffolding PRs)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** first-parent **`c9eb8d7`..`429e71d`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.7 lens [#250](https://github.com/dayseam/dayseam/pull/250); captured 2026-05-08). **[#251](https://github.com/dayseam/dayseam/pull/251)** extends **§2** (post-#250 tip) + **§3.8 CSP / WebView** (desk review prose) — after **#251** lands on **`master`**, bump **§2** (**Head**, compare, shortstat, **§2.2** row **#251**) through the **#251** merge commit.
+**Release / commit under review:** first-parent **`c9eb8d7`..`8cb1362`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** §3.8 lens [#251](https://github.com/dayseam/dayseam/pull/251); captured 2026-05-09). **[#252](https://github.com/dayseam/dayseam/pull/252)** extends **§2** (post-#251 tip) + **§0 exit bars** + **§3.9** inventory sign-off + **§5** handoff notes — after **#252** lands on **`master`**, bump **§2** (**Head**, compare, shortstat, **§2.2** row **#252**) through the **#252** merge commit.
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -25,11 +25,11 @@ automation complete.”** State explicitly how this review closes each bar.
 
 | Bar | Definition | Status in this review |
 |-----|------------|------------------------|
-| **A. Engineering complete** | Sandboxed MAS build is **store-compatible**: real shell, bookmarks + Keychain + OAuth + connectors + sinks under sandbox; **manual** upload to App Store Connect succeeds if that is the path in use; **MAS-9a** (this doc) + **MAS-9c** dogfood done; **MAS-9b** clears P0/P1 for bar A. | *TBD — yes / partial / no + notes* |
-| **B. Release automation complete** | Automated Connect upload on the same cadence as GitHub Releases (or successor); export compliance docs align with upload metadata. | *TBD — **MAS-8d** merged: [`mas-connect-upload.yml`](../../.github/workflows/mas-connect-upload.yml) + [`MAS-CONNECT-UPLOAD.md`](../release/MAS-CONNECT-UPLOAD.md); store-signed **`.pkg` in CI** may remain **MAS-8d-followup** — state which path was used for evidence.* |
+| **A. Engineering complete** | Sandboxed MAS build is **store-compatible**: real shell, bookmarks + Keychain + OAuth + connectors + sinks under sandbox; **manual** upload to App Store Connect succeeds if that is the path in use; **MAS-9a** (this doc) + **MAS-9c** dogfood done; **MAS-9b** clears P0/P1 for bar A. | **Partial** — **§3.1–§3.9** desk lenses are recorded (**Partial** where each lens defers hardware dogfood, exhaustive error mapping, or line-by-line audits); **MAS-9b** (P0/P1 sweep) + **MAS-9c** (signed **MAS** evidence + **§1** smoke) still gate a **Pass** for bar A per plan. |
+| **B. Release automation complete** | Automated Connect upload on the same cadence as GitHub Releases (or successor); export compliance docs align with upload metadata. | **Partial** — **MAS-8d** [`mas-connect-upload.yml`](../../.github/workflows/mas-connect-upload.yml) + [`MAS-CONNECT-UPLOAD.md`](../release/MAS-CONNECT-UPLOAD.md) + [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) are merged; store-signed **`.pkg` in CI** may remain **MAS-8d-followup** (architecture §21). This review iteration does **not** assert a specific operator upload path — record **manual** vs **MAS-8d** `workflow_dispatch` in **Appendix A**, **§5**, or **MAS-9c** notes when evidence exists. |
 
 **MAS-9a** must state whether production uploads were **manual** or **automated**
-(per plan executive summary).
+(per plan executive summary) — **deferred** to **MAS-9c** / operator notes until a dogfood run files evidence.
 
 ---
 
@@ -50,7 +50,7 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
-**GitHub compare (full diff):** [`8aaab40...429e71d`](https://github.com/dayseam/dayseam/compare/8aaab40...429e71d) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+**GitHub compare (full diff):** [`8aaab40...8cb1362`](https://github.com/dayseam/dayseam/compare/8aaab40...8cb1362) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
 
 ### 2.1 Baseline and head
 
@@ -58,9 +58,9 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 |---|--------|-------|
 | Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
 | In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
-| Head (capture) | `429e71d` | [#250](https://github.com/dayseam/dayseam/pull/250) — **MAS-9a** §2 post-#249 + **§3.7 Capability** lens; tip of **`master`** at that merge |
+| Head (capture) | `8cb1362` | [#251](https://github.com/dayseam/dayseam/pull/251) — **MAS-9a** §2 post-#250 + **§3.8 CSP / WebView** lens; tip of **`master`** at that merge |
 
-### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..429e71d`, excluding `chore(release)`)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..8cb1362`, excluding `chore(release)`)
 
 | # | PR | Merge title |
 |---|----|---------------|
@@ -98,12 +98,13 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 | 248 | [#248](https://github.com/dayseam/dayseam/pull/248) | MAS-9a §2 post-#247 + §3.5 OAuth lens |
 | 249 | [#249](https://github.com/dayseam/dayseam/pull/249) | MAS-9a §2 post-#248 + §3.6 Subprocesses lens |
 | 250 | [#250](https://github.com/dayseam/dayseam/pull/250) | MAS-9a §2 post-#249 + §3.7 Capability lens |
+| 251 | [#251](https://github.com/dayseam/dayseam/pull/251) | MAS-9a §2 post-#250 + §3.8 CSP / WebView lens |
 
 ### 2.3 Surface under review
 
 ```text
-$ git diff --shortstat 8aaab40..429e71d
- 64 files changed, 4034 insertions(+), 403 deletions(-)
+$ git diff --shortstat 8aaab40..8cb1362
+ 64 files changed, 4049 insertions(+), 403 deletions(-)
 ```
 
 Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC + **OAuth loopback**, `shell_open` / **`opener`**, `distribution_profile`, **`capabilities/*.json`** + **`tauri.mas.conf.json`** merge), [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) (**WebView CSP**), `apps/desktop/index.html` + `public/` bootstrap scripts, `crates/connectors/` (**libgit2** Local Git), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
@@ -192,7 +193,7 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 
 **Gap / follow-up:** No issue opened — new **`#[tauri::command]`** handlers must stay in lockstep with **`default.json`** and **`@dayseam/ipc-types`** per **`build.rs`**; re-run **`tests/capabilities.rs`** after edits. If a command is **unsandboxable**, gate or replace it before widening **`default.json`** (architecture §6 “same command set unless provably unsandboxable”).
 
-### 3.8 CSP / WebView exposure (if in scope for this release)
+### 3.8 CSP / WebView exposure
 
 - **Status:** **Partial** — production **Content-Security-Policy** is **SKU-neutral** today (**MAS-1a** single webview bundle); **MAS** does not fork the CSP string in [`tauri.mas.conf.json`](../../apps/desktop/src-tauri/tauri.mas.conf.json).
 
@@ -203,6 +204,12 @@ Record **pass / gap / N/A** and evidence (paths, commands, PR links) per row.
 **Gap / follow-up:** No issue opened — widening **`connect-src`**, **`frame-src`**, **`script-src`**, or adding **`unsafe-inline`** on scripts requires **MAS-0b** §6 alignment + **MAS-7c** paste-pack refresh; **MAS-9c** should exercise any future **`blob:`** navigations or **`data:`** uses **outside** the existing **`img-src 'self' data:`** allowance in the signed **MAS** bundle.
 
 ### 3.9 **`cfg` / `feature = "mas"` inventory** (*Single codebase* exit rule)
+
+- **Status:** **Partial** — the table + **`rg`** sweeps below satisfy the plan's *Single codebase* rule alongside **§3.1–§3.8**; each row is a deliberate **`mas`** / packaging / entitlements / capability / UX delta documented under [**MAS-0b** §3 — Packaging vs entitlement vs runtime vs UX](../design/2026-phase-5-mas-architecture.md#3-packaging-vs-entitlement-vs-runtime-vs-ux) (taxonomy of **Packaging**, **Entitlements**, **Capability allow-lists**, **Store metadata**, **UX**).
+
+- **Evidence:** Rows in this subsection (initial **[#243](https://github.com/dayseam/dayseam/pull/243)** scaffold, extended with **`tauri.conf.json`** in **[#251](https://github.com/dayseam/dayseam/pull/251)**); cross-check **§3.1** (`distribution_profile`, bookmark IPC), **§3.2** (errors / **`DayseamError`** / **`error_codes`**), **§3.3** (`keychain_profile`), **§3.4** (`local_git_scan`), **§3.5–§3.6** (`ipc/oauth`), **§3.7** (capabilities / **`main.rs`** plugins), **§3.8** (shared CSP).
+
+- **Gap / follow-up:** No issue opened — re-run both **`rg`** commands after any **`mas`** / IPC / distribution edit; new user-visible **`mas`** branching outside the plan buckets still needs a **linked removal issue** or explicit sign-off (capture in **§4**).
 
 Per plan: any user-visible behavioural `#[cfg(feature = "mas")]` / `if mas`
 beyond **packaging / entitlements / capability allow-lists / store metadata /
@@ -229,7 +236,7 @@ The Rust pattern is intentionally prefix-oriented (it matches `#[cfg(all(feature
 | [`apps/desktop/src-tauri/src/keychain_profile.rs`](../../apps/desktop/src-tauri/src/keychain_profile.rs) | Keychain service / account strings | Yes — **MAS-5b2** (**§3.3** desk review) | — |
 | [`apps/desktop/src-tauri/src/main.rs`](../../apps/desktop/src-tauri/src/main.rs) | Updater / menu / single-instance registration | Yes — **MAS-3** updater removal | — |
 | [`apps/desktop/src-tauri/src/local_git_scan.rs`](../../apps/desktop/src-tauri/src/local_git_scan.rs) | Default scan roots vs security-scoped MAS discovery | Yes — **MAS-4c** filesystem contract | — |
-| [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | Bookmarks, `distribution_profile`, `shell_open` (**`opener::open`**), folder pickers, `secret_store_key` / connector secret refs, `#[cfg(all(feature = "mas", target_os = "macos"))]` branches | Yes — **IPC + FS** tasks **MAS-4a–f**; **§3.1 / §3.2 / §3.3 / §3.4 / §3.6** must still sign off pass vs gap | — |
+| [`apps/desktop/src-tauri/src/ipc/commands.rs`](../../apps/desktop/src-tauri/src/ipc/commands.rs) | Bookmarks, `distribution_profile`, `shell_open` (**`opener::open`**), folder pickers, `secret_store_key` / connector secret refs, `#[cfg(all(feature = "mas", target_os = "macos"))]` branches | Yes — **IPC + FS** tasks **MAS-4a–f**; **§3.1 / §3.2 / §3.3 / §3.4 / §3.6 / §3.8** must still sign off pass vs gap | — |
 | [`apps/desktop/src-tauri/src/ipc/oauth.rs`](../../apps/desktop/src-tauri/src/ipc/oauth.rs) | PKCE loopback listener + session registry (no `mas` cfg fork in flow) | Yes — **MAS-6b** entitlements + documented **DAY-205** port policy; **§3.5** + **§3.6** desk review | — |
 | [`apps/desktop/src/distribution/DistributionProfileProvider.tsx`](../../apps/desktop/src/distribution/DistributionProfileProvider.tsx) | `invoke("distribution_profile")` → `"mas"` \| `"direct"` | Yes — **MAS-3** documented UX delta (feeds `useUpdater` gate) | — |
 | [`apps/desktop/src/distribution/distributionProfileContext.ts`](../../apps/desktop/src/distribution/distributionProfileContext.ts) | `DistributionProfileLoaded` union | Yes — typed **store metadata** surface | — |
@@ -248,6 +255,8 @@ The Rust pattern is intentionally prefix-oriented (it matches `#[cfg(all(feature
 
 - **MAS-9b:** Link P0/P1 issues discovered here; confirm none remain for **bar A**.
 - **MAS-9c:** Attach dogfood notes, build identifiers, and **Canonical MAS smoke** results (or pointer to appendix).
+
+**Lens coverage (this iteration):** **§3.1–§3.8** + **§3.9** inventory are desk-reviewed; remaining **Partial** flags in each lens defer to **MAS-9c** (hardware-signed runs, smoke checklist **§1**) and/or **MAS-9b** (code defects). **§0** bar **A** / **B** stay **Partial** until that evidence lands.
 
 ---
 
