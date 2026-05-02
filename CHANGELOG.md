@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.19] - 2026-05-02
+
 ### Documentation
 
 - **DAY-210 / MAS-9a (lenses — subprocess):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 advances head to **`9b130eb`** ([#248](https://github.com/dayseam/dayseam/pull/248)), GitHub compare **`8aaab40...9b130eb`**, PR table row **#248**, and refreshed `git diff --shortstat`; **§3.6 Subprocesses** (**Partial**) ties **`shell_open`** / **`opener::open`** in [`ipc/commands.rs`](apps/desktop/src-tauri/src/ipc/commands.rs), **`opener::open_browser`** + loopback in [`ipc/oauth.rs`](apps/desktop/src-tauri/src/ipc/oauth.rs) (**§3.5**), and [`connector-local-git`](crates/connectors/connector-local-git/Cargo.toml) **`git2`** **`vendored-libgit2`** to **MAS-0b** §8 + **§3.4** bookmark-scoped Local Git; **§3.9** `ipc/commands` row notes **`shell_open`**. ([#249](https://github.com/dayseam/dayseam/pull/249)) MR review: **MAS-0b** §8 **numbered rows** (not review-doc “§3.5 rows”), **`ipc/oauth`** §3.9 column adds **§3.6**, §8 row **5** tests-only called out.
