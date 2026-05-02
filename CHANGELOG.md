@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Documentation
+
+- **DAY-210 / MAS-9b (bar A P0/P1 sweep):** [`docs/review/phase-5-mas-review.md`](docs/review/phase-5-mas-review.md) §2 advances head to **`a56b189`** ([#252](https://github.com/dayseam/dayseam/pull/252)), GitHub compare **`8aaab40...a56b189`**, PR table row **#252**, and refreshed `git diff --shortstat`; **§5** records **MAS-9b** triage of open **`bug`** issues ([#215](https://github.com/dayseam/dayseam/issues/215), [#200](https://github.com/dayseam/dayseam/issues/200)) plus [#208](https://github.com/dayseam/dayseam/issues/208) spot-check — **no P0/P1** blockers for plan **bar A**; **MAS-9c** dogfood still gates **Pass**. [`docs/plan/2026-phase-5-mas-app-store.md`](docs/plan/2026-phase-5-mas-app-store.md) document history. ([#253](https://github.com/dayseam/dayseam/pull/253)) MR review: **§0** bar **A** status now distinguishes completed **MAS-9b** sweep vs pending **MAS-9c**; **§5** **Scope** describes triage goal (not the **Result**); **Semver** hint covers **#253**.
+
 ## [0.13.21] - 2026-05-02
 
 ### Documentation
