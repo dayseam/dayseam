@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Documentation
+
+- **DAY-210:** [`docs/review/2026-multi-lens-full-repo-review.md`](docs/review/2026-multi-lens-full-repo-review.md) consolidates six parallel agent lenses (security, testing, **AGENTS**/**ARCHITECTURE** standards, CI reliability, code simplicity, MAS / App Store compliance) into one triage backlog — findings only, no product code changes. ([#255](https://github.com/dayseam/dayseam/pull/255))
+
 ## [0.13.22] - 2026-05-03
 
 ### Documentation
