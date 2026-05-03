@@ -1,11 +1,11 @@
 # Phase 5 (MAS) capstone review
 
-**Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone)); **MAS-9b** — P0/P1 sweep for plan **bar A** (this revision).  
+**Task:** **MAS-9a** — full review + written artefact ([plan — Block MAS-9](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone)); **MAS-9b** — P0/P1 sweep for plan **bar A** ([#253](https://github.com/dayseam/dayseam/pull/253)); **MAS-9c** — dogfood evidence scaffold (this revision).  
 **Tracking issue:** [#210](https://github.com/dayseam/dayseam/issues/210) (Phase 5 umbrella)  
-**Branch:** `DAY-210-mas-9b-bar-a-sweep` · **PR:** [#253](https://github.com/dayseam/dayseam/pull/253)  
-**Semver label:** *(**MAS-9a** lens PRs: typically `semver:patch` with substantive **[Unreleased]** notes; `semver:none` for doc-only scaffolding. **#253** / **MAS-9b:** `semver:patch` when this sweep ships its own changelog bullet.)*  
+**Branch:** `DAY-210-mas-9c-dogfood-scaffold` · **PR:** [#254](https://github.com/dayseam/dayseam/pull/254)  
+**Semver label:** *(**MAS-9a** lens PRs: typically `semver:patch` with substantive **[Unreleased]** notes; `semver:none` for doc-only scaffolding. **#253** / **MAS-9b:** `semver:patch` with changelog bullet. **#254** / **MAS-9c** scaffold: `semver:patch` when **[Unreleased]** records this evidence table.)*  
 **Review date:** *(YYYY-MM-DD when sign-off is recorded)*  
-**Release / commit under review:** first-parent **`c9eb8d7`..`a56b189`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9a** **#252** at **`a56b189`** — **§0** bars, **§3.9** closeout, **§5** lens note). This revision bumps **§2** through **`master`** post-**#252** and records **MAS-9b** in **§5**.
+**Release / commit under review:** first-parent **`c9eb8d7`..`3573d1c`** (**MAS-1a** [#216](https://github.com/dayseam/dayseam/pull/216) through **MAS-9b** **#253** at **`3573d1c`** on **`master`**). This revision bumps **§2** through **`#253`** and adds the **MAS-9c** operator evidence table in **§5** (checklist **§1**).
 
 This document is the written artefact of the **MAS-9a** capstone review. It
 enumerates what was reviewed, how it was reviewed, findings, and resolution
@@ -13,8 +13,7 @@ enumerates what was reviewed, how it was reviewed, findings, and resolution
 phase reviews (for example [`phase-3-review.md`](./phase-3-review.md)); the
 lenses below are **MAS-specific** per the Phase 5 plan.
 
-**Downstream tasks:** **MAS-9c** (dogfood evidence) remains after **MAS-9b** sweep
-recorded here; keep cross-links updated.
+**Remaining (capstone):** operator fills **MAS-9c** evidence (**§5** table — or **Appendix A** for paste-heavy logs); then refresh **§0** bar **A** / **B** and **Review date** when signing off. **MAS-9b** is recorded in **§5** (subsection **MAS-9b**); **MAS-9c** follows in the same **§5** section.
 
 ---
 
@@ -25,7 +24,7 @@ automation complete.”** State explicitly how this review closes each bar.
 
 | Bar | Definition | Status in this review |
 |-----|------------|------------------------|
-| **A. Engineering complete** | Sandboxed MAS build is **store-compatible**: real shell, bookmarks + Keychain + OAuth + connectors + sinks under sandbox; **manual** upload to App Store Connect succeeds if that is the path in use; **MAS-9a** (this doc) + **MAS-9c** dogfood done; **MAS-9b** clears P0/P1 for bar A. | **Partial** — **§3.1–§3.9** desk lenses are recorded (**Partial** where each lens defers hardware dogfood, exhaustive error mapping, or line-by-line audits); **MAS-9b** (**§5**) recorded **no P0/P1** for **bar A**; **MAS-9c** (signed **MAS** evidence + **§1** smoke) and those desk-review **Partial** flags still gate a **Pass** for bar A per plan. |
+| **A. Engineering complete** | Sandboxed MAS build is **store-compatible**: real shell, bookmarks + Keychain + OAuth + connectors + sinks under sandbox; **manual** upload to App Store Connect succeeds if that is the path in use; **MAS-9a** (this doc) + **MAS-9c** dogfood done; **MAS-9b** clears P0/P1 for bar A. | **Partial** — **§3.1–§3.9** desk lenses are recorded (**Partial** where each lens defers hardware dogfood, exhaustive error mapping, or line-by-line audits); **MAS-9b** (**§5**) recorded **no P0/P1** for **bar A**; **MAS-9c** (**§5** table — **Pending** until rows are filled) plus desk-review **Partial** flags still gate a **Pass** for bar A per plan. |
 | **B. Release automation complete** | Automated Connect upload on the same cadence as GitHub Releases (or successor); export compliance docs align with upload metadata. | **Partial** — **MAS-8d** [`mas-connect-upload.yml`](../../.github/workflows/mas-connect-upload.yml) + [`MAS-CONNECT-UPLOAD.md`](../release/MAS-CONNECT-UPLOAD.md) + [`MAS-EXPORT-COMPLIANCE.md`](../compliance/MAS-EXPORT-COMPLIANCE.md) are merged; store-signed **`.pkg` in CI** may remain **MAS-8d-followup** (architecture §21). This review iteration does **not** assert a specific operator upload path — record **manual** vs **MAS-8d** `workflow_dispatch` in **Appendix A**, **§5**, or **MAS-9c** notes when evidence exists. |
 
 **MAS-9a** must state whether production uploads were **manual** or **automated**
@@ -35,7 +34,7 @@ automation complete.”** State explicitly how this review closes each bar.
 
 ## 1. Canonical MAS smoke (dogfood evidence — copy results into §5, Appendix A, or a dedicated dogfood subsection)
 
-Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app-store.md#canonical-mas-smoke-checklist)):
+Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app-store.md#canonical-mas-smoke-checklist)). **MAS-9c** row-level **Pass** / **Skip** / **N/A** + evidence links live in **§5** (below).
 
 1. Cold **launch** (MAS build).
 2. **Open folder** picker; grant path; **quit and relaunch** — access still works for scan/sink.
@@ -50,7 +49,7 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 
 ## 2. Inventory (fill before deep lenses)
 
-**GitHub compare (full diff):** [`8aaab40...a56b189`](https://github.com/dayseam/dayseam/compare/8aaab40...a56b189) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
+**GitHub compare (full diff):** [`8aaab40...3573d1c`](https://github.com/dayseam/dayseam/compare/8aaab40...3573d1c) — includes **MAS-0b** merge **#214** for context; capstone narrative below starts at **MAS-1a**.
 
 ### 2.1 Baseline and head
 
@@ -58,9 +57,9 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 |---|--------|-------|
 | Baseline (context) | `8aaab40` | [#214](https://github.com/dayseam/dayseam/pull/214) — **MAS-0b** architecture addendum; last first-parent merge before **MAS-1a** |
 | In-scope start | `c9eb8d7` | [#216](https://github.com/dayseam/dayseam/pull/216) — **MAS-1a** (first shipped MAS app-code on **`0.13.x`**) |
-| Head (capture) | `a56b189` | [#252](https://github.com/dayseam/dayseam/pull/252) — **MAS-9a** §2 post-#251 + **§0** bars + **§3.9** inventory closeout; tip of **`master`** at that merge |
+| Head (capture) | `3573d1c` | [#253](https://github.com/dayseam/dayseam/pull/253) — **MAS-9b** P0/P1 **bar A** sweep + **§2** post-**#252**; tip of **`master`** at that merge |
 
-### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..a56b189`, excluding `chore(release)`)
+### 2.2 PRs / merges in scope (first-parent, `c9eb8d7^..3573d1c`, excluding `chore(release)`)
 
 | # | PR | Merge title |
 |---|----|---------------|
@@ -100,12 +99,13 @@ Reuse on every manual / dogfood pass ([plan source](../plan/2026-phase-5-mas-app
 | 250 | [#250](https://github.com/dayseam/dayseam/pull/250) | MAS-9a §2 post-#249 + §3.7 Capability lens |
 | 251 | [#251](https://github.com/dayseam/dayseam/pull/251) | MAS-9a §2 post-#250 + §3.8 CSP / WebView lens |
 | 252 | [#252](https://github.com/dayseam/dayseam/pull/252) | MAS-9a §2 post-#251 + §0 bars + §3.9 closeout |
+| 253 | [#253](https://github.com/dayseam/dayseam/pull/253) | MAS-9b bar A P0/P1 sweep + §2 post-#252 |
 
 ### 2.3 Surface under review
 
 ```text
-$ git diff --shortstat 8aaab40..a56b189
- 64 files changed, 4063 insertions(+), 403 deletions(-)
+$ git diff --shortstat 8aaab40..3573d1c
+ 64 files changed, 4077 insertions(+), 403 deletions(-)
 ```
 
 Rough centres: `apps/desktop/src-tauri/` (sandbox, bookmarks, Keychain, IPC + **OAuth loopback**, `shell_open` / **`opener`**, `distribution_profile`, **`capabilities/*.json`** + **`tauri.mas.conf.json`** merge), [`tauri.conf.json`](../../apps/desktop/src-tauri/tauri.conf.json) (**WebView CSP**), `apps/desktop/index.html` + `public/` bootstrap scripts, `crates/connectors/` (**libgit2** Local Git), `apps/desktop/src/distribution/` + updater hooks, `docs/compliance/`, `docs/design/2026-phase-5-mas-architecture.md`, `.github/workflows/mas-*.yml`, `scripts/release/mas/`, [`scripts/ci/mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh).
@@ -261,11 +261,25 @@ The Rust pattern is intentionally prefix-oriented (it matches `#[cfg(all(feature
 - **Inputs:** **§4** findings table (no rows); **§3.x** lens **Gap / follow-up** paragraphs (no linked removal issues opened from lenses); open GitHub **`bug`** issues ([#215](https://github.com/dayseam/dayseam/issues/215), [#200](https://github.com/dayseam/dayseam/issues/200)) read for **MAS** / sandbox / entitlement hard failures; [#208](https://github.com/dayseam/dayseam/issues/208) (open, no **`bug`** label) spot-checked as Atlassian copy/URL hygiene.
 - **Result:** **No P0/P1** issues triaged as blocking **bar A**. **#215** is chart legend clipping; **#200** is report UX for per-source sync failures — neither is a **MAS** SKU or App Sandbox launch/submit blocker. **MAS-9c** still gates **bar A** **Pass** (**§1** smoke on signed **MAS**, **§0** upload path evidence).
 
-### MAS-9c — Dogfood (pending)
+### MAS-9c — Dogfood (Canonical MAS smoke)
 
-- **MAS-9c:** Attach dogfood notes, build identifiers, and **Canonical MAS smoke** results (or pointer to appendix).
+- **Status:** **Pending** — operator **dogfood pass** on signed **MAS** (or local **`tauri:build:mas`** parity); fill the table (or move paste-heavy logs to **Appendix A** and link here).
+- **Scope:** Plan [**MAS-9c**](../plan/2026-phase-5-mas-app-store.md#mas-block-9-capstone) — evidence for **§1** checklist items on real hardware (bookmarks, Keychain, OAuth, sinks, **no updater**, etc.).
+- **CI supplement (not dogfood-complete):** [`mas-package-verify.yml`](../../.github/workflows/mas-package-verify.yml) runs [`mas-sandbox-launch-smoke.sh`](../../scripts/ci/mas-sandbox-launch-smoke.sh) on the built **MAS** `.app` so CI proves the bundle survives native bootstrap + **WKWebView** init under sandbox (**MAS-2b**). Treat that as automation support for **§1** item **1** only; items **2**–**8** still need the operator table below (or **Appendix A**).
+- **Build / upload metadata (fill on pass):** *—* (e.g. **`Dayseam.app`** path, **TestFlight** / **ASC** build number, **manual** vs **MAS-8d** `workflow_dispatch` for **§0** bar **B**).
 
-**Lens coverage (this iteration):** **§3.1–§3.8** + **§3.9** inventory are desk-reviewed; **MAS-9b** sweep above finds no **P0/P1** for **bar A**. Remaining **Partial** flags in each lens defer to **MAS-9c** (hardware-signed runs, smoke checklist **§1**). **§0** bar **A** / **B** stay **Partial** until **MAS-9c** / operator evidence lands.
+| §1 # | Checklist item | Pass / Skip / N/A | Evidence (run id, screenshot, prose) |
+|------|----------------|-------------------|---------------------------------------|
+| 1 | Cold **launch** (MAS build) | *—* | *—* |
+| 2 | **Open folder** picker; grant path; **quit and relaunch** — scan/sink access | *—* | *—* |
+| 3 | **Local Git** scan on nested repo layout (**MAS-0b** symlink policy) | *—* | *—* |
+| 4 | **Save** report to Markdown sink in permitted folder | *—* | *—* |
+| 5 | **Reconnect** a secret-backed source (rotate or re-validate) | *—* | *—* |
+| 6 | **OAuth** complete flow (e.g. Outlook) | *—* | *—* |
+| 7 | **No** updater UI or updater network calls | *—* | *—* |
+| 8 | **Upgrade** from previous MAS build (if applicable) | *—* | *—* |
+
+**Lens coverage (this iteration):** **§3.1–§3.8** + **§3.9** inventory are desk-reviewed; **MAS-9b** sweep finds no **P0/P1** for **bar A**. Remaining **Partial** flags in each lens defer to **MAS-9c** evidence above. **§0** bar **A** / **B** stay **Partial** until the table (and upload path, for **B**) is filled.
 
 ---
 
