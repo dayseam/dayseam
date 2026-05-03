@@ -37,9 +37,9 @@
 //     Falls back to a static slice if `scrollIntoView` is missing
 //     (older Tauri WebViews shouldn't be, but the fallback keeps
 //     the chart safe to ship).
-//   - `<title>` per slice holds the native browser tooltip — kind,
-//     count, and percentage. No tooltip library, no portal, no
-//     state.
+//   - `<title>` per slice holds the native browser tooltip — compact
+//     `Kind count · pct%` (same string as the visible legend line).
+//     No tooltip library, no portal, no state.
 //   - Empty state: zero bullets across the whole day → render a
 //     muted neutral ring with "No activity recorded today" beside
 //     it, so a quiet Saturday doesn't read as a broken chart.
@@ -175,9 +175,9 @@ const CENTER = VIEWBOX_SIZE / 2;
 const OUTER_RADIUS = 48;
 const INNER_RADIUS = 28;
 
-/** Format a slice's percentage for the tooltip. Whole percent for
- *  large slices, one decimal for slivers below 10% so a 3% slice
- *  doesn't read as "0%" rounded down. */
+/** Format a slice's percentage for the legend line and slice tooltip.
+ *  Whole percent from 10% upward; one decimal below 10% so a 3% slice
+ *  does not read as "0%" from rounding. */
 function formatPercent(count: number, total: number): string {
   if (total === 0) return "0%";
   const pct = (count / total) * 100;
@@ -280,7 +280,7 @@ export function DaySummaryChart({
             const accent = connectorAccent(entry.kind);
             const d = paths[idx];
             if (!d) return null;
-            const tooltip = `${KIND_LABEL[entry.kind]}: ${entry.count} item${entry.count === 1 ? "" : "s"} (${formatPercent(entry.count, total)})`;
+            const tooltip = `${KIND_LABEL[entry.kind]} ${entry.count} · ${formatPercent(entry.count, total)}`;
             return (
               <path
                 key={entry.kind}
@@ -329,10 +329,9 @@ export function DaySummaryChart({
         </text>
       </svg>
 
-      {/* Legend. Plain text so screen readers receive the same
-          information from the report DOM regardless of whether they
-          can interpret the SVG. The legend's row order matches the
-          slice order, which gives the user a single visual grammar
+      {/* Legend. Plain text (kind, count, and share) so screen readers
+          receive the same breakdown from the report DOM regardless of
+          whether they interpret the SVG. Row order matches slice order
           (largest slice = topmost legend row). */}
       <ul
         className="flex min-w-0 flex-1 flex-col gap-1 text-sm"
@@ -348,7 +347,7 @@ export function DaySummaryChart({
             return (
               <li
                 key={entry.kind}
-                className="flex items-center gap-2 text-neutral-700 dark:text-neutral-200"
+                className="flex min-w-0 items-center gap-2 text-neutral-700 dark:text-neutral-200"
                 data-kind-legend={entry.kind}
               >
                 <span
@@ -360,9 +359,9 @@ export function DaySummaryChart({
                   data-accent-light={accent.light}
                   data-accent-dark={accent.dark}
                 />
-                <span className="truncate">{KIND_LABEL[entry.kind]}</span>
-                <span className="ml-auto tabular-nums text-neutral-500 dark:text-neutral-400">
-                  {entry.count}
+                <span className="min-w-0 truncate tabular-nums">
+                  {KIND_LABEL[entry.kind]} {entry.count} ·{" "}
+                  {formatPercent(entry.count, total)}
                 </span>
               </li>
             );

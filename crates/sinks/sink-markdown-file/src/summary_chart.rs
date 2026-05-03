@@ -58,10 +58,13 @@
 //! donut; legend is Rust-only for Obsidian / GitHub parity):
 //!
 //!   * Centre `(50, 50)`, outer radius `48`, inner radius `28` in a
-//!     `100×100` donut box; a **legend** (swatch + label + count) per
-//!     slice appears **below** the ring in the same SVG. `viewBox`
-//!     height grows with row count; `width="72"` is fixed to match
-//!     the in-app chart width, `height` scales to preserve aspect.
+//!     `100×100` donut box; a **legend** (swatch + compact label) per
+//!     slice sits **to the right** of the ring (`GitHub 21 · 60%` —
+//!     matches the in-app `DaySummaryChart` card). `viewBox` width
+//!     includes headroom for long connector names (`DAY-215`); root
+//!     `width` / `height` scale so the donut still maps to ~the same
+//!     CSS pixel size as the in-app `width={72}` card (historical
+//!     `72px / 100` user units for the donut square).
 //!   * Radii formatted as integer literals (`A 48 48 …`); vertex
 //!     coordinates formatted with two decimals (`50.00`, `38.51`,
 //!     …) — matches JavaScript's `Number.toString()` for whole
@@ -97,9 +100,9 @@ use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use dayseam_core::{ReportDraft, SourceKind};
 
-/// Centre of the SVG viewBox. Matches `CENTER` in the live preview.
+/// X coordinate of the donut centre. Matches `CENTER` in the live preview.
 const CX: f64 = 50.0;
-/// Centre of the SVG viewBox. Matches `CENTER` in the live preview.
+/// Y coordinate of the donut centre. Matches `CENTER` in the live preview.
 const CY: f64 = 50.0;
 /// Outer ring radius. Matches `OUTER_RADIUS` in `DaySummaryChart.tsx`.
 const OUTER_RADIUS: u32 = 48;
@@ -107,14 +110,20 @@ const OUTER_RADIUS: u32 = 48;
 const INNER_RADIUS: u32 = 28;
 /// Donut geometry lives in a `100×100` square (matches live `viewBox`).
 const DONUT_VIEW: u32 = 100;
-/// Horizontal `viewBox` width; legend text uses the full width under the donut.
-const VIEWBOX_W: u32 = DONUT_VIEW;
-/// First legend row text baseline (user units), below the donut.
-const LEGEND_FIRST_LINE_Y: u32 = 109;
-/// Vertical gap between legend rows (user units).
-const LEGEND_LINE_SPACING: u32 = 11;
-/// Display width in CSS pixels (matches the live card SVG `width={72}`).
-const DISPLAY_W: u32 = 72;
+/// Gap between the donut square (`0…100`) and the legend column (user units).
+const LEGEND_GAP: u32 = 10;
+/// Swatch `x` for legend rows (user units) — immediately right of the donut.
+const LEGEND_SWATCH_X: u32 = DONUT_VIEW + LEGEND_GAP;
+/// Legend label `x` after the 8-unit swatch and a small gap (user units).
+const LEGEND_TEXT_X: u32 = LEGEND_SWATCH_X + 10;
+/// Horizontal `viewBox` width — donut (`100`) plus legend column for
+/// long compact lines like `Local git 10 · 29%` (DAY-215).
+const VIEWBOX_W: u32 = 210;
+/// Display width in CSS pixels — scaled with [`VIEWBOX_W`] so
+/// pixels-per-user-unit stays ~`72 / 100` for the donut square.
+const DISPLAY_W: u32 = (72 * VIEWBOX_W + DONUT_VIEW / 2) / DONUT_VIEW;
+/// Vertical gap between legend row baselines (user units), right column.
+const LEGEND_LINE_SPACING: u32 = 14;
 
 /// Public entry point: render the entire summary block (headline
 /// paragraph + delimited inline SVG) for `draft`. Returns an empty
@@ -208,8 +217,10 @@ const CLEAR_LEADER_PERCENT: u32 = 40;
 ///   5. Spread (no tie of size ≥ 2, no clear leader) →
 ///      "Spread across **X** (a), **Y** (b), and **Z** (c)."
 ///
-/// Percentages use whole-number rounding so a 33.3% slice reads as
-/// "33%" rather than "33.33%". The chart's tooltips do the same.
+/// Percentages in this headline use [`whole_percent`] so a 33.3%
+/// slice reads as "33%" in the prose. The inline chart's slice
+/// `<title>` tooltips and legend lines use [`format_percent_legend`]
+/// instead, matching the in-app chart (one decimal below 10%).
 fn render_headline(counts: &[(SourceKind, u32)], total: u32) -> String {
     debug_assert!(
         !counts.is_empty(),
@@ -293,11 +304,15 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
 
     let segments: Vec<u32> = counts.iter().map(|(_, n)| *n).collect();
     let paths = donut_paths(&segments, CX, CY, OUTER_RADIUS, INNER_RADIUS);
+    let pct_legends: Vec<String> = counts
+        .iter()
+        .map(|(_, c)| format_percent_legend(*c, total))
+        .collect();
     let aria = build_aria_label(counts);
 
     let mut out = String::new();
     out.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {vbw} {vbh}\" width=\"{dw}\" height=\"{dh}\" role=\"img\" aria-label=\"{a}\" style=\"color: var(--text-normal, light-dark(#1f2937, #e5e7eb));\">\n",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {vbw} {vbh}\" width=\"{dw}\" height=\"{dh}\" overflow=\"visible\" role=\"img\" aria-label=\"{a}\" style=\"color: var(--text-normal, light-dark(#1f2937, #e5e7eb));\">\n",
         vbw = VIEWBOX_W,
         vbh = vb_h,
         dw = DISPLAY_W,
@@ -324,15 +339,8 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
     out.push_str("    }\n");
     out.push_str("  </style>\n");
 
-    for ((kind, count), d) in counts.iter().zip(paths.iter()) {
-        let pct = whole_percent(*count, total);
-        let tooltip = format!(
-            "{} — {} item{} ({}%)",
-            kind.display_label(),
-            count,
-            plural_s(*count),
-            pct
-        );
+    for (((kind, count), d), pct_leg) in counts.iter().zip(paths.iter()).zip(pct_legends.iter()) {
+        let tooltip = format!("{} {} · {}", kind.display_label(), count, pct_leg);
         out.push_str(&format!(
             "  <path class=\"ds-{cls}\" d=\"{d}\" fill=\"{light}\"><title>{tt}</title></path>\n",
             cls = kind_css_class(*kind),
@@ -353,26 +361,22 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
         "  <text class=\"ds-centre-label\" x=\"{CX}\" y=\"{CY}\" fill=\"currentColor\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"20\" font-weight=\"600\">{total}</text>\n"
     ));
 
+    let row_count = counts.len();
     out.push_str("  <g class=\"ds-legend\" aria-hidden=\"true\">\n");
-    for (i, (kind, count)) in counts.iter().enumerate() {
-        let line_y = LEGEND_FIRST_LINE_Y + i as u32 * LEGEND_LINE_SPACING;
+    for (i, ((kind, count), pct_leg)) in counts.iter().zip(pct_legends.iter()).enumerate() {
+        let line_y = legend_row_baseline_y(i, row_count);
         let rect_top = line_y.saturating_sub(3);
-        let pct = whole_percent(*count, total);
-        let caption = format!(
-            "{} — {} item{} ({}%)",
-            kind.display_label(),
-            count,
-            plural_s(*count),
-            pct
-        );
+        let caption = format!("{} {} · {}", kind.display_label(), count, pct_leg);
         out.push_str(&format!(
-            "    <rect class=\"ds-{cls}\" x=\"4\" y=\"{rect_top}\" width=\"8\" height=\"8\" rx=\"2\" fill=\"{light}\"/>\n",
+            "    <rect class=\"ds-{cls}\" x=\"{sx}\" y=\"{rect_top}\" width=\"8\" height=\"8\" rx=\"2\" fill=\"{light}\"/>\n",
             cls = kind_css_class(*kind),
+            sx = LEGEND_SWATCH_X,
             rect_top = rect_top,
             light = connector_accent_light(*kind),
         ));
         out.push_str(&format!(
-            "    <text class=\"ds-legend-text\" x=\"16\" y=\"{line_y}\" fill=\"currentColor\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"7\">{cap}</text>\n",
+            "    <text class=\"ds-legend-text\" x=\"{tx}\" y=\"{line_y}\" fill=\"currentColor\" dominant-baseline=\"central\" font-family=\"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\" font-size=\"7\">{cap}</text>\n",
+            tx = LEGEND_TEXT_X,
             line_y = line_y,
             cap = escape_xml_text(&caption),
         ));
@@ -383,16 +387,14 @@ fn render_svg(counts: &[(SourceKind, u32)], total: u32) -> String {
     out
 }
 
-/// `viewBox` height: donut uses the top `100` units; legend stacks below.
+/// `viewBox` height: donut is `100` units tall; legend sits beside it in
+/// the widened width, so height stays [`DONUT_VIEW`] whenever there are slices.
 #[must_use]
 fn view_box_height_px(slice_count: usize) -> u32 {
     if slice_count == 0 {
         return DONUT_VIEW;
     }
-    let rows = slice_count as u32;
-    let last_line_y =
-        LEGEND_FIRST_LINE_Y + rows.saturating_sub(1).saturating_mul(LEGEND_LINE_SPACING);
-    last_line_y + 8
+    DONUT_VIEW
 }
 
 #[must_use]
@@ -572,6 +574,30 @@ fn whole_percent(numerator: u32, total: u32) -> u32 {
     }
     let pct = (f64::from(numerator) / f64::from(total)) * 100.0;
     pct.round() as u32
+}
+
+/// Legend / tooltip percentage — mirrors `formatPercent` in
+/// `DaySummaryChart.tsx` (whole percent at ≥10%, one decimal below).
+fn format_percent_legend(numerator: u32, total: u32) -> String {
+    if total == 0 {
+        return "0%".to_string();
+    }
+    let pct = (f64::from(numerator) / f64::from(total)) * 100.0;
+    if pct >= 10.0 {
+        format!("{}%", pct.round() as u32)
+    } else {
+        format!("{pct:.1}%")
+    }
+}
+
+/// Vertical centre of legend rows in the right column (same `CY` as the donut).
+fn legend_row_baseline_y(row_index: usize, row_count: usize) -> u32 {
+    if row_count == 0 {
+        return CY as u32;
+    }
+    let span = (row_count.saturating_sub(1) as u32).saturating_mul(LEGEND_LINE_SPACING);
+    let first = (CY as u32).saturating_sub(span / 2);
+    first.saturating_add(row_index as u32 * LEGEND_LINE_SPACING)
 }
 
 fn plural_s(n: u32) -> &'static str {
@@ -901,6 +927,14 @@ mod tests {
         );
     }
 
+    #[test]
+    fn format_percent_legend_matches_day_summary_chart_rules() {
+        assert_eq!(format_percent_legend(0, 0), "0%");
+        assert_eq!(format_percent_legend(4, 6), "67%");
+        assert_eq!(format_percent_legend(1, 10), "10%");
+        assert_eq!(format_percent_legend(1, 11), "9.1%");
+    }
+
     // ---- render_svg ---------------------------------------------
 
     #[test]
@@ -912,26 +946,24 @@ mod tests {
         assert!(svg.contains("fill=\"#24292F\""), "{svg}");
         assert!(svg.contains("fill=\"#FC6D26\""), "{svg}");
 
-        // <title> tooltip copy matches the live chart.
-        assert!(
-            svg.contains("<title>GitHub — 4 items (67%)</title>"),
-            "{svg}"
-        );
-        assert!(
-            svg.contains("<title>GitLab — 2 items (33%)</title>"),
-            "{svg}"
-        );
+        // <title> tooltip copy matches the live chart (compact legend line).
+        assert!(svg.contains("<title>GitHub 4 · 67%</title>"), "{svg}");
+        assert!(svg.contains("<title>GitLab 2 · 33%</title>"), "{svg}");
 
         // Centre label echoes the day's bullet total.
         assert!(svg.contains(">6</text>"), "centre numeral missing: {svg}");
 
-        // Taller viewBox: legend under donut (2 slices → height 128, display height 92).
-        assert!(svg.contains("viewBox=\"0 0 100 128\""), "{svg}");
-        assert!(svg.contains("width=\"72\" height=\"92\""), "{svg}");
+        // Legend beside donut: fixed 100-unit height, widened viewBox.
+        assert!(svg.contains("viewBox=\"0 0 210 100\""), "{svg}");
+        assert!(svg.contains("width=\"151\" height=\"72\""), "{svg}");
+        assert!(
+            svg.contains("overflow=\"visible\""),
+            "root overflow helps hosts that clip to viewBox: {svg}"
+        );
 
         assert!(svg.contains("class=\"ds-legend\""), "{svg}");
-        assert!(svg.contains(">GitHub — 4 items (67%)</text>"), "{svg}");
-        assert!(svg.contains(">GitLab — 2 items (33%)</text>"), "{svg}");
+        assert!(svg.contains(">GitHub 4 · 67%</text>"), "{svg}");
+        assert!(svg.contains(">GitLab 2 · 33%</text>"), "{svg}");
 
         // aria-label summarises the day.
         assert!(
@@ -967,6 +999,23 @@ mod tests {
         assert!(
             !svg.contains("fill=\"#404040\""),
             "inline grey text fill must not trump stylesheet in embeds: {svg}"
+        );
+    }
+
+    /// DAY-215: longest plausible single-line caption must not extend
+    /// past the right edge of the widened `viewBox` (Obsidian clipped
+    /// when `viewBox` width matched the 100-unit donut only).
+    #[test]
+    fn long_legend_caption_emitted_in_full_inside_viewbox_width() {
+        let svg = render_svg(&[(SourceKind::Confluence, 999)], 1000);
+        assert!(
+            svg.contains("viewBox=\"0 0 210 100\""),
+            "expected widened beside-donut layout, got snippet around viewBox: {}",
+            svg.lines().next().unwrap_or("")
+        );
+        assert!(
+            svg.contains(">Confluence 999 · 100%</text>"),
+            "caption must not be truncated in markup: {svg}"
         );
     }
 

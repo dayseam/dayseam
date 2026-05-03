@@ -272,7 +272,7 @@ describe("<DaySummaryChart />", () => {
     ) as SVGPathElement | null;
     expect(githubSlice).not.toBeNull();
     const githubTitle = githubSlice?.querySelector("title");
-    expect(githubTitle?.textContent).toBe("GitHub: 4 items (40%)");
+    expect(githubTitle?.textContent).toBe("GitHub 4 · 40%");
 
     const outlookSlice = document.querySelector(
       '[data-kind-slice="Outlook"]',
@@ -281,7 +281,7 @@ describe("<DaySummaryChart />", () => {
     // 1/10 = 10% — formatPercent uses the whole-percent branch
     // exactly at the 10% boundary, so this is the corner case for
     // the formatter.
-    expect(outlookTitle?.textContent).toBe("Outlook: 1 item (10%)");
+    expect(outlookTitle?.textContent).toBe("Outlook 1 · 10%");
   });
 
   it("matches the snapshot for the canonical multi-kind day", () => {
