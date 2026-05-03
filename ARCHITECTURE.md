@@ -545,12 +545,16 @@ mechanisms, and we use each for exactly one job:
 | **Global events** (`Manager::emit`) | Small, app-wide, infrequent signals — toasts, "settings changed", "update available". | Tauri's event system is documented as small-and-simple messaging, JSON-string payloads. We don't use it for streams. |
 
 **Capabilities.** Tauri allows all commands by default unless the
-capabilities config narrows them. We invert that: the frontend's
-capability manifest lists **exactly** the commands the UI is allowed to
-invoke. Adding a new command is a two-file change (Rust handler + one
-entry in `tauri.conf.json` capabilities). This is documented as part
-of the architecture because silently-growing command surface is a real
-security smell and we want reviewers to notice.
+capabilities config narrows them. We invert that: the active capability
+JSON under `apps/desktop/src-tauri/capabilities/` lists **exactly** the
+commands the UI may invoke (`default.json` for release; a generated
+`dev.json` when `dev-commands` is on). Adding a command is a coordinated
+change across the `#[tauri::command]` fn, `ipc/commands.rs` identifiers,
+`build.rs`, both `generate_handler!` blocks in `main.rs`, the capability
+JSON, and `packages/ipc-types` — see `apps/desktop/src-tauri/build.rs`
+crate docs and `tests/capabilities.rs` / `tests/command_surface_lockstep.rs`.
+This is documented as part of the architecture because silently-growing
+command surface is a real security smell and we want reviewers to notice.
 
 ## 7. Domain model
 
@@ -823,7 +827,8 @@ fine-grained PAT. Emits `GitHubPullRequestOpened` / `…Merged` /
 pipeline with `connector-gitlab` (see §7A). Produces
 `ArtifactKind::GitHubPullRequest` and `ArtifactKind::GitHubIssue`.
 
-**`connector-jira`** (v0.2, GA) and **`connector-confluence`** (v0.2,
+**`connector-jira`** (v0.2, GA — crate today targets **Jira Cloud**; Data
+Center may ship as a sibling crate) and **`connector-confluence`** (v0.2,
 GA). Jira Cloud and Confluence Cloud via 3LO OAuth on the shared
 `connector-atlassian-common` helper crate. Emit
 `JiraIssueTransitioned` and `ConfluencePageEdited` respectively;
@@ -1183,8 +1188,14 @@ five points in a quarter, that's a conversation, not a wall.
   `semver:major` / `semver:minor` / `semver:patch` / `semver:none`. A
   workflow enforces the count; a release job bumps `VERSION` on merge
   and produces a tag + changelog entry.
-- **Alpha builds for every PR.** `vX.Y.Z-alpha.<sha>` Tauri bundles are
-  attached to each PR so reviewers can sandbox-test before merge.
+- **Pre-release / alpha bundles (roadmap).** The doc history here assumed
+  `vX.Y.Z-alpha.<sha>` bundles attached per PR; the repo does **not** yet
+  ship `.github/workflows/alpha.yml`. Until that lands, reviewers validate
+  from the PR branch locally, CI artefacts (`desktop-bundle-profiles`), or
+  a `release.yml` **workflow_dispatch** dry-run (see §14 intro in
+  `release.yml` comments). The **Pre-release channel separation** bullet
+  below still describes how updater keys interact with alpha tags once the
+  workflow exists.
 - **Apple Developer ID signing + notarisation.** Required for macOS
   release artefacts. Secrets live in GitHub Actions env.
 - **Tauri updater.** Production clients receive signed updates from
@@ -1289,11 +1300,12 @@ in `docs/plan/`.
 **Thesis.** "Most of my day is not on GitLab." Bring the other tools.
 
 **Ships:**
-- `connector-jira-cloud` (Atlassian 3LO OAuth).
-- `connector-jira-dc` (Data Center, PAT). Modelled as a distinct
-  connector with its own `SourceConfig` variant because the auth
-  surface, REST contract, and rate-limit semantics differ materially
-  from Jira Cloud. Shared helpers live in a sibling crate.
+- **`connector-jira`** extended to Atlassian 3LO OAuth on Jira Cloud (the
+  crate already exists; v0.2 hardens auth and event coverage).
+- **Jira Data Center** as a distinct connector + `SourceConfig` variant
+  (working name `connector-jira-dc`, PAT auth) because the auth surface,
+  REST contract, and rate-limit semantics differ materially from Cloud.
+  Shared helpers stay in `connector-atlassian-common`.
 - `connector-github` (GitHub App auth preferred; fine-grained PAT
   supported for single-user).
 - Multi-identity support — `Person` / `SourceIdentity` graduates from

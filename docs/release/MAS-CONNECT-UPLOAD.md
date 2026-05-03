@@ -23,7 +23,7 @@ Optional: keep Issuer ID / Key ID as **Variables** instead if you prefer separat
 | **`dry_run`** | `true` | When `true`, runs [`mas-connect-upload-preflight.sh`](../../scripts/release/mas/mas-connect-upload-preflight.sh) only (secret presence + doc link). No Transporter install, no upload. |
 | **`mas_pkg_path`** | *(empty)* | Workspace-relative path to a **signed Mac App Store `.pkg`** (e.g. produced locally after store signing). Required when **`dry_run`** is `false` and you intend to upload. |
 
-The job uses **`continue-on-error: true`** so a red upload attempt does not block unrelated automation; fix credentials or the package and re-run.
+The job uses **`continue-on-error: true`** at the **job** level so a red upload attempt does not block unrelated automation. **GitHub still shows the workflow as green (checkmark) when the job “succeeds with errors”** — you must open the run, confirm each step, and look for `##[error]` / failed Transporter logs. Treat the badge as untrusted for this workflow; fix credentials or the package and re-run until every step is cleanly green if you believed the upload shipped.
 
 ## Transporter on GitHub-hosted macOS
 

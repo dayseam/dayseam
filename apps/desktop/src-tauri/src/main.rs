@@ -323,9 +323,10 @@ fn main() {
 
     // Release builds compile the dev commands out entirely so the
     // binary ships with a minimal IPC surface. Keep this list in
-    // lockstep with `COMMANDS` in `build.rs` and with
+    // lockstep with `PROD_COMMANDS` / `DEV_COMMANDS` in
+    // `ipc/commands.rs`, the matching slices in `build.rs`, and
     // `capabilities/default.json` — every command mentioned here
-    // must appear in both, or Tauri 2 denies the call at runtime.
+    // must appear in all of them, or Tauri 2 denies the call at runtime.
     #[cfg(feature = "dev-commands")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::settings_get,

@@ -20,14 +20,15 @@ rules even if their agent does not natively read `AGENTS.md`.
    credential the agent is operating under. Handing merge control back to a
    human is the one guarantee an agent can still offer.
 
-2. **Never push directly to `master`.** Work on a `DAY-XXX` branch cut from
-   a just-pulled `master` and push to that branch only. The release
+2. **Never push directly to `master`.** Work on a `DAY-<issue>-<kebab-title>`
+   branch (same shape as [`CONTRIBUTING.md`](./CONTRIBUTING.md)) cut from a
+   just-pulled `master` and push to that branch only. The release
    workflow is the sole exception — it uses `github-actions[bot]` to push
    the `chore(release): vX.Y.Z` commit from inside CI, which is a
    workflow-driven push, not an agent-driven one.
 
 3. **Never force-push to a shared branch.** `git push --force-with-lease`
-   on the agent's own `DAY-XXX` feature branch is fine (the user's
+   on the agent's own `DAY-<issue>-…` feature branch is fine (the user's
    one-commit-per-branch convention requires it). Force-pushing `master`,
    a release branch, or any branch another agent or human is collaborating
    on is not.
@@ -50,9 +51,10 @@ rules even if their agent does not natively read `AGENTS.md`.
 The following are the repo's existing working agreements. Agents must
 follow them; humans editing directly are also expected to.
 
-- **Branch naming:** `DAY-XXX`, where `DAY-XXX` is the GitHub issue number
-  the work corresponds to. File an issue first (brief is fine) if none
-  exists, then branch from a freshly-pulled `master`.
+- **Branch naming:** `DAY-<issue-number>-<kebab-case-title>` (for example
+  `DAY-42-gitlab-event-pagination`), matching [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+  File an issue first (brief is fine) if none exists, then branch from a
+  freshly-pulled `master`.
 
 - **Commit message shape:**
 
@@ -102,9 +104,12 @@ follow them; humans editing directly are also expected to.
 - **Verification before claiming done:** before opening a PR the agent
   should have run the relevant subset of `pnpm -r lint`, `pnpm -r
   typecheck`, `pnpm -r test`, `cargo fmt --all -- --check`, `cargo clippy
-  --workspace --all-targets -- -D warnings`, and `cargo test --workspace`
-  locally, and included the result in the PR description. "I ran the
-  tests" without the evidence does not satisfy this.
+  --workspace --all-targets --all-features -- -D warnings`, and `cargo test
+  --workspace --all-features` locally — the same bar as
+  [`CONTRIBUTING.md`](./CONTRIBUTING.md) and the macOS `rust` job in
+  [`.github/workflows/ci.yml`](./.github/workflows/ci.yml). `--all-features`
+  matters because the desktop crate gates dev-only IPC behind `dev-commands`.
+  "I ran the tests" without the evidence does not satisfy this.
 
 ## Useful pointers for a fresh agent
 

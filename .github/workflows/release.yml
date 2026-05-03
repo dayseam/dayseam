@@ -80,6 +80,7 @@ jobs:
          contains(github.event.pull_request.labels.*.name, 'semver:minor') ||
          contains(github.event.pull_request.labels.*.name, 'semver:major')))
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       checks: read
@@ -203,6 +204,7 @@ jobs:
            contains(github.event.pull_request.labels.*.name, 'semver:major')))
       )
     runs-on: macos-latest
+    timeout-minutes: 120
     steps:
       - name: Checkout (fetch tags so bump-version.sh can read previous release)
         uses: actions/checkout@v4
@@ -879,7 +881,8 @@ jobs:
       # status so even a dry-run leaves a downloadable DMG a
       # maintainer can install on a fresh Mac to verify the
       # Gatekeeper-bypass docs still match reality.
-      - name: Upload DMG + updater artefacts
+      - name: Upload DMG + updater artefacts (dry-run — warn if missing)
+        if: steps.level.outputs.dry_run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Dayseam-v${{ steps.bump.outputs.version }}
@@ -890,7 +893,21 @@ jobs:
             dist/release/Dayseam-v${{ steps.bump.outputs.version }}.app.tar.gz.sig
             dist/release/latest.json
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: warn
+
+      - name: Upload DMG + updater artefacts (release — fail if missing)
+        if: steps.level.outputs.dry_run != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dayseam-v${{ steps.bump.outputs.version }}
+          path: |
+            dist/release/Dayseam-v${{ steps.bump.outputs.version }}.dmg
+            dist/release/Dayseam-v${{ steps.bump.outputs.version }}.dmg.sha256
+            dist/release/Dayseam-v${{ steps.bump.outputs.version }}.app.tar.gz
+            dist/release/Dayseam-v${{ steps.bump.outputs.version }}.app.tar.gz.sig
+            dist/release/latest.json
+          retention-days: 30
+          if-no-files-found: error
 
       # Commit the version bump (if files changed) so the tagged SHA
       # carries the right `version` metadata. A pre-bumped tree (Task

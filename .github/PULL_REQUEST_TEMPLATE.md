@@ -24,5 +24,7 @@ Closes #<issue>.
 
 ## Alpha build
 
-<!-- Auto-populated by .github/workflows/alpha.yml once that workflow ships.
-     For scaffolding PRs this section can say "n/a — no app code yet". -->
+<!-- There is no `.github/workflows/alpha.yml` yet — nothing auto-populates
+     here. Say how you validated (local `pnpm tauri:dev`, CI logs, release
+     dry-run artefact, etc.). For scaffolding PRs this section can say
+     "n/a — no app code yet". -->

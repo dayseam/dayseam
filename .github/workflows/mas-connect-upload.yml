@@ -2,7 +2,8 @@
 #
 # Separate from `release.yml` so Connect failures never block the direct /
 # GitHub Releases channel. Job-level `continue-on-error: true` is
-# belt-and-suspenders.
+# deliberate — **the workflow run can still show green**; operators must
+# read step logs (see docs/release/MAS-CONNECT-UPLOAD.md).
 #
 # Operator runbook + export compliance cross-links:
 #   docs/release/MAS-CONNECT-UPLOAD.md
@@ -101,7 +102,7 @@ jobs:
         run: |
           set -euo pipefail
           url="https://itunesconnect.apple.com/WebObjects/iTunesConnect.woa/ra/resources/download/public/Transporter__OSX/bin/"
-          curl -fsSL "$url" -o "/tmp/itmstransporter.pkg"
+          curl --max-time 300 --connect-timeout 30 -fsSL "$url" -o "/tmp/itmstransporter.pkg"
           sudo installer -pkg "/tmp/itmstransporter.pkg" -target /
           rm -f /tmp/itmstransporter.pkg
           /usr/local/itms/bin/iTMSTransporter -help >/dev/null
