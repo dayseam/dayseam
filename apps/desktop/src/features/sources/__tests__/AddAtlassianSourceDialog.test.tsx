@@ -116,6 +116,20 @@ describe("AddAtlassianSourceDialog", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows an empty-state workspace URL hint with a full https example", async () => {
+    render(
+      <AddAtlassianSourceDialog
+        open
+        onClose={() => {}}
+        onAdded={() => {}}
+        existingSources={[]}
+      />,
+    );
+    const hint = await screen.findByTestId("add-atlassian-url-empty-hint");
+    expect(hint).toHaveTextContent("https://yourcompany.atlassian.net");
+    expect(hint).toHaveTextContent("yourcompany");
+  });
+
   it("normalises a bare slug to https://<slug>.atlassian.net in the preview", async () => {
     render(
       <AddAtlassianSourceDialog
@@ -660,6 +674,9 @@ describe("AddAtlassianSourceDialog", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("add-atlassian-token-mode-reuse"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("add-atlassian-url-empty-hint"),
     ).not.toBeInTheDocument();
 
     // Primary button copy changes to Save / Saving…; the Add copy

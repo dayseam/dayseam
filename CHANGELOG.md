@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-208:** The Add Atlassian source dialog shows an empty-state hint under the workspace URL with a full `https://yourcompany.atlassian.net` example (slug-only input is still called out), so users are not left with only the bare input placeholder. ([#258](https://github.com/dayseam/dayseam/pull/258))
+
 ## [0.13.24] - 2026-05-03
 
 ### Fixed
