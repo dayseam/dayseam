@@ -1,0 +1,91 @@
+# Mac App Store — distribution-signed `.pkg` on version tags (**MAS-8d-followup**).
+#
+# When DAYSEAM_MAS_APP_CERTIFICATE (and companion secrets) are set, builds a
+# universal MAS `Dayseam.app` + signed installer `.pkg` and uploads it as an
+# artefact. If secrets are unset, skips with a notice (fork-friendly).
+#
+# Runbook: docs/release/MAS-STORE-PKG.md
+
+name: mas-store-pkg
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mas-store-pkg-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mas-signed-pkg:
+    name: Mac App Store signed .pkg
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Detect whether MAS store signing secrets are configured
+        id: gate
+        env:
+          DAYSEAM_MAS_APP_CERTIFICATE: ${{ secrets.DAYSEAM_MAS_APP_CERTIFICATE }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DAYSEAM_MAS_APP_CERTIFICATE:-}" ]]; then
+            echo "skip=true" >>"${GITHUB_OUTPUT}"
+            echo "::notice::DAYSEAM_MAS_APP_CERTIFICATE is unset — skipping Mac App Store .pkg build. See docs/release/MAS-STORE-PKG.md to enable."
+          else
+            echo "skip=false" >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install Rust toolchain (matches rust-toolchain.toml)
+        if: steps.gate.outputs.skip == 'false'
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.gate.outputs.skip == 'false'
+
+      - name: Setup pnpm
+        if: steps.gate.outputs.skip == 'false'
+        uses: pnpm/action-setup@v4
+      - name: Setup Node
+        if: steps.gate.outputs.skip == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: bash -n build-mas-store-pkg.sh (syntax)
+        if: steps.gate.outputs.skip == 'false'
+        run: bash -n scripts/release/mas/build-mas-store-pkg.sh
+
+      - name: Build Mac App Store signed .pkg
+        if: steps.gate.outputs.skip == 'false'
+        env:
+          DAYSEAM_MAS_APP_CERTIFICATE: ${{ secrets.DAYSEAM_MAS_APP_CERTIFICATE }}
+          DAYSEAM_MAS_APP_CERTIFICATE_PASSWORD: ${{ secrets.DAYSEAM_MAS_APP_CERTIFICATE_PASSWORD }}
+          DAYSEAM_MAS_APP_SIGNING_IDENTITY: ${{ secrets.DAYSEAM_MAS_APP_SIGNING_IDENTITY }}
+          DAYSEAM_MAS_INSTALLER_CERTIFICATE: ${{ secrets.DAYSEAM_MAS_INSTALLER_CERTIFICATE }}
+          DAYSEAM_MAS_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.DAYSEAM_MAS_INSTALLER_CERTIFICATE_PASSWORD }}
+          DAYSEAM_MAS_INSTALLER_SIGNING_IDENTITY: ${{ secrets.DAYSEAM_MAS_INSTALLER_SIGNING_IDENTITY }}
+          DAYSEAM_MAS_PROVISIONING_PROFILE_BASE64: ${{ secrets.DAYSEAM_MAS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          ver="$(tr -d '[:space:]' <VERSION)"
+          bash scripts/release/mas/build-mas-store-pkg.sh "$ver"
+
+      - name: Upload .pkg + checksum artefact
+        if: steps.gate.outputs.skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dayseam-mas-pkg-${{ github.ref_name }}
+          path: dist/release/
+          if-no-files-found: error
