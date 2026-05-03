@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-215:** Saved inline summary-chart SVG (`sink-markdown-file`) places the legend beside the donut with compact `GitHub 21 · 60%` lines (matching the in-app `DaySummaryChart`), widens the root `viewBox`, and scales `width` / `height` so the donut still maps to the same ~72px square as the preview; root `overflow="visible"` is a belt-and-braces hint for strict hosts. ([#257](https://github.com/dayseam/dayseam/pull/257))
+
 ## [0.13.23] - 2026-05-03
 
 ### Documentation
