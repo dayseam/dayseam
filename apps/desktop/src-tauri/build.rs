@@ -5,17 +5,20 @@
 //! as `allow-<command-name>`. Declaring the command set on the
 //! [`tauri_build::AppManifest`] makes `tauri-build` autogenerate the
 //! matching permission files under the crate's `OUT_DIR`, so adding a
-//! new command in `src/ipc/commands.rs` only requires touching four
+//! new command in `src/ipc/commands.rs` only requires touching six
 //! places:
 //!
 //!   1. the `#[tauri::command]` function,
-//!   2. the command list below (production commands unconditional,
-//!      dev-only commands behind the `dev-commands` feature gate),
-//!   3. either `capabilities/default.json` (production) or the dev
+//!   2. `PROD_COMMANDS` / `DEV_COMMANDS` in `src/ipc/commands.rs`,
+//!   3. the `PROD_COMMANDS` / `DEV_COMMANDS` slices below (must match item 2
+//!      exactly — `tests/command_surface_lockstep.rs` asserts parity),
+//!   4. both `generate_handler!` blocks in `src/main.rs` (release vs
+//!      `dev-commands` feature),
+//!   5. either `capabilities/default.json` (production) or the dev
 //!      capability written by this script (dev-only), and
-//!   4. `packages/ipc-types/src/index.ts`'s `Commands` map.
+//!   6. `packages/ipc-types/src/index.ts`'s `Commands` map.
 //!
-//! Any of the four missing surfaces a loud error — either at compile
+//! Any of the six missing surfaces a loud error — either at compile
 //! time (capability entry references an unknown permission) or at
 //! runtime (webview call for a command not in the handler).
 //!

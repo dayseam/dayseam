@@ -9,13 +9,13 @@
 //!
 //! Every command here is also named in
 //! `apps/desktop/src-tauri/capabilities/default.json`, in the
-//! `COMMANDS` slice in `build.rs`, and in
-//! `packages/ipc-types/src/index.ts::Commands`. Tauri 2 denies any
-//! command whose identifier is not listed in the active capability;
-//! keeping all four surfaces in sync on every change is an invariant
-//! enforced by the `ipc_capabilities_cover_every_registered_command`
-//! integration test plus the matching Vitest parity test on the TS
-//! side.
+//! `COMMANDS` slice in `build.rs`, in `src/main.rs`'s `generate_handler!`
+//! lists, and in `packages/ipc-types/src/index.ts::Commands`. Tauri 2
+//! denies any command whose identifier is not listed in the active
+//! capability; keeping every surface in sync on every change is an
+//! invariant enforced by `tests/capabilities.rs`,
+//! `tests/command_surface_lockstep.rs`, and the matching Vitest parity
+//! test on the TS side.
 
 use std::sync::Arc;
 

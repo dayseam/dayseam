@@ -50,7 +50,7 @@ can be without a Developer ID identity — which we do not have yet
 |---|---|
 | `com.apple.security.files.user-selected.read-write` | Persists grants the user gives through the native folder/file picker (`NSOpenPanel`) so that repeated `dialog.open()` calls and fresh launches after a scan root has been approved do not re-prompt. Directly addresses the v0.6.1 popup cascade. |
 | `com.apple.security.cs.allow-unsigned-executable-memory` | Tauri 2's bundle links code that the hardened runtime would otherwise reject for writing executable pages. Matches the entitlements Tauri ships in its own macOS examples. |
-| `com.apple.security.cs.allow-jit` | The webview is JIT-less but this is the standard hardened-runtime allowance Apple recommends for Electron/Tauri-style apps to cover any embedded JS engine path. |
+| `com.apple.security.cs.allow-jit` | **WKWebView / JS** still uses JIT-class memory under the hardened runtime; this key is the standard allowance Apple documents for Electron/Tauri-style shells (not “no JIT in the process”). The **MAS** SKU documents the same keys with App Review–ready wording in [`docs/compliance/MAS-JIT-ENTITLEMENTS.md`](../../../docs/compliance/MAS-JIT-ENTITLEMENTS.md). |
 
 ## Known limitation / follow-up
 

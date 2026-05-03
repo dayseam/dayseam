@@ -105,6 +105,19 @@ This document consolidates **six parallel read-only reviews** run via Cursor sub
 | All rows above | **Documented** for triage — **no code changes** in the introducing PR unless explicitly split out. |
 | Follow-up | File **`DAY-***`** issues (or attach to **#210**) when acting on a row; link back here from the issue. |
 
+### Follow-up implementation (post-#255)
+
+Operational / doc items from the consolidated backlog that **do not**
+require product refactors (splitting `ipc/commands.rs`, CSP redesign,
+full GHA action SHA pinning, optional `nm` gate for MAS updater absence)
+are addressed on **`master` in a dedicated PR** linked from **#210**:
+command-surface lockstep tests, `AGENTS.md` / `ARCHITECTURE.md` / entitlements
+wording alignment, CI `timeout-minutes` + `permissions`, stricter
+`release.yml` artefact upload on real releases, `mas-connect-upload` curl
+timeouts + louder COE docs, fail-closed `mas-connect-upload-preflight`
+dry-run parsing, and `ci.yml` `cargo clippy --all-features` to match
+contributor docs. Remaining rows stay open as normal issues when picked up.
+
 ---
 
 ## Appendix — agent methodology notes

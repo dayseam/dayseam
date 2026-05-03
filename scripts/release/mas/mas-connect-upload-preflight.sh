@@ -20,7 +20,10 @@ dry="${INPUTS_DRY_RUN:-true}"
 case "$dry" in
   true | True | 1) dry_run=1 ;;
   false | False | 0) dry_run=0 ;;
-  *) dry_run=0 ;;
+  *)
+    echo "::error::INPUTS_DRY_RUN must be true or false (got: ${dry})" >&2
+    exit 1
+    ;;
 esac
 
 echo "==> MAS-8d — App Store Connect / TestFlight preflight"

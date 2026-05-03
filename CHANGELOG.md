@@ -51,6 +51,16 @@ release's chore commit from master's linear history; v0.8.1's
 
 - **DAY-210:** [`docs/review/2026-multi-lens-full-repo-review.md`](docs/review/2026-multi-lens-full-repo-review.md) consolidates six parallel agent lenses (security, testing, **AGENTS**/**ARCHITECTURE** standards, CI reliability, code simplicity, MAS / App Store compliance) into one triage backlog — findings only, no product code changes. ([#255](https://github.com/dayseam/dayseam/pull/255))
 
+- **DAY-210 (multi-lens follow-up):** Implements the review’s actionable CI/docs/tooling items: `AGENTS.md` branch + verification alignment with `CONTRIBUTING.md`; `ARCHITECTURE.md` §6 IPC touch-points, §14 alpha narrative vs absent `alpha.yml`, §8.4/§15.2 Jira connector naming; `entitlements.md` JIT wording vs **MAS-JIT**; louder **MAS-8d** `continue-on-error` operator warning; review doc follow-up pointer. ([#256](https://github.com/dayseam/dayseam/pull/256))
+
+### Changed
+
+- **DAY-210 (multi-lens follow-up):** PR CI runs `cargo clippy --workspace --all-targets --all-features`; workflow `timeout-minutes` / least-privilege `permissions` on `ci.yml`, `e2e.yml`, `supply-chain.yml`, `check-semver-label.yml`; stricter `release.yml` artefact upload when not dry-run; bounded `curl` for Transporter install in `mas-connect-upload.yml`; `mas-connect-upload-preflight.sh` fails on unknown `INPUTS_DRY_RUN`. ([#256](https://github.com/dayseam/dayseam/pull/256))
+
+### Added
+
+- **DAY-210 (multi-lens follow-up):** `apps/desktop/src-tauri/tests/command_surface_lockstep.rs` keeps `ipc/commands.rs` `PROD_COMMANDS` / `DEV_COMMANDS`, `build.rs`, and `main.rs` `generate_handler!` lists aligned. ([#256](https://github.com/dayseam/dayseam/pull/256))
+
 ## [0.13.22] - 2026-05-03
 
 ### Documentation
