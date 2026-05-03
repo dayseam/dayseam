@@ -15,6 +15,8 @@ export const AtlassianDialogLocators = {
   WORKSPACE_URL: "add-atlassian-workspace-url",
   URL_NORMALISED: "add-atlassian-url-normalised",
   URL_INVALID: "add-atlassian-url-invalid",
+  /** Shown in add mode when the workspace field is still empty (DAY-208). */
+  URL_EMPTY_HINT: "add-atlassian-url-empty-hint",
   EMAIL: "add-atlassian-email",
   API_TOKEN: "add-atlassian-api-token",
   VALIDATE_BUTTON: "add-atlassian-validate",

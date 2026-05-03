@@ -840,6 +840,18 @@ function renderUrlHelp(n: WorkspaceUrlNormalisation) {
       </span>
     );
   }
+  if (n.kind === "empty") {
+    return (
+      <span
+        data-testid="add-atlassian-url-empty-hint"
+        className="text-[11px] text-neutral-500 dark:text-neutral-400"
+      >
+        Paste or type your Atlassian Cloud URL, for example{" "}
+        <code>https://yourcompany.atlassian.net</code> (you can use just the{" "}
+        <code>yourcompany</code> slug too).
+      </span>
+    );
+  }
   if (n.kind === "invalid") {
     return (
       <span
