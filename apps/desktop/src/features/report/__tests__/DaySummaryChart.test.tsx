@@ -30,7 +30,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RenderedSection } from "@dayseam/ipc-types";
-import { DaySummaryChart, aggregateByKind } from "../DaySummaryChart";
+import { DaySummaryChart } from "../DaySummaryChart";
+import { aggregateByKind } from "../daySummaryChartAggregate";
 
 afterEach(() => {
   cleanup();
