@@ -83,6 +83,10 @@ fi
 echo "==> Lint MAS entitlements (AMFI-safe)"
 export ENTITLEMENTS_FILE="${REPO_ROOT}/apps/desktop/src-tauri/entitlements.mas.plist"
 bash "${REPO_ROOT}/scripts/ci/check-entitlements.sh"
+(
+  export ENTITLEMENTS_FILE="${REPO_ROOT}/apps/desktop/src-tauri/entitlements.mas.nested.plist"
+  bash "${REPO_ROOT}/scripts/ci/check-entitlements.sh"
+)
 
 echo "==> plint PrivacyInfo.xcprivacy (source)"
 plutil -lint "${REPO_ROOT}/apps/desktop/src-tauri/PrivacyInfo.xcprivacy"
@@ -128,6 +132,39 @@ if [[ ! -d "$APP" ]]; then
   echo "build-mas-store-pkg.sh: expected bundle at ${APP}" >&2
   exit 1
 fi
+
+# TestFlight / TN 733942: `com.apple.application-identifier` and
+# `com.apple.developer.team-identifier` are **restricted** — they must appear
+# only on the **main** app signature, not on nested `.app` helpers. Tauri may
+# sign nested bundles with the same plist as the root; Apple then emits
+# **ITMS-90886** ("missing an application identifier" in the signature vs
+# profile). Re-sign nested bundles with sandbox + inherit only, then re-sign
+# the root with full entitlements and a Store-valid designated requirement
+# (tauri-apps/tauri#15230).
+MAS_NESTED_ENT="${REPO_ROOT}/apps/desktop/src-tauri/entitlements.mas.nested.plist"
+MAS_BUNDLE_ID="dev.dayseam.mas"
+echo "==> Re-sign MAS bundle for TestFlight (nested vs main entitlements)"
+while IFS= read -r nested; do
+  [[ -z "$nested" ]] && continue
+  if codesign -dv "$nested" 2>&1 | grep -qi 'Authority=Apple Mac OS Application Signing'; then
+    echo "build-mas-store-pkg.sh: skip Apple-signed nested bundle: ${nested}"
+    continue
+  fi
+  echo "build-mas-store-pkg.sh: re-sign nested bundle: ${nested}"
+  codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+    --entitlements "$MAS_NESTED_ENT" \
+    --timestamp \
+    "$nested"
+done < <(
+  find "$APP/Contents" -name '*.app' ! -path "$APP" \
+    | awk '{ print length($0) "\t" $0 }' | sort -t "$(printf '\t')" -k1 -rn | cut -f2-
+)
+echo "build-mas-store-pkg.sh: re-sign main bundle (full entitlements + designated requirement)"
+codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+  --entitlements "$ENTITLEMENTS_FILE" \
+  --requirements "=designated => anchor apple generic and identifier \"${MAS_BUNDLE_ID}\"" \
+  --timestamp \
+  "$APP"
 
 echo "==> Verify embedded entitlements + privacy manifest"
 bash "${REPO_ROOT}/scripts/ci/verify-tauri-bundle-entitlements.sh" "$APP" mas

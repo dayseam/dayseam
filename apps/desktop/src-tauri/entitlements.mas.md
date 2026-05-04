@@ -11,6 +11,8 @@ from [`tauri.mas.conf.json`](./tauri.mas.conf.json) (`bundle.macOS.entitlements`
 CI runs `codesign -d --entitlements` on a real `.app` built with the MAS
 Tauri config merge ([`verify-tauri-bundle-entitlements.sh`](../../../scripts/ci/verify-tauri-bundle-entitlements.sh)).
 
+[`entitlements.mas.nested.plist`](./entitlements.mas.nested.plist) is **not** a Tauri `bundle.macOS.entitlements` target — it exists only for [`build-mas-store-pkg.sh`](../../../scripts/release/mas/build-mas-store-pkg.sh), which applies it to **nested** `.app` bundles (sandbox + **`com.apple.security.inherit`** only) so restricted keys like **`com.apple.application-identifier`** stay on the **root** app per Apple’s TestFlight guidance ([TN 733942](https://developer.apple.com/forums/thread/733942)).
+
 ## Evolution
 
 | Phase | `entitlements.mas.plist` |

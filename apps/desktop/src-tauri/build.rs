@@ -66,6 +66,10 @@ fn main() {
         "cargo:rerun-if-changed={}",
         manifest_dir.join("entitlements.mas.plist").display()
     );
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("entitlements.mas.nested.plist").display()
+    );
     let dev_capability = manifest_dir
         .join("capabilities")
         .join(DEV_CAPABILITY_FILENAME);
