@@ -27,3 +27,46 @@ body {
   -webkit-font-smoothing: antialiased;
   font-family: var(--font-sans);
 }
+
+/* DAY-268: source chip delete exit — collapse toward centre, brief
+ *  “pop” read, then vanish. A shorter opacity fade honours reduced
+ *  motion without implying the row is still interactive. */
+@keyframes dayseam-source-chip-exit {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  72% {
+    transform: scale(0.1);
+    opacity: 0.88;
+  }
+  86% {
+    transform: scale(0.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes dayseam-source-chip-exit-reduced {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.dayseam-source-chip-exit {
+  animation: dayseam-source-chip-exit 0.38s cubic-bezier(0.33, 0, 0.2, 1) forwards;
+  transform-origin: center center;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dayseam-source-chip-exit {
+    animation: dayseam-source-chip-exit-reduced 0.12s ease-out forwards;
+  }
+}

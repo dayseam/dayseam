@@ -63,6 +63,7 @@ import { Dialog, DialogButton } from "../../components/Dialog";
 import { invoke } from "../../ipc/invoke";
 import { sourcesBus, SOURCES_CHANGED } from "../../ipc/useSources";
 import { outlookErrorCopy } from "./outlookErrorCopy";
+import { SourceEditDeleteDangerZone } from "./SourceEditDeleteDangerZone";
 
 /** Provider identifier baked into the Rust `PROVIDER_MICROSOFT_OUTLOOK`
  *  constant. Duplicated here rather than re-exported from `ipc-types`
@@ -113,6 +114,8 @@ interface AddOutlookSourceDialogProps {
     pollIntervalMs?: number;
     signInTimeoutMs?: number;
   };
+  /** Reconnect / edit mode only: opens the delete confirmation from the sources strip. */
+  onRequestDeleteFromEdit?: () => void;
 }
 
 type DialogState =
@@ -183,6 +186,7 @@ export function AddOutlookSourceDialog({
   reconnect,
   onReconnected,
   testing,
+  onRequestDeleteFromEdit,
 }: AddOutlookSourceDialogProps) {
   const reconnectSource = reconnect?.source ?? null;
   const isReconnect = reconnectSource != null;
@@ -636,6 +640,13 @@ export function AddOutlookSourceDialog({
               blank.
             </span>
           </label>
+        ) : null}
+
+        {isReconnect && onRequestDeleteFromEdit ? (
+          <SourceEditDeleteDangerZone
+            onRequestDelete={onRequestDeleteFromEdit}
+            disabled={state.kind === "submitting"}
+          />
         ) : null}
       </form>
     </Dialog>

@@ -23,6 +23,7 @@ import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import type { Source } from "@dayseam/ipc-types";
 import { useSources } from "../../ipc";
 import { Dialog, DialogButton } from "../../components/Dialog";
+import { SourceEditDeleteDangerZone } from "./SourceEditDeleteDangerZone";
 
 interface AddLocalGitSourceDialogProps {
   open: boolean;
@@ -37,6 +38,8 @@ interface AddLocalGitSourceDialogProps {
    */
   editing?: Source | null;
   onSaved?: (source: Source) => void;
+  /** Edit mode only: opens the same delete confirmation the sources strip uses. */
+  onRequestDeleteFromEdit?: () => void;
 }
 
 function parseScanRoots(raw: string): string[] {
@@ -90,6 +93,7 @@ export function AddLocalGitSourceDialog({
   onAdded,
   editing,
   onSaved,
+  onRequestDeleteFromEdit,
 }: AddLocalGitSourceDialogProps) {
   const { add, update } = useSources();
   const isEdit = editing != null;
@@ -269,6 +273,13 @@ export function AddLocalGitSourceDialog({
           >
             {error}
           </p>
+        ) : null}
+
+        {isEdit && onRequestDeleteFromEdit ? (
+          <SourceEditDeleteDangerZone
+            onRequestDelete={onRequestDeleteFromEdit}
+            disabled={submitting}
+          />
         ) : null}
       </form>
     </Dialog>
