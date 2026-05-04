@@ -30,7 +30,7 @@ export function Toast({ toast, onDismiss, onCopy }: ToastProps) {
       role={toast.severity === "error" ? "alert" : "status"}
       aria-live={toast.severity === "error" ? "assertive" : "polite"}
       data-testid={`toast-${toast.severity}`}
-      className={`pointer-events-auto flex w-80 flex-col gap-1 rounded-md border px-3 py-2 text-sm shadow-sm ${severityClass}`}
+      className={`pointer-events-auto flex w-80 flex-col gap-1 rounded-md border px-3 py-2 text-sm shadow-xs ${severityClass}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5">

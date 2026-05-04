@@ -60,7 +60,7 @@ jobs:
         if: steps.gate.outputs.skip == 'false'
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: bash -n build-mas-store-pkg.sh (syntax)

@@ -103,7 +103,7 @@ follow them; humans editing directly are also expected to.
 
 - **Verification before claiming done:** before opening a PR the agent
   should have run the relevant subset of `pnpm -r lint`, `pnpm -r
-  typecheck`, `pnpm -r test`, `cargo fmt --all -- --check`, `cargo clippy
+  typecheck`, `pnpm -r --if-present run test`, `cargo fmt --all -- --check`, `cargo clippy
   --workspace --all-targets --all-features -- -D warnings`, and `cargo test
   --workspace --all-features` locally — the same bar as
   [`CONTRIBUTING.md`](./CONTRIBUTING.md) and the macOS `rust` job in

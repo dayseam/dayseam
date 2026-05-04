@@ -142,7 +142,7 @@ export function Dialog({
         // via `flex-1 min-h-0`. That way the footer can never be
         // shorter than its intrinsic height no matter how small the
         // viewport gets.
-        className={`${SIZE_CLASSES[size]} flex max-h-[min(720px,90vh)] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl outline-none dark:border-neutral-800 dark:bg-neutral-950`}
+        className={`${SIZE_CLASSES[size]} flex max-h-[min(720px,90vh)] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl outline-hidden dark:border-neutral-800 dark:bg-neutral-950`}
       >
         <header className="flex shrink-0 flex-col gap-1 border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
           <h2

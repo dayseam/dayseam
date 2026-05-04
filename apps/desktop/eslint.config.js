@@ -24,6 +24,10 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // `eslint-plugin-react-hooks` v7 flags legitimate “sync from props/open
+      // into local state” effects across the app. Revisit with targeted
+      // refactors or a narrower override rather than silencing hooks broadly.
+      "react-hooks/set-state-in-effect": "off",
       "react-refresh/only-export-components": [
         "warn",
         { allowConstantExport: true },

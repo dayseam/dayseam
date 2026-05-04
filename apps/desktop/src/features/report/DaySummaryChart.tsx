@@ -49,6 +49,7 @@
 //     `ConnectorLogo` uses.
 
 import { useMemo } from "react";
+import type { JSX } from "react";
 import type { RenderedSection, SourceKind } from "@dayseam/ipc-types";
 import { connectorAccent } from "../../components/ConnectorLogo";
 import { donutPaths } from "./donutGeometry";
@@ -286,7 +287,7 @@ export function DaySummaryChart({
                 key={entry.kind}
                 d={d}
                 onClick={() => scrollToKind(entry.kind)}
-                className="cursor-pointer outline-none transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
+                className="cursor-pointer outline-hidden transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
                 style={{
                   fill: `light-dark(${accent.light}, ${accent.dark})`,
                 }}
