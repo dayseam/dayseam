@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Fixed
+
+- **DAY-210 (MAS):** [`build-mas-store-pkg.sh`](scripts/release/mas/build-mas-store-pkg.sh) now re-signs **nested** `.app` bundles inside `Dayseam.app` with [`entitlements.mas.nested.plist`](apps/desktop/src-tauri/entitlements.mas.nested.plist) (**sandbox + inherit** only), then re-signs the **root** bundle with full [`entitlements.mas.plist`](apps/desktop/src-tauri/entitlements.mas.plist) plus an explicit `codesign --requirements` designated requirement (`anchor apple generic` + `dev.dayseam.mas`). This matches Apple’s [TN 733942](https://developer.apple.com/forums/thread/733942) for TestFlight (**ITMS-90886**) and mitigates [tauri-apps/tauri#15230](https://github.com/tauri-apps/tauri/issues/15230).
+
 ## [0.13.26] - 2026-05-04
 
 ### Fixed

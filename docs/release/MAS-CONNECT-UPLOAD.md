@@ -39,6 +39,10 @@ CI today produces a sandboxed **`Dayseam.app`** (see [`scripts/release/mas/build
 2. Place a signed `.pkg` at a path inside a throwaway branch or use **`workflow_dispatch`** from a tag that contains the file if you are testing with a committed artefact (usually **avoid** committing `.pkg`; prefer uploading from a trusted local machine by pushing a tag is awkward — prefer **self-hosted** runner with the `.pkg` already on disk, or future artefact download step).
 3. **`dry_run: false`** + **`mas_pkg_path`** → expect TestFlight processing in App Store Connect.
 
+## Troubleshooting (TestFlight)
+
+- **`ITMS-90886`** (“signature … missing an application identifier” while the embedded provisioning profile has one) — Apple’s [TN 733942](https://developer.apple.com/forums/thread/733942): **`com.apple.application-identifier`** / **`com.apple.developer.team-identifier`** are **restricted** and must be signed **only** into the **main** app, not into nested `.app` helpers. [`build-mas-store-pkg.sh`](../../scripts/release/mas/build-mas-store-pkg.sh) re-signs nested bundles with [`entitlements.mas.nested.plist`](../../apps/desktop/src-tauri/entitlements.mas.nested.plist) (sandbox + inherit), then re-signs the root with full [`entitlements.mas.plist`](../../apps/desktop/src-tauri/entitlements.mas.plist) plus an explicit `codesign --requirements` designated requirement ([tauri-apps/tauri#15230](https://github.com/tauri-apps/tauri/issues/15230)).
+
 ## Related
 
 - Phase 5 plan: [`docs/plan/2026-phase-5-mas-app-store.md`](../plan/2026-phase-5-mas-app-store.md) — **MAS-8d**
