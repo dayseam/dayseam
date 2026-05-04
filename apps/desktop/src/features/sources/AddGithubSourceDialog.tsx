@@ -67,6 +67,7 @@ import {
   tokenPageUrl,
   type GithubApiBaseUrlNormalisation,
 } from "./github-api-base-url";
+import { SourceEditDeleteDangerZone } from "./SourceEditDeleteDangerZone";
 
 interface AddGithubSourceDialogProps {
   open: boolean;
@@ -89,6 +90,8 @@ interface AddGithubSourceDialogProps {
    *  only changed the label — the id/name is the same in either
    *  case, keeping the caller's post-edit refresh logic uniform. */
   onReconnected?: (sourceId: string) => void;
+  /** Reconnect / edit mode only: opens the delete confirmation from the sources strip. */
+  onRequestDeleteFromEdit?: () => void;
 }
 
 type ValidationState =
@@ -113,6 +116,7 @@ export function AddGithubSourceDialog({
   onAdded,
   reconnect,
   onReconnected,
+  onRequestDeleteFromEdit,
 }: AddGithubSourceDialogProps) {
   const reconnectSource = reconnect?.source ?? null;
   const isReconnect = reconnectSource != null;
@@ -426,6 +430,13 @@ export function AddGithubSourceDialog({
           >
             {submitError}
           </p>
+        ) : null}
+
+        {isReconnect && onRequestDeleteFromEdit ? (
+          <SourceEditDeleteDangerZone
+            onRequestDelete={onRequestDeleteFromEdit}
+            disabled={submitting}
+          />
         ) : null}
       </form>
     </Dialog>

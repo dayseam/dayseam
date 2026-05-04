@@ -39,6 +39,7 @@ import {
   normaliseWorkspaceUrl,
   type WorkspaceUrlNormalisation,
 } from "./atlassian-workspace-url";
+import { SourceEditDeleteDangerZone } from "./SourceEditDeleteDangerZone";
 
 interface AddAtlassianSourceDialogProps {
   open: boolean;
@@ -74,6 +75,8 @@ interface AddAtlassianSourceDialogProps {
    *  to fire `sources_healthcheck` for each so the red chips on the
    *  sidebar clear without waiting for the next poll. */
   onReconnected?: (affectedSourceIds: string[]) => void;
+  /** Reconnect / edit mode only: opens the delete confirmation from the sources strip. */
+  onRequestDeleteFromEdit?: () => void;
 }
 
 type ValidationState =
@@ -148,6 +151,7 @@ export function AddAtlassianSourceDialog({
   existingSources,
   reconnect,
   onReconnected,
+  onRequestDeleteFromEdit,
 }: AddAtlassianSourceDialogProps) {
   const isReconnect = reconnect != null;
   const reconnectSource = reconnect?.source ?? null;
@@ -823,6 +827,13 @@ export function AddAtlassianSourceDialog({
           >
             {submitError}
           </p>
+        ) : null}
+
+        {isReconnect && onRequestDeleteFromEdit ? (
+          <SourceEditDeleteDangerZone
+            onRequestDelete={onRequestDeleteFromEdit}
+            disabled={submitting}
+          />
         ) : null}
       </form>
     </Dialog>

@@ -5,6 +5,7 @@
 export { invoke, Channel } from "./invoke";
 export { useToasts, TOAST_EVENT } from "./useToasts";
 export type { QueuedToast } from "./useToasts";
+export { emitFrontendToast } from "./emitFrontendToast";
 export { useLogsTail } from "./useLogsTail";
 export type { UseLogsTailOptions, UseLogsTailState } from "./useLogsTail";
 export { useSources } from "./useSources";

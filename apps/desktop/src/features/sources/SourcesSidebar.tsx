@@ -27,12 +27,12 @@
 // frame doubles as the "include in next report" toggle: filled when
 // selected, dashed when excluded.
 //
-// Hovering (or keyboard-focusing) a chip reveals three affordances:
-// Rescan (↻), Edit (✎), and Delete (✕). Rescan fires
-// `sources_healthcheck(id)`; Edit reopens the source's add dialog
-// (different per kind) in edit mode where the user can rename the
-// source and/or rotate its credentials; Delete asks for
-// confirmation before calling `sources_delete(id)`. DAY-126 folded
+// Hovering (or keyboard-focusing) a chip reveals two affordances:
+// Rescan (↻) and Edit (✎). Rescan fires `sources_healthcheck(id)`;
+// Edit reopens the source's add dialog (different per kind) in edit
+// mode where the user can rename the source, rotate credentials,
+// and delete the source via a destructive footer that reuses the
+// same confirmation dialog as before (DAY-268). DAY-126 folded
 // the standalone Rename dialog into Edit because carrying two
 // near-identical surfaces for every connector was confusing and
 // left GitHub + Atlassian without a label field at all.
@@ -58,7 +58,8 @@ import type {
   SourceHealth,
   SourceKind,
 } from "@dayseam/ipc-types";
-import { useLocalRepos, useSources } from "../../ipc";
+import { emitFrontendToast, useLocalRepos, useSources } from "../../ipc";
+import { playSourceRemovedPop } from "./playSourceRemovedPop";
 import type { ReportStatus } from "../../ipc";
 import { ConnectorLogo } from "../../components/ConnectorLogo";
 import { AddLocalGitSourceDialog } from "./AddLocalGitSourceDialog";
@@ -165,6 +166,8 @@ function isOutlook(source: Source): boolean {
   return "Outlook" in source.config;
 }
 
+const SOURCE_DELETE_EXIT_MS = 380;
+const SOURCE_DELETE_POP_MS = 275;
 
 export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
   const { sources, loading, error, refresh, healthcheck, remove } = useSources();
@@ -266,6 +269,8 @@ export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
   const [deleting, setDeleting] = useState<Source | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteInFlight, setDeleteInFlight] = useState(false);
+  /** While set, the matching chip plays the DAY-268 delete exit animation. */
+  const [chipExitingId, setChipExitingId] = useState<string | null>(null);
 
   const editingLocalGit = editing !== null && isLocalGit(editing) ? editing : null;
   const editingGitlab = editing !== null && isGitlab(editing) ? editing : null;
@@ -392,13 +397,60 @@ export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleting) return;
+    const target = deleting;
     setDeleteInFlight(true);
     setDeleteError(null);
     try {
-      await remove(deleting.id);
+      const reducedMotion =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (reducedMotion) {
+        try {
+          await remove(target.id);
+        } catch (err) {
+          setDeleteError(
+            err instanceof Error ? err.message : JSON.stringify(err),
+          );
+          return;
+        }
+        setDeleting(null);
+        setEditing(null);
+        await emitFrontendToast(
+          `Removed “${target.label}”`,
+          "Source disconnected from Dayseam.",
+          "success",
+        );
+        return;
+      }
+
       setDeleting(null);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : JSON.stringify(err));
+      setEditing(null);
+      setChipExitingId(target.id);
+
+      await new Promise((r) => setTimeout(r, SOURCE_DELETE_POP_MS));
+      playSourceRemovedPop();
+      await new Promise((r) =>
+        setTimeout(r, SOURCE_DELETE_EXIT_MS - SOURCE_DELETE_POP_MS),
+      );
+
+      try {
+        await remove(target.id);
+      } catch (err) {
+        setChipExitingId(null);
+        setDeleting(target);
+        setEditing(target);
+        setDeleteError(
+          err instanceof Error ? err.message : JSON.stringify(err),
+        );
+        return;
+      }
+      setChipExitingId(null);
+      await emitFrontendToast(
+        `Removed “${target.label}”`,
+        "Source disconnected from Dayseam.",
+        "success",
+      );
     } finally {
       setDeleteInFlight(false);
     }
@@ -513,22 +565,22 @@ export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
       ) : null}
 
       {sources.map((source) => (
-        <SourceChip
+        <div
           key={source.id}
-          source={source}
-          onHealthcheck={handleHealthcheck}
-          isChecking={checkingIds.has(source.id)}
-          onEdit={() => setEditing(source)}
-          onRequestDelete={() => {
-            setDeleteError(null);
-            setDeleting(source);
-          }}
-          onReconnect={handleReconnect}
-          selectable={reportActions !== undefined}
-          selected={selected.has(source.id)}
-          onToggleSelected={() => toggleSelected(source.id)}
-          running={running}
-        />
+          className={`flex flex-col items-stretch${chipExitingId === source.id ? " dayseam-source-chip-exit" : ""}`}
+        >
+          <SourceChip
+            source={source}
+            onHealthcheck={handleHealthcheck}
+            isChecking={checkingIds.has(source.id)}
+            onEdit={() => setEditing(source)}
+            onReconnect={handleReconnect}
+            selectable={reportActions !== undefined}
+            selected={selected.has(source.id)}
+            onToggleSelected={() => toggleSelected(source.id)}
+            running={running}
+          />
+        </div>
       ))}
 
       {sources.length === 0 && !loading && !error ? (
@@ -623,6 +675,14 @@ export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
           setEditing(null);
           void refresh();
         }}
+        onRequestDeleteFromEdit={
+          editingLocalGit
+            ? () => {
+                setDeleteError(null);
+                setDeleting(editingLocalGit);
+              }
+            : undefined
+        }
       />
 
       <AddGitlabSourceDialog
@@ -646,6 +706,14 @@ export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
           setEditing(null);
           void refresh();
         }}
+        onRequestDeleteFromEdit={
+          editingGitlab
+            ? () => {
+                setDeleteError(null);
+                setDeleting(editingGitlab);
+              }
+            : undefined
+        }
       />
 
       <AddAtlassianSourceDialog
@@ -671,6 +739,14 @@ export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
           // Reconnect mode resolves through `onReconnected` instead.
         }}
         onReconnected={handleAtlassianReconnected}
+        onRequestDeleteFromEdit={
+          editingAtlassian
+            ? () => {
+                setDeleteError(null);
+                setDeleting(editingAtlassian);
+              }
+            : undefined
+        }
       />
 
       <AddGithubSourceDialog
@@ -690,6 +766,14 @@ export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
           // Reconnect mode resolves through `onReconnected`.
         }}
         onReconnected={handleGithubReconnected}
+        onRequestDeleteFromEdit={
+          editingGithub
+            ? () => {
+                setDeleteError(null);
+                setDeleting(editingGithub);
+              }
+            : undefined
+        }
       />
 
       <AddOutlookSourceDialog
@@ -709,6 +793,14 @@ export function SourcesSidebar({ reportActions }: SourcesSidebarProps = {}) {
           // Reconnect mode resolves through `onReconnected`.
         }}
         onReconnected={handleOutlookReconnected}
+        onRequestDeleteFromEdit={
+          editingOutlook
+            ? () => {
+                setDeleteError(null);
+                setDeleting(editingOutlook);
+              }
+            : undefined
+        }
       />
 
       {approving ? (
@@ -751,7 +843,6 @@ interface SourceChipProps {
    *  Label field, so renaming is part of this one flow instead of
    *  a separate Rename dialog. */
   onEdit: () => void;
-  onRequestDelete: () => void;
   onReconnect: (source: Source) => void;
   /** DAY-170: when true the chip body doubles as a toggle for "is
    *  this source included in the next Generate?". Off in unit tests
@@ -797,7 +888,6 @@ function SourceChip({
   onHealthcheck,
   isChecking,
   onEdit,
-  onRequestDelete,
   onReconnect,
   selectable,
   selected,
@@ -903,7 +993,7 @@ function SourceChip({
           disabled={isChecking}
           data-testid={`source-chip-rescan-${source.id}`}
           data-checking={isChecking ? "true" : undefined}
-          className="rounded px-1 text-[11px] text-neutral-500 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-neutral-400 dark:hover:bg-neutral-800"
+          className="rounded px-1 text-[11px] text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-50"
           aria-label={`Rescan ${source.label}`}
           aria-busy={isChecking ? "true" : undefined}
           title={isChecking ? "Rescanning…" : "Rescan"}
@@ -922,22 +1012,12 @@ function SourceChip({
         <button
           type="button"
           onClick={onEdit}
-          className="rounded px-1 text-[11px] text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+          className="rounded px-1 text-[11px] text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-50"
           aria-label={`Edit ${source.label}`}
           title="Edit"
           data-testid={`source-chip-edit-${source.id}`}
         >
           ✎
-        </button>
-        <button
-          type="button"
-          onClick={onRequestDelete}
-          className="rounded px-1 text-[11px] text-neutral-500 hover:bg-red-50 hover:text-red-700 dark:text-neutral-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-          aria-label={`Delete ${source.label}`}
-          title="Delete"
-          data-testid={`source-chip-delete-${source.id}`}
-        >
-          ✕
         </button>
       </span>
     </>

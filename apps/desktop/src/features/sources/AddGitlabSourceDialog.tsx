@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GitlabValidationResult, Source } from "@dayseam/ipc-types";
 import { Dialog, DialogButton } from "../../components/Dialog";
+import { SourceEditDeleteDangerZone } from "./SourceEditDeleteDangerZone";
 import { useSources } from "../../ipc";
 import { invoke } from "../../ipc/invoke";
 import {
@@ -45,6 +46,8 @@ interface AddGitlabSourceDialogProps {
   editing?: Source | null;
   /** Fired after `sources_update` succeeds in edit mode. */
   onSaved?: (source: Source) => void;
+  /** Edit mode only: opens the delete confirmation from the sources strip. */
+  onRequestDeleteFromEdit?: () => void;
 }
 
 function initialBaseUrlForEdit(source: Source | null | undefined): string {
@@ -70,6 +73,7 @@ export function AddGitlabSourceDialog({
   onAdded,
   editing,
   onSaved,
+  onRequestDeleteFromEdit,
 }: AddGitlabSourceDialogProps) {
   const { add, update } = useSources();
   const isEdit = editing != null;
@@ -421,6 +425,13 @@ export function AddGitlabSourceDialog({
           >
             {submitError}
           </p>
+        ) : null}
+
+        {isEdit && onRequestDeleteFromEdit ? (
+          <SourceEditDeleteDangerZone
+            onRequestDelete={onRequestDeleteFromEdit}
+            disabled={submitting}
+          />
         ) : null}
       </form>
     </Dialog>
