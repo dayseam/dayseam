@@ -40,14 +40,11 @@ function parseTransitionDuration(value: string): number {
   for (const raw of parts) {
     const token = raw.trim();
     if (!token) continue;
-    let ms = 0;
-    if (token.endsWith("ms")) {
-      ms = Number.parseFloat(token.slice(0, -2));
-    } else if (token.endsWith("s")) {
-      ms = Number.parseFloat(token.slice(0, -1)) * 1000;
-    } else {
-      ms = Number.parseFloat(token);
-    }
+    const ms = token.endsWith("ms")
+      ? Number.parseFloat(token.slice(0, -2))
+      : token.endsWith("s")
+        ? Number.parseFloat(token.slice(0, -1)) * 1000
+        : Number.parseFloat(token);
     if (Number.isFinite(ms) && ms > longest) longest = ms;
   }
   return longest > 0 ? longest : SPLASH_FADE_MS_FALLBACK;

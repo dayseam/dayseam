@@ -15,14 +15,14 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
   >
     <path
       aria-label="GitHub 4 · 40%"
-      class="cursor-pointer outline-none transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
+      class="cursor-pointer outline-hidden transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
       d="M 50.00 2.00 A 48 48 0 0 1 78.21 88.83 L 66.46 72.65 A 28 28 0 0 0 50.00 22.00 Z"
       data-accent-dark="#F0F6FC"
       data-accent-light="#24292F"
       data-count="4"
       data-kind-slice="GitHub"
       role="button"
-      style="fill: light-dark(#24292F, #F0F6FC);"
+      style="fill: light-dark(rgb(36, 41, 47), rgb(240, 246, 252));"
       tabindex="0"
     >
       <title>
@@ -31,14 +31,14 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
     </path>
     <path
       aria-label="GitLab 2 · 20%"
-      class="cursor-pointer outline-none transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
+      class="cursor-pointer outline-hidden transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
       d="M 78.21 88.83 A 48 48 0 0 1 21.79 88.83 L 33.54 72.65 A 28 28 0 0 0 66.46 72.65 Z"
       data-accent-dark="#FC6D26"
       data-accent-light="#FC6D26"
       data-count="2"
       data-kind-slice="GitLab"
       role="button"
-      style="fill: light-dark(#FC6D26, #FC6D26);"
+      style="fill: light-dark(rgb(252, 109, 38), rgb(252, 109, 38));"
       tabindex="0"
     >
       <title>
@@ -47,14 +47,14 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
     </path>
     <path
       aria-label="Local git 1 · 10%"
-      class="cursor-pointer outline-none transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
+      class="cursor-pointer outline-hidden transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
       d="M 21.79 88.83 A 48 48 0 0 1 4.35 64.83 L 23.37 58.65 A 28 28 0 0 0 33.54 72.65 Z"
       data-accent-dark="#F05032"
       data-accent-light="#F05032"
       data-count="1"
       data-kind-slice="LocalGit"
       role="button"
-      style="fill: light-dark(#F05032, #F05032);"
+      style="fill: light-dark(rgb(240, 80, 50), rgb(240, 80, 50));"
       tabindex="0"
     >
       <title>
@@ -63,14 +63,14 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
     </path>
     <path
       aria-label="Jira 1 · 10%"
-      class="cursor-pointer outline-none transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
+      class="cursor-pointer outline-hidden transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
       d="M 4.35 64.83 A 48 48 0 0 1 4.35 35.17 L 23.37 41.35 A 28 28 0 0 0 23.37 58.65 Z"
       data-accent-dark="#4C9AFF"
       data-accent-light="#0052CC"
       data-count="1"
       data-kind-slice="Jira"
       role="button"
-      style="fill: light-dark(#0052CC, #4C9AFF);"
+      style="fill: light-dark(rgb(0, 82, 204), rgb(76, 154, 255));"
       tabindex="0"
     >
       <title>
@@ -79,14 +79,14 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
     </path>
     <path
       aria-label="Confluence 1 · 10%"
-      class="cursor-pointer outline-none transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
+      class="cursor-pointer outline-hidden transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
       d="M 4.35 35.17 A 48 48 0 0 1 21.79 11.17 L 33.54 27.35 A 28 28 0 0 0 23.37 41.35 Z"
       data-accent-dark="#2684FF"
       data-accent-light="#172B4D"
       data-count="1"
       data-kind-slice="Confluence"
       role="button"
-      style="fill: light-dark(#172B4D, #2684FF);"
+      style="fill: light-dark(rgb(23, 43, 77), rgb(38, 132, 255));"
       tabindex="0"
     >
       <title>
@@ -95,14 +95,14 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
     </path>
     <path
       aria-label="Outlook 1 · 10%"
-      class="cursor-pointer outline-none transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
+      class="cursor-pointer outline-hidden transition-opacity duration-100 hover:opacity-80 focus-visible:opacity-80"
       d="M 21.79 11.17 A 48 48 0 0 1 50.00 2.00 L 50.00 22.00 A 28 28 0 0 0 33.54 27.35 Z"
       data-accent-dark="#0078D4"
       data-accent-light="#0078D4"
       data-count="1"
       data-kind-slice="Outlook"
       role="button"
-      style="fill: light-dark(#0078D4, #0078D4);"
+      style="fill: light-dark(rgb(0, 120, 212), rgb(0, 120, 212));"
       tabindex="0"
     >
       <title>
@@ -134,6 +134,7 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
         class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
         data-accent-dark="#F0F6FC"
         data-accent-light="#24292F"
+        style="background-color: light-dark(rgb(36, 41, 47), rgb(240, 246, 252));"
       />
       <span
         class="min-w-0 truncate tabular-nums"
@@ -155,6 +156,7 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
         class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
         data-accent-dark="#FC6D26"
         data-accent-light="#FC6D26"
+        style="background-color: light-dark(rgb(252, 109, 38), rgb(252, 109, 38));"
       />
       <span
         class="min-w-0 truncate tabular-nums"
@@ -176,6 +178,7 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
         class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
         data-accent-dark="#F05032"
         data-accent-light="#F05032"
+        style="background-color: light-dark(rgb(240, 80, 50), rgb(240, 80, 50));"
       />
       <span
         class="min-w-0 truncate tabular-nums"
@@ -197,6 +200,7 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
         class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
         data-accent-dark="#4C9AFF"
         data-accent-light="#0052CC"
+        style="background-color: light-dark(rgb(0, 82, 204), rgb(76, 154, 255));"
       />
       <span
         class="min-w-0 truncate tabular-nums"
@@ -218,6 +222,7 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
         class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
         data-accent-dark="#2684FF"
         data-accent-light="#172B4D"
+        style="background-color: light-dark(rgb(23, 43, 77), rgb(38, 132, 255));"
       />
       <span
         class="min-w-0 truncate tabular-nums"
@@ -239,6 +244,7 @@ exports[`<DaySummaryChart /> > matches the snapshot for the canonical multi-kind
         class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
         data-accent-dark="#0078D4"
         data-accent-light="#0078D4"
+        style="background-color: light-dark(rgb(0, 120, 212), rgb(0, 120, 212));"
       />
       <span
         class="min-w-0 truncate tabular-nums"

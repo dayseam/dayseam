@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "lint": "pnpm -r lint",
@@ -14,7 +14,7 @@
     "tauri:build": "pnpm --filter @dayseam/desktop tauri build"
   },
   "devDependencies": {
-    "typescript": "^5.5.0"
+    "typescript": "^6.0.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

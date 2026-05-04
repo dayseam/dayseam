@@ -8,7 +8,7 @@ open-source project; the patterns below are what land cleanly today.
 - **Rust 1.88+** matching the pin in [`rust-toolchain.toml`](./rust-toolchain.toml).
   Install via [`rustup`](https://rustup.rs/); `rustup` auto-detects the
   toolchain from the pin file on first `cargo` invocation in the repo.
-- **Node.js 20+** and **pnpm 10+** (Corepack recommended:
+- **Node.js 22.12+** and **pnpm 10+** (Corepack recommended:
   `corepack enable && corepack prepare pnpm@10.28.0 --activate`).
 - **Xcode Command Line Tools** (`xcode-select --install`) on macOS.
 - **GitHub CLI** (`gh`) if you want to open PRs from the terminal.
@@ -36,7 +36,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 pnpm -r lint
 pnpm -r typecheck
-pnpm -r test --if-present
+pnpm -r --if-present run test
 ```
 
 `--all-features` is load-bearing: the Tauri desktop crate ships dev-only

@@ -211,6 +211,57 @@ export function AddOutlookSourceDialog({
   const signingInSessionId =
     state.kind === "signingIn" ? state.sessionId : null;
 
+  // ── State transitions ────────────────────────────────────────────
+  const handleStatusTransition = useCallback(
+    async (view: OAuthSessionView) => {
+      const s = stateRef.current;
+      if (s.kind !== "signingIn") return;
+      if (view.id !== s.sessionId) return;
+      const status = view.status;
+      if (status.kind === "pending") return;
+      if (status.kind === "cancelled") {
+        setState({ kind: "idle" });
+        return;
+      }
+      if (status.kind === "failed") {
+        setState({
+          kind: "error",
+          code: status.code,
+          message: status.message,
+          sessionId: s.sessionId,
+        });
+        return;
+      }
+      // kind === "completed" — probe Graph for the "Signed in as …"
+      // ribbon. Don't consume the session here; `outlook_sources_add`
+      // does that.
+      try {
+        const result = await invoke("outlook_validate_credentials", {
+          sessionId: s.sessionId,
+        });
+        setState({
+          kind: "validated",
+          sessionId: s.sessionId,
+          result,
+        });
+        if (label.trim().length === 0) {
+          const fallback =
+            result.display_name ?? result.user_principal_name;
+          setLabel(fallback);
+        }
+      } catch (err) {
+        const { code, message } = coerceError(err);
+        setState({
+          kind: "error",
+          code,
+          message,
+          sessionId: s.sessionId,
+        });
+      }
+    },
+    [label],
+  );
+
   // Re-seed when the dialog opens or the reconnect source changes.
   useEffect(() => {
     if (!open) return;
@@ -306,57 +357,6 @@ export function AddOutlookSourceDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind, signingInSessionId, pollIntervalMs, signInTimeoutMs]);
 
-  // ── State transitions ────────────────────────────────────────────
-  const handleStatusTransition = useCallback(
-    async (view: OAuthSessionView) => {
-      const s = stateRef.current;
-      if (s.kind !== "signingIn") return;
-      if (view.id !== s.sessionId) return;
-      const status = view.status;
-      if (status.kind === "pending") return;
-      if (status.kind === "cancelled") {
-        setState({ kind: "idle" });
-        return;
-      }
-      if (status.kind === "failed") {
-        setState({
-          kind: "error",
-          code: status.code,
-          message: status.message,
-          sessionId: s.sessionId,
-        });
-        return;
-      }
-      // kind === "completed" — probe Graph for the "Signed in as …"
-      // ribbon. Don't consume the session here; `outlook_sources_add`
-      // does that.
-      try {
-        const result = await invoke("outlook_validate_credentials", {
-          sessionId: s.sessionId,
-        });
-        setState({
-          kind: "validated",
-          sessionId: s.sessionId,
-          result,
-        });
-        if (label.trim().length === 0) {
-          const fallback =
-            result.display_name ?? result.user_principal_name;
-          setLabel(fallback);
-        }
-      } catch (err) {
-        const { code, message } = coerceError(err);
-        setState({
-          kind: "error",
-          code,
-          message,
-          sessionId: s.sessionId,
-        });
-      }
-    },
-    [label],
-  );
-
   const handleSignIn = useCallback(async () => {
     if (stateRef.current.kind !== "idle" && stateRef.current.kind !== "error")
       return;
@@ -408,9 +408,12 @@ export function AddOutlookSourceDialog({
       result: s.result,
     });
     try {
+      const resolvedLabel =
+        label.trim() ||
+        (s.result.display_name ?? s.result.user_principal_name);
       const source = await invoke("outlook_sources_add", {
         sessionId: s.sessionId,
-        label: label.trim(),
+        label: resolvedLabel,
       });
       sourcesBus.dispatchEvent(new Event(SOURCES_CHANGED));
       if (isReconnect) {
@@ -457,8 +460,17 @@ export function AddOutlookSourceDialog({
   }, [state]);
 
   const trimmedLabel = label.trim();
+  // When validation completes we may still be one commit behind on `label`
+  // even though the UI already shows the signed-in ribbon from `state.result`
+  // — derive the same fallback the IPC path uses so the primary button is
+  // never stuck disabled waiting for a `setLabel` flush.
+  const effectiveSubmitLabel =
+    state.kind === "validated" || state.kind === "submitting"
+      ? trimmedLabel ||
+        (state.result.display_name ?? state.result.user_principal_name)
+      : trimmedLabel;
   const canSubmit =
-    state.kind === "validated" && trimmedLabel.length > 0;
+    state.kind === "validated" && effectiveSubmitLabel.length > 0;
 
   const primaryButtonLabel = (() => {
     switch (state.kind) {

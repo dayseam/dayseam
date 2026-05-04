@@ -16,7 +16,7 @@
 ## Prerequisites
 
 - **macOS** (same constraints as Tauri bundling + `plutil`).
-- **Node 20**, **pnpm**, **Rust** toolchain matching [`rust-toolchain.toml`](../../../rust-toolchain.toml).
+- **Node 22.12+**, **pnpm**, **Rust** toolchain matching [`rust-toolchain.toml`](../../../rust-toolchain.toml).
 - **`jq`** — used to parse `cargo metadata` for the workspace `target/` directory (same pattern as [`build-dmg.sh`](../build-dmg.sh)); install via Homebrew (`brew install jq`) or your package manager if it is not on `PATH`.
 - Invoke from any directory (`./scripts/release/mas/build-mas-app.sh`, or a path to the script); it resolves the monorepo root from the script location (`REPO_ROOT` override optional).
 

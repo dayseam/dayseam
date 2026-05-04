@@ -47,6 +47,10 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+### Changed
+
+- **DAY-262:** Refreshed pnpm and Rust lockfile dependencies to current compatible releases (Vite 8, Vitest 4, ESLint 10 stack, Tauri JS 2.11 / CLI 2.11, `typescript-eslint` 8.59, TypeScript 6, React 19, Tailwind CSS 4 via `@tailwindcss/vite`, `esbuild` 0.28). Ran `cargo update` so the desktop shell and transitive crates pick up current semver-compatible releases (e.g. Tauri 2.11, wry 0.55). `eslint-plugin-react-hooks` 7 is enabled with `react-hooks/set-state-in-effect` turned off until refactors land. Vitest snapshots were updated where jsdom changed inline-style serialization or class names. **Node.js** is now **22.12+** in `engines`, all GitHub Actions `setup-node` jobs, and `CONTRIBUTING.md`. `CONTRIBUTING.md` / `AGENTS.md` document `pnpm -r --if-present run test` (matching CI) so `--if-present` is not forwarded into Vitest 4. PR branch rebased on `master` (v0.13.27 tip) with a fresh CI run before merge.
+
 ## [0.13.27] - 2026-05-04
 
 ### Fixed
