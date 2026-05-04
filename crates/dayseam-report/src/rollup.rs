@@ -820,7 +820,7 @@ mod tests {
 
         let groups = roll_up(
             &[e1.clone(), e2.clone()],
-            &[artifact.clone()],
+            std::slice::from_ref(&artifact),
             NaiveDate::from_ymd_opt(2026, 4, 18).unwrap(),
         );
         assert_eq!(groups.len(), 1);

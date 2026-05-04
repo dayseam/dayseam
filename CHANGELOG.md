@@ -51,6 +51,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 - **DAY-262:** Refreshed pnpm and Rust lockfile dependencies to current compatible releases (Vite 8, Vitest 4, ESLint 10 stack, Tauri JS 2.11 / CLI 2.11, `typescript-eslint` 8.59, TypeScript 6, React 19, Tailwind CSS 4 via `@tailwindcss/vite`, `esbuild` 0.28). Ran `cargo update` so the desktop shell and transitive crates pick up current semver-compatible releases (e.g. Tauri 2.11, wry 0.55). `eslint-plugin-react-hooks` 7 is enabled with `react-hooks/set-state-in-effect` turned off until refactors land. Vitest snapshots were updated where jsdom changed inline-style serialization or class names. **Node.js** is now **22.12+** in `engines`, all GitHub Actions `setup-node` jobs, and `CONTRIBUTING.md`. `CONTRIBUTING.md` / `AGENTS.md` document `pnpm -r --if-present run test` (matching CI) so `--if-present` is not forwarded into Vitest 4. PR branch rebased on `master` (v0.13.27 tip) with a fresh CI run before merge.
 
+- **DAY-264:** Bump the repo `packageManager` / Corepack pin to **pnpm 10.33.2**, re-resolve **`pnpm-lock.yaml`** under that pin (transitive metadata and compatible bumps), and raise the **Rust toolchain + workspace `rust-version` MSRV** to **1.90** (including every workflow `dtolnay/rust-toolchain` pin that previously hard-coded **1.88.0**). Single-element test slices now use `std::slice::from_ref` where Clippy 1.90’s `cloned_ref_to_slice_refs` lint applies.
+
 ## [0.13.27] - 2026-05-04
 
 ### Fixed

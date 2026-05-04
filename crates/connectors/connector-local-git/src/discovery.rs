@@ -757,7 +757,8 @@ mod tests {
         let scan_root = base.join("Documents");
         make_repo(&scan_root.join("repo"));
 
-        let out = discover_repos(&[scan_root.clone()], DiscoveryConfig::default()).unwrap();
+        let out =
+            discover_repos(std::slice::from_ref(&scan_root), DiscoveryConfig::default()).unwrap();
         let paths: Vec<_> = out.repos.iter().map(|r| r.path.clone()).collect();
         assert_eq!(
             paths,
