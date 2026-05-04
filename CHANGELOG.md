@@ -47,6 +47,8 @@ release's chore commit from master's linear history; v0.8.1's
 
 ## [Unreleased]
 
+## [0.13.26] - 2026-05-04
+
 ### Fixed
 
 - **DAY-210 (MAS):** The macOS bundle icon set now includes **256**, **512**, and **512@2x** (1024 px) PNGs derived from the canonical [`assets/brand/dayseam-mark.svg`](assets/brand/dayseam-mark.svg) and wired through Tauri’s `bundle.icon` list so the built **`.icns`** satisfies App Store validation (**ITMS-90236** — 512 pt @2x required in the icon family). Smaller dock sizes were re-rasterised from the same source for consistency.
