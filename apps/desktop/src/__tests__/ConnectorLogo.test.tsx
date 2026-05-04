@@ -1,7 +1,8 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { SourceKind } from "@dayseam/ipc-types";
-import { connectorAccent, ConnectorLogo } from "../components/ConnectorLogo";
+import { connectorAccent } from "../components/connectorAccent";
+import { ConnectorLogo } from "../components/ConnectorLogo";
 
 // DAY-159. Coverage for the inline brand-mark component that
 // `SourceChip` (and future dialog / action-row surfaces) depend
