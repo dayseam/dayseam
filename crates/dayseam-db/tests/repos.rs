@@ -922,7 +922,10 @@ async fn activity_events_round_trip_and_reinsert_is_idempotent() {
     let src = fixture_source();
     sources.insert(&src).await.unwrap();
     let event = fixture_event_for(&src);
-    events.insert_many(&[event.clone()]).await.unwrap();
+    events
+        .insert_many(std::slice::from_ref(&event))
+        .await
+        .unwrap();
 
     let date = event.occurred_at.date_naive();
     let got = events.list_by_source_date(&src.id, date).await.unwrap();
@@ -936,7 +939,7 @@ async fn activity_events_round_trip_and_reinsert_is_idempotent() {
     // (e.g. adding a previously-missing `repo` entity) lands on the
     // next generate.
     events
-        .insert_many(&[event.clone()])
+        .insert_many(std::slice::from_ref(&event))
         .await
         .expect("re-insert of a deterministic event id must be idempotent");
 
@@ -969,7 +972,7 @@ async fn activity_events_upsert_refreshes_payload_on_conflict() {
     first.title = "stale title".to_string();
     first.entities = Vec::new();
     events
-        .insert_many(&[first.clone()])
+        .insert_many(std::slice::from_ref(&first))
         .await
         .expect("first insert");
 
@@ -984,7 +987,7 @@ async fn activity_events_upsert_refreshes_payload_on_conflict() {
         label: Some("modulo-local-infra".into()),
     }];
     events
-        .insert_many(&[refreshed.clone()])
+        .insert_many(std::slice::from_ref(&refreshed))
         .await
         .expect("upsert of same key must succeed");
 
@@ -2027,7 +2030,7 @@ async fn security_scoped_bookmarks_sync_local_git_scan_roots() {
     let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
     assert_eq!(rows.len(), 2);
 
-    repo.sync_local_git_scan_roots(&src.id, &[primary.clone()])
+    repo.sync_local_git_scan_roots(&src.id, std::slice::from_ref(&primary))
         .await
         .unwrap();
     let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
@@ -2041,7 +2044,7 @@ async fn security_scoped_bookmarks_sync_local_git_scan_roots() {
     let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
     assert!(rows.is_empty());
 
-    repo.sync_local_git_scan_roots(&src.id, &[primary.clone()])
+    repo.sync_local_git_scan_roots(&src.id, std::slice::from_ref(&primary))
         .await
         .unwrap();
     let bid: String =
@@ -2058,7 +2061,7 @@ async fn security_scoped_bookmarks_sync_local_git_scan_roots() {
         .await
         .unwrap();
 
-    repo.sync_local_git_scan_roots(&src.id, &[primary.clone()])
+    repo.sync_local_git_scan_roots(&src.id, std::slice::from_ref(&primary))
         .await
         .unwrap();
     let rows = repo.list_local_git_scan_rows(&src.id).await.unwrap();
@@ -2096,7 +2099,7 @@ async fn security_scoped_bookmarks_sync_markdown_sink_dest_dirs() {
     let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
     assert_eq!(rows.len(), 2);
 
-    repo.sync_markdown_sink_dest_dirs(&sink_id, &[primary.clone()])
+    repo.sync_markdown_sink_dest_dirs(&sink_id, std::slice::from_ref(&primary))
         .await
         .unwrap();
     let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
@@ -2112,7 +2115,7 @@ async fn security_scoped_bookmarks_sync_markdown_sink_dest_dirs() {
     let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
     assert!(rows.is_empty());
 
-    repo.sync_markdown_sink_dest_dirs(&sink_id, &[primary.clone()])
+    repo.sync_markdown_sink_dest_dirs(&sink_id, std::slice::from_ref(&primary))
         .await
         .unwrap();
     let bid: String =
@@ -2129,7 +2132,7 @@ async fn security_scoped_bookmarks_sync_markdown_sink_dest_dirs() {
         .await
         .unwrap();
 
-    repo.sync_markdown_sink_dest_dirs(&sink_id, &[primary.clone()])
+    repo.sync_markdown_sink_dest_dirs(&sink_id, std::slice::from_ref(&primary))
         .await
         .unwrap();
     let rows = repo.list_markdown_sink_dest_rows(&sink_id).await.unwrap();
@@ -2150,7 +2153,7 @@ async fn security_scoped_bookmarks_set_blob_updates_rows() {
     };
 
     let repo = SecurityScopedBookmarkRepo::new(pool.clone());
-    repo.sync_local_git_scan_roots(&src.id, &[primary.clone()])
+    repo.sync_local_git_scan_roots(&src.id, std::slice::from_ref(&primary))
         .await
         .unwrap();
 
@@ -2181,7 +2184,7 @@ async fn security_scoped_bookmarks_set_blob_updates_rows() {
         last_write_at: None,
     };
     SinkRepo::new(pool.clone()).insert(&sink).await.unwrap();
-    repo.sync_markdown_sink_dest_dirs(&sink_id, &[dest.clone()])
+    repo.sync_markdown_sink_dest_dirs(&sink_id, std::slice::from_ref(&dest))
         .await
         .unwrap();
 

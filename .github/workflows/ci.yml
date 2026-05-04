@@ -23,7 +23,7 @@ jobs:
       - name: Install Rust toolchain (matches rust-toolchain.toml)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.88.0"
+          toolchain: "1.90.0"
           components: rustfmt,clippy
 
       - uses: Swatinem/rust-cache@v2
@@ -72,7 +72,7 @@ jobs:
       - name: Install Rust toolchain (matches rust-toolchain.toml)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.88.0"
+          toolchain: "1.90.0"
 
       - uses: Swatinem/rust-cache@v2
 
@@ -151,7 +151,7 @@ jobs:
       - name: Install Rust toolchain (matches rust-toolchain.toml)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.88.0"
+          toolchain: "1.90.0"
       - uses: Swatinem/rust-cache@v2
       - name: cargo test (workspace minus desktop)
         run: cargo test --workspace --exclude dayseam-desktop --all-features
